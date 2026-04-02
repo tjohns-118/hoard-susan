@@ -1,7 +1,6 @@
-export interface Event {
+export interface CalendarEvent {
 id: string;
 title: string;
-start: string;
-end: string;
-contactId?: string;
+type: "showing" | "meeting" | "call" | "closing";
+startsAt: string;
 }

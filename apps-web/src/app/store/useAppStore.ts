@@ -1,46 +1,58 @@
-import { create } from 'zustand';
+"use client";
 
-import { contacts as initialContacts, tasks as initialTasks, events as initialEvents } from '@/data/mockDb';
-import type { Contact } from '@/features/contacts/types';
-import type { Task } from '@/features/tasks/types';
-import type { Event } from '@/features/events/types';
+import { create } from "zustand";
+import { contacts as seedContacts, tasks as seedTasks, properties as seedProperties, calendarEvents as seedEvents, templates as seedTemplates, alerts as seedAlerts, agents as seedAgents, matches as seedMatches, opportunities as seedOpportunities } from "@/data/mockDb";
+import type { Task } from "@/features/tasks/types";
+import type { Contact } from "@/features/contacts/types";
+import type { Property } from "@/features/properties/types";
+import type { CalendarEvent } from "@/features/events/types";
+import type { Template } from "@/features/templates/types";
+import type { AlertItem } from "@/features/alerts/types";
+import type { Agent } from "@/features/agents/types";
+import type { MatchItem } from "@/features/matches/types";
+import type { Opportunity } from "@/features/opportunities/types";
 
-interface AppStore {
+type AppState = {
 contacts: Contact[];
 tasks: Task[];
-events: Event[];
+properties: Property[];
+events: CalendarEvent[];
+templates: Template[];
+alerts: AlertItem[];
+agents: Agent[];
+matches: MatchItem[];
+opportunities: Opportunity[];
+toggleTask: (id: string) => void;
+addTask: (title: string) => void;
+};
 
-addContact: (contact: Contact) => void;
-addTask: (task: Task) => void;
-addEvent: (event: Event) => void;
-
-toggleTask: (taskId: string) => void;
-}
-
-export const useAppStore = create<AppStore>((set) => ({
-contacts: initialContacts,
-tasks: initialTasks,
-events: initialEvents,
-
-addContact: (contact) =>
+export const useAppStore = create<AppState>((set) => ({
+contacts: seedContacts,
+tasks: seedTasks,
+properties: seedProperties,
+events: seedEvents,
+templates: seedTemplates,
+alerts: seedAlerts,
+agents: seedAgents,
+matches: seedMatches,
+opportunities: seedOpportunities,
+toggleTask: (id) =>
 set((state) => ({
-contacts: [contact, ...state.contacts],
-})),
-
-addTask: (task) =>
-set((state) => ({
-tasks: [task, ...state.tasks],
-})),
-
-addEvent: (event) =>
-set((state) => ({
-events: [event, ...state.events],
-})),
-
-toggleTask: (taskId) =>
-set((state) => ({
-tasks: state.tasks.map((t) =>
-t.id === taskId ? { ...t, completed: !t.completed } : t
+tasks: state.tasks.map((task) =>
+task.id === id ? { ...task, completed: !task.completed } : task
 ),
+})),
+addTask: (title) =>
+set((state) => ({
+tasks: [
+{
+id: crypto.randomUUID(),
+title,
+completed: false,
+priority: "medium",
+createdAt: new Date().toISOString().slice(0, 10),
+},
+...state.tasks,
+],
 })),
 }));

@@ -1,4 +1,4 @@
-export type TaskPriority = 'high' | 'medium' | 'low';
+export type TaskPriority = "high" | "medium" | "low";
 
 export interface Task {
 id: string;
