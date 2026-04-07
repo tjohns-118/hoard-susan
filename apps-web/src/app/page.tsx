@@ -1,122 +1,138 @@
 'use client';
 
-import { useAppStore } from '@/app/store/useAppStore';
+import { AppShell } from '@/components/layout/AppShell';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { QuickActionBar } from '@/components/ui/QuickActionBar';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { StatCard } from '@/components/ui/StatCard';
+import { Badge } from '@/components/ui/Badge';
+import { mockDb } from '@/data/mockDb';
 
 export default function HomePage() {
-const contacts = useAppStore((s) => s.contacts ?? []);
-const tasks = useAppStore((s) => s.tasks ?? []);
-const properties = useAppStore((s) => s.properties ?? []);
-const loadError = useAppStore((s) => s.loadError ?? null);
-const toggleTask = useAppStore((s) => s.toggleTask);
-
-const activeDeals = properties.filter(
-(property) => property.status === 'active' || property.status === 'pending'
+const contacts = mockDb.contacts.length;
+const leads = mockDb.contacts.filter((c) => c.status === 'lead').length;
+const activeDeals = mockDb.properties.filter(
+(p) => p.status === 'active' || p.status === 'pending'
 ).length;
-
-const hotLeads = contacts.filter((contact) => contact.status === 'lead').length;
-const unassignedTasks = tasks.filter((task) => !task.completed).length;
+const completedTasks = mockDb.tasks.filter((t) => t.completed).length;
+const openTasks = mockDb.tasks.filter((t) => !t.completed).length;
+const hotLeads = mockDb.contacts.filter((c) => c.priority === 'high').length;
 
 return (
-<main
-style={{
-padding: '24px',
-color: 'white',
-background: '#111',
-minHeight: '100vh',
-}}
->
-<h1 style={{ marginBottom: '8px' }}>Hoard — Broker Command Center</h1>
-
-{loadError && (
-<div style={{ color: '#ff8a8a', marginBottom: '16px', fontWeight: 700 }}>
-{loadError}
-</div>
-)}
-
-<h2 style={{ marginBottom: '16px' }}>Overview</h2>
+<AppShell>
+<PageHeader
+title="Dashboard"
+description="Operational overview for leads, listings, tasks, and active deal pressure."
+actions={
+<QuickActionBar
+actions={[
+{ label: 'New Contact' },
+{ label: 'Add Property' },
+{ label: 'Create Task' },
+]}
+/>
+}
+/>
 
 <div
 style={{
 display: 'grid',
-gridTemplateColumns: 'repeat(3, 1fr)',
-gap: '16px',
-marginBottom: '24px',
+gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+gap: 16,
+marginBottom: 24,
 }}
 >
-<div style={{ border: '1px solid #666', padding: '16px' }}>
-<div>Contacts</div>
-<div style={{ fontSize: '32px', fontWeight: 700 }}>{contacts.length}</div>
+<StatCard label="Contacts" value={contacts} subtext="Total people in system" />
+<StatCard label="Leads" value={leads} subtext="Prospects needing movement" />
+<StatCard label="Active Deals" value={activeDeals} subtext="Active and pending properties" />
+<StatCard label="Open Tasks" value={openTasks} subtext={`${completedTasks} completed`} />
 </div>
 
-<div style={{ border: '1px solid #666', padding: '16px' }}>
-<div>Leads</div>
-<div style={{ fontSize: '32px', fontWeight: 700 }}>{hotLeads}</div>
-</div>
-
-<div style={{ border: '1px solid #666', padding: '16px' }}>
-<div>Active Deals</div>
-<div style={{ fontSize: '32px', fontWeight: 700 }}>{activeDeals}</div>
-</div>
-</div>
-
-<div style={{ marginBottom: '24px' }}>
-<h3>Action Center</h3>
-<p>🔥 Hot Leads: {hotLeads}</p>
-<p>⚠️ Unassigned: {unassignedTasks}</p>
-</div>
-
-<div style={{ marginBottom: '24px' }}>
-<h3>Pipeline</h3>
-<p>Leads</p>
-</div>
-
-<div style={{ marginBottom: '24px' }}>
-<h3>Leads Control</h3>
-<div style={{ display: 'grid', gap: '12px', maxWidth: '700px' }}>
-{tasks.map((task) => (
 <div
-key={task.id}
 style={{
-border: '1px solid #666',
-padding: '12px',
+display: 'grid',
+gridTemplateColumns: '1.6fr 1fr',
+gap: 24,
+}}
+>
+<SectionCard
+title="Action Center"
+description="Highest-priority operational items"
+rightSlot={<Badge tone="warning">{hotLeads} hot leads</Badge>}
+>
+<div style={{ display: 'grid', gap: 12 }}>
+{mockDb.contacts.slice(0, 3).map((contact) => (
+<div
+key={contact.id}
+style={{
+padding: 16,
+borderRadius: 14,
+background: 'rgba(255,255,255,0.04)',
+border: '1px solid rgba(255,255,255,0.08)',
+}}
+>
+<div
+style={{
 display: 'flex',
 justifyContent: 'space-between',
-alignItems: 'center',
+gap: 12,
+marginBottom: 8,
 }}
 >
-<span style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
-{task.title}
-</span>
-
-<button
-onClick={() => toggleTask?.(task.id)}
-style={{
-padding: '6px 12px',
-background: '#2563eb',
-color: 'white',
-border: 'none',
-cursor: 'pointer',
-}}
+<div style={{ fontWeight: 700, color: '#fff' }}>{contact.name}</div>
+<Badge
+tone={
+contact.priority === 'high'
+? 'danger'
+: contact.priority === 'medium'
+? 'warning'
+: 'default'
+}
 >
-{task.completed ? 'Undo' : 'Complete'}
-</button>
+{contact.priority}
+</Badge>
+</div>
+<div style={{ fontSize: 14, color: 'rgba(255,255,255,0.62)' }}>
+{contact.email} · {contact.phone}
+</div>
+<div style={{ marginTop: 8, fontSize: 13, color: 'rgba(255,255,255,0.52)' }}>
+Status: {contact.status}
+</div>
 </div>
 ))}
 </div>
-</div>
+</SectionCard>
 
+<SectionCard title="Tasks" description="Immediate execution queue">
+<div style={{ display: 'grid', gap: 10 }}>
+{mockDb.tasks.map((task) => (
+<div
+key={task.id}
+style={{
+padding: 14,
+borderRadius: 14,
+background: 'rgba(255,255,255,0.04)',
+border: '1px solid rgba(255,255,255,0.08)',
+display: 'flex',
+justifyContent: 'space-between',
+gap: 12,
+alignItems: 'center',
+}}
+>
 <div>
-<h3>Properties</h3>
-{properties.length === 0 ? (
-<div>No properties loaded</div>
-) : (
-properties.map((property) => (
-<div key={property.id} style={{ marginBottom: '8px' }}>
-{property.title} — {property.status}
+<div style={{ color: '#fff', fontWeight: 700 }}>{task.title}</div>
+<div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>
+{task.completed ? 'Completed' : 'Open'}
 </div>
-))
-)}
 </div>
-</main>
+<Badge tone={task.completed ? 'success' : 'default'}>
+{task.completed ? 'Done' : task.priority}
+</Badge>
+</div>
+))}
+</div>
+</SectionCard>
+</div>
+</AppShell>
 );
 }

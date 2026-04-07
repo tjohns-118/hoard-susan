@@ -5,18 +5,18 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 
-export default function TemplatesPage() {
+export default function MatchesPage() {
 return (
 <AppShell>
 <PageHeader
-title="Templates"
-description="Reusable messaging, scripts, and operational copy blocks."
+title="Matches"
+description="Buyer-property and opportunity matching layer."
 />
 
-<SectionCard title="Template Library" description="Message system shell">
+<SectionCard title="Match Engine" description="Recommendation shell">
 <EmptyState
-title="Templates shell ready"
-description="Next layer can add categories, preview panel, edit modal, and copy actions."
+title="Matches shell ready"
+description="Next layer can add recommendation cards, score badges, and conversion actions."
 />
 </SectionCard>
 </AppShell>

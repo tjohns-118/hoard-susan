@@ -6,13 +6,16 @@ import { usePathname } from "next/navigation";
 const items = [
 { href: "/", label: "Dashboard" },
 { href: "/contacts", label: "Contacts" },
+{ href: "/leads", label: "Leads" },
 { href: "/tasks", label: "Tasks" },
 { href: "/properties", label: "Properties" },
+{ href: "/opportunities", label: "Opportunities" },
+{ href: "/matches", label: "Matches" },
 { href: "/calendar", label: "Calendar" },
 { href: "/capture", label: "Capture" },
 { href: "/templates", label: "Templates" },
-{ href: "/pipeline", label: "Pipeline" },
-{ href: "/match", label: "Match" },
+{ href: "/agents", label: "Agents" },
+{ href: "/alerts", label: "Alerts" },
 { href: "/oversight", label: "Oversight" },
 { href: "/settings", label: "Settings" },
 ];

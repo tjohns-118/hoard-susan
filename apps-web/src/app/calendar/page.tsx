@@ -1,31 +1,23 @@
-import { AppShell } from "@/components/AppShell";
-import { PageHeader } from "@/components/PageHeader";
-import { SectionCard } from "@/components/SectionCard";
-import { calendarEvents } from "@/data/mockDb";
+'use client';
+
+import { AppShell } from '@/components/layout/AppShell';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function CalendarPage() {
 return (
 <AppShell>
 <PageHeader
 title="Calendar"
-subtitle="Meetings, showings, closings, and time-blocked execution. This route is ready for a fuller weekly scheduler later."
-action={<button className="button primary">New Event</button>}
+description="Scheduling layer for showings, follow-up, and brokerage activity."
 />
 
-<SectionCard title="Upcoming Events" subtitle="Next scheduled activity">
-<div className="list">
-{calendarEvents.map((event) => (
-<div key={event.id} className="item row">
-<div>
-<div style={{ fontWeight: 700 }}>{event.title}</div>
-<div className="muted small" style={{ marginTop: 6 }}>
-{event.startsAt}
-</div>
-</div>
-<span className="badge info">{event.type}</span>
-</div>
-))}
-</div>
+<SectionCard title="Calendar View" description="Scheduling shell">
+<EmptyState
+title="Calendar layer ready"
+description="Your shell is active. Next pass can add weekly grid, event cards, and appointment workflows."
+/>
 </SectionCard>
 </AppShell>
 );

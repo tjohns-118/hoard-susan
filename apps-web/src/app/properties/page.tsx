@@ -1,30 +1,57 @@
-import { AppShell } from "@/components/AppShell";
-import { PageHeader } from "@/components/PageHeader";
-import { SectionCard } from "@/components/SectionCard";
-import { DataTable } from "@/components/DataTable";
-import { properties } from "@/data/mockDb";
-import type { Property } from "@/features/properties/types";
+'use client';
+
+import { AppShell } from '@/components/layout/AppShell';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { Badge } from '@/components/ui/Badge';
+import { mockDb } from '@/data/mockDb';
 
 export default function PropertiesPage() {
 return (
 <AppShell>
 <PageHeader
 title="Properties"
-subtitle="Listing and inventory layer. This should evolve into your live inventory, pricing, status, activity, and location intelligence page."
-action={<button className="button primary">Add Property</button>}
+description="Listing inventory and active deal visibility."
 />
 
-<SectionCard title="Inventory" subtitle="Tracked property opportunities and listings">
-<DataTable<Property>
-rows={properties}
-columns={[
-{ key: "name", header: "Property", render: (row) => row.name },
-{ key: "city", header: "City", render: (row) => row.city },
-{ key: "type", header: "Type", render: (row) => row.type },
-{ key: "price", header: "Price", render: (row) => `$${row.price.toLocaleString()}` },
-{ key: "status", header: "Status", render: (row) => row.status },
-]}
-/>
+<SectionCard title="Property Pipeline" description="Inventory across statuses">
+<div style={{ display: 'grid', gap: 12 }}>
+{mockDb.properties.map((property) => (
+<div
+key={property.id}
+style={{
+padding: 16,
+borderRadius: 14,
+background: 'rgba(255,255,255,0.04)',
+border: '1px solid rgba(255,255,255,0.08)',
+display: 'flex',
+justifyContent: 'space-between',
+gap: 16,
+}}
+>
+<div>
+<div style={{ color: '#fff', fontWeight: 700 }}>{property.name}</div>
+<div style={{ color: 'rgba(255,255,255,0.62)', marginTop: 6 }}>
+{property.address}
+</div>
+</div>
+
+<div style={{ display: 'flex', gap: 8 }}>
+<Badge
+tone={
+property.status === 'active'
+? 'success'
+: property.status === 'pending'
+? 'warning'
+: 'default'
+}
+>
+{property.status}
+</Badge>
+</div>
+</div>
+))}
+</div>
 </SectionCard>
 </AppShell>
 );

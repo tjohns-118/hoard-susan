@@ -1,9 +1,8 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import './globals.css';
 
-export const metadata: Metadata = {
-title: "Hoard",
-description: "Hoard Broker Command Center"
+export const metadata = {
+title: 'Hoard',
+description: 'Broker Command Center',
 };
 
 export default function RootLayout({
@@ -13,7 +12,7 @@ children: React.ReactNode;
 }>) {
 return (
 <html lang="en">
-<body>{children}</body>
+<body style={{ margin: 0 }}>{children}</body>
 </html>
 );
 }

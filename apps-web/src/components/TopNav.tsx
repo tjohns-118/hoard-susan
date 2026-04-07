@@ -5,14 +5,19 @@ import { usePathname } from "next/navigation";
 const titleMap: Record<string, string> = {
 "/": "Dashboard",
 "/contacts": "Contacts",
+"/leads": "Leads",
 "/tasks": "Tasks",
 "/properties": "Properties",
+"/opportunities": "Opportunities",
+"/matches": "Matches",
 "/calendar": "Calendar",
 "/capture": "Capture",
 "/templates": "Templates",
-"/pipeline": "Pipeline",
-"/match": "Match",
+"/agents": "Agents",
+"/alerts": "Alerts",
 "/oversight": "Oversight",
+"/pipeline": "Pipeline",
+"/match": "Match Engine",
 "/settings": "Settings",
 };
 

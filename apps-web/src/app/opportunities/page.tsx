@@ -5,18 +5,18 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 
-export default function TemplatesPage() {
+export default function OpportunitiesPage() {
 return (
 <AppShell>
 <PageHeader
-title="Templates"
-description="Reusable messaging, scripts, and operational copy blocks."
+title="Opportunities"
+description="Centralized pipeline of active business potential."
 />
 
-<SectionCard title="Template Library" description="Message system shell">
+<SectionCard title="Opportunities Board" description="Revenue shell">
 <EmptyState
-title="Templates shell ready"
-description="Next layer can add categories, preview panel, edit modal, and copy actions."
+title="Opportunities shell ready"
+description="Next layer can add stage columns, weighted value, and owner assignment."
 />
 </SectionCard>
 </AppShell>

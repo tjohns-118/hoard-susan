@@ -5,18 +5,18 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 
-export default function TemplatesPage() {
+export default function AlertsPage() {
 return (
 <AppShell>
 <PageHeader
-title="Templates"
-description="Reusable messaging, scripts, and operational copy blocks."
+title="Alerts"
+description="Risk, urgency, and exception handling for the command center."
 />
 
-<SectionCard title="Template Library" description="Message system shell">
+<SectionCard title="Alerts Queue" description="Exception shell">
 <EmptyState
-title="Templates shell ready"
-description="Next layer can add categories, preview panel, edit modal, and copy actions."
+title="Alerts shell ready"
+description="Next layer can add urgency cards, source routing, and dismiss/resolve actions."
 />
 </SectionCard>
 </AppShell>
