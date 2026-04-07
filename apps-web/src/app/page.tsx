@@ -1,93 +1,122 @@
-import { AppShell } from "@/components/AppShell";
-import { PageHeader } from "@/components/PageHeader";
-import { SectionCard } from "@/components\SectionCard";
-import { StatCard } from "@/components\StatCard";
-import { StatusBadge } from "@/components\StatusBadge";
-import { HeroShellCard } from "@/components\ShellCards";
-import { contacts, tasks, properties, alerts } from "@/data/mockDb";
+'use client';
+
+import { useAppStore } from '@/app/store/useAppStore';
 
 export default function HomePage() {
-const activeDeals = properties.filter((property) => property.status === "active" || property.status === "pending").length;
-const hotLeads = contacts.filter((contact) => contact.stage === "hot").length;
-const unassigned = contacts.filter((contact) => !contact.assignedTo).length;
-const openTasks = tasks.filter((task) => !task.completed).length;
+const contacts = useAppStore((s) => s.contacts ?? []);
+const tasks = useAppStore((s) => s.tasks ?? []);
+const properties = useAppStore((s) => s.properties ?? []);
+const loadError = useAppStore((s) => s.loadError ?? null);
+const toggleTask = useAppStore((s) => s.toggleTask);
+
+const activeDeals = properties.filter(
+(property) => property.status === 'active' || property.status === 'pending'
+).length;
+
+const hotLeads = contacts.filter((contact) => contact.status === 'lead').length;
+const unassignedTasks = tasks.filter((task) => !task.completed).length;
 
 return (
-<AppShell>
-<HeroShellCard
-title="Hoard Broker Command Center"
-subtitle="A multi-layer operating workspace for leads, listings, tasks, pipeline movement, team visibility, and day-to-day execution."
+<main
+style={{
+padding: '24px',
+color: 'white',
+background: '#111',
+minHeight: '100vh',
+}}
 >
-<div className="kpi-strip">
-<StatCard label="Contacts" value={contacts.length} meta="Tracked relationships" />
-<StatCard label="Open Tasks" value={openTasks} meta="Execution queue" />
-<StatCard label="Active Deals" value={activeDeals} meta="Active + pending" />
-<StatCard label="Alerts" value={alerts.length} meta="Needs attention" />
-</div>
-</HeroShellCard>
+<h1 style={{ marginBottom: '8px' }}>Hoard — Broker Command Center</h1>
 
-<PageHeader
-title="Overview"
-subtitle="This is the broker-level home base. Use it to monitor action items, deal pressure, assignment gaps, and operating rhythm across the business."
-action={<button className="button primary">Export Snapshot</button>}
-/>
+{loadError && (
+<div style={{ color: '#ff8a8a', marginBottom: '16px', fontWeight: 700 }}>
+{loadError}
+</div>
+)}
 
-<div className="grid-3">
-<SectionCard title="Action Center" subtitle="Immediate operational focus">
-<div className="list">
-<div className="item row">
-<div>
-<div style={{ fontWeight: 700 }}>Hot Leads</div>
-<div className="muted small">{hotLeads} high-priority buyer or seller conversations</div>
-</div>
-<StatusBadge tone="warn">{hotLeads}</StatusBadge>
-</div>
-<div className="item row">
-<div>
-<div style={{ fontWeight: 700 }}>Unassigned Contacts</div>
-<div className="muted small">{unassigned} contacts need ownership routing</div>
-</div>
-<StatusBadge tone="danger">{unassigned}</StatusBadge>
-</div>
-</div>
-</SectionCard>
+<h2 style={{ marginBottom: '16px' }}>Overview</h2>
 
-<SectionCard title="Task Queue" subtitle="Current work in motion">
-<div className="list">
-{tasks.filter((task) => !task.completed).slice(0, 3).map((task) => (
-<div key={task.id} className="item">
-<div className="row">
-<div style={{ fontWeight: 700 }}>{task.title}</div>
-<StatusBadge tone={task.priority === "high" ? "danger" : task.priority === "medium" ? "warn" : "info"}>
-{task.priority}
-</StatusBadge>
+<div
+style={{
+display: 'grid',
+gridTemplateColumns: 'repeat(3, 1fr)',
+gap: '16px',
+marginBottom: '24px',
+}}
+>
+<div style={{ border: '1px solid #666', padding: '16px' }}>
+<div>Contacts</div>
+<div style={{ fontSize: '32px', fontWeight: 700 }}>{contacts.length}</div>
 </div>
-<div className="muted small" style={{ marginTop: 8 }}>
-{task.dueAt ?? "No due date"}
+
+<div style={{ border: '1px solid #666', padding: '16px' }}>
+<div>Leads</div>
+<div style={{ fontSize: '32px', fontWeight: 700 }}>{hotLeads}</div>
 </div>
+
+<div style={{ border: '1px solid #666', padding: '16px' }}>
+<div>Active Deals</div>
+<div style={{ fontSize: '32px', fontWeight: 700 }}>{activeDeals}</div>
+</div>
+</div>
+
+<div style={{ marginBottom: '24px' }}>
+<h3>Action Center</h3>
+<p>🔥 Hot Leads: {hotLeads}</p>
+<p>⚠️ Unassigned: {unassignedTasks}</p>
+</div>
+
+<div style={{ marginBottom: '24px' }}>
+<h3>Pipeline</h3>
+<p>Leads</p>
+</div>
+
+<div style={{ marginBottom: '24px' }}>
+<h3>Leads Control</h3>
+<div style={{ display: 'grid', gap: '12px', maxWidth: '700px' }}>
+{tasks.map((task) => (
+<div
+key={task.id}
+style={{
+border: '1px solid #666',
+padding: '12px',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+}}
+>
+<span style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
+{task.title}
+</span>
+
+<button
+onClick={() => toggleTask?.(task.id)}
+style={{
+padding: '6px 12px',
+background: '#2563eb',
+color: 'white',
+border: 'none',
+cursor: 'pointer',
+}}
+>
+{task.completed ? 'Undo' : 'Complete'}
+</button>
 </div>
 ))}
 </div>
-</SectionCard>
+</div>
 
-<SectionCard title="Property Pressure" subtitle="Listings and deals">
-<div className="list">
-{properties.map((property) => (
-<div key={property.id} className="item row">
 <div>
-<div style={{ fontWeight: 700 }}>{property.name}</div>
-<div className="muted small">
-{property.city} � ${property.price.toLocaleString()}
+<h3>Properties</h3>
+{properties.length === 0 ? (
+<div>No properties loaded</div>
+) : (
+properties.map((property) => (
+<div key={property.id} style={{ marginBottom: '8px' }}>
+{property.title} — {property.status}
 </div>
+))
+)}
 </div>
-<StatusBadge tone={property.status === "active" ? "success" : property.status === "pending" ? "warn" : "info"}>
-{property.status}
-</StatusBadge>
-</div>
-))}
-</div>
-</SectionCard>
-</div>
-</AppShell>
+</main>
 );
 }
