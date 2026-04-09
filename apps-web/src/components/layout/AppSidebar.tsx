@@ -5,7 +5,9 @@ import { usePathname } from 'next/navigation';
 
 const navItems = [
 { href: '/', label: 'Dashboard' },
+{ href: '/leads', label: 'Leads' },
 { href: '/contacts', label: 'Contacts' },
+{ href: '/opportunities', label: 'Opportunities' },
 { href: '/properties', label: 'Properties' },
 { href: '/tasks', label: 'Tasks' },
 { href: '/calendar', label: 'Calendar' },
@@ -13,7 +15,6 @@ const navItems = [
 { href: '/agents', label: 'Agents' },
 { href: '/alerts', label: 'Alerts' },
 { href: '/matches', label: 'Matches' },
-{ href: '/opportunities', label: 'Opportunities' },
 ];
 
 export function AppSidebar() {

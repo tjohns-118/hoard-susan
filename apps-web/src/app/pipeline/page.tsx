@@ -1,5 +1,5 @@
-import OversightPage from "../oversight/page";
+import { redirect } from 'next/navigation';
 
 export default function PipelinePage() {
-return <OversightPage />;
+  redirect('/opportunities');
 }

@@ -428,3 +428,31 @@ grid-template-columns: 1fr;
 flex-direction: column;
 }
 }
+
+/* ── Templates page list scrollbar ───────────────────────────────── */
+.template-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+  overflow-x: hidden;
+}
+
+.template-list-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.template-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.template-list-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+
+.template-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.22);
+}
+
+.template-list-scroll::-webkit-scrollbar-horizontal {
+  display: none;
+}

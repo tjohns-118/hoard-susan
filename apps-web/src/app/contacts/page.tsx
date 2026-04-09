@@ -1,278 +1,632 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { AppShell } from '@/components/layout/AppShell';
+import { StatCard } from '@/components/ui/StatCard';
+import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
+import type { Contact } from '@/features/contacts/types';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const REF = new Date('2026-04-07T12:00:00.000Z');
+
+type FilterKey = 'all' | 'buyers' | 'sellers' | 'investors' | 'active' | 'hot' | 'archived';
+type Health = 'hot' | 'stale' | 'needs-followup' | 'recently-updated' | 'normal';
+
+const FILTER_TABS: { key: FilterKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'buyers', label: 'Buyers' },
+  { key: 'sellers', label: 'Sellers' },
+  { key: 'investors', label: 'Investors' },
+  { key: 'active', label: 'Active Clients' },
+  { key: 'hot', label: 'Hot' },
+  { key: 'archived', label: 'Archived' },
+];
+
+const STATUS_TONE = {
+  active: 'success',
+  lead: 'warning',
+  closed: 'default',
+} as const;
+
+const NEXT_ACTION: Record<Health, string> = {
+  hot: 'Priority contact — reach out today and keep momentum going.',
+  stale: 'Re-engage with a check-in call or relevant listing update.',
+  'needs-followup': 'Schedule a follow-up call or send a property update.',
+  'recently-updated': 'Good cadence — stay connected with next steps.',
+  normal: 'Maintain regular touchpoints and monitor for activity signals.',
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function daysSince(iso: string) {
+  return Math.floor((REF.getTime() - new Date(iso).getTime()) / 86_400_000);
+}
+
+function getHealth(c: Contact): Health {
+  if (c.tags.includes('hot')) return 'hot';
+  if (c.status === 'closed') return 'normal';
+  const age = daysSince(c.lastActivityAt);
+  if (age > 14) return 'stale';
+  if (age > 6) return 'needs-followup';
+  if (age <= 2) return 'recently-updated';
+  return 'normal';
+}
+
+function fmtValue(v: number) {
+  return v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : `$${(v / 1_000).toFixed(0)}k`;
+}
+
+// ── Micro-components ──────────────────────────────────────────────────────────
+
+function HealthChip({ health }: { health: Health }) {
+  if (health === 'normal') return null;
+  const map = {
+    hot: { label: 'HOT', bg: 'rgba(249,115,22,0.18)', border: 'rgba(249,115,22,0.4)', color: '#fb923c' },
+    stale: { label: 'Stale', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', color: '#fca5a5' },
+    'needs-followup': { label: 'Needs Follow-Up', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', color: '#fde68a' },
+    'recently-updated': { label: 'Recent', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.28)', color: '#bbf7d0' },
+  } as const;
+  const s = map[health];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: s.bg, border: `1px solid ${s.border}`, color: s.color, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+      {s.label}
+    </span>
+  );
+}
+
+function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ borderRadius: 16, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px 18px', ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function SubHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function ActionBtn({ children, onClick, tone = 'default', disabled }: { children: React.ReactNode; onClick?: () => void; tone?: 'default' | 'hot' | 'success' | 'danger' | 'primary'; disabled?: boolean }) {
+  const styles = {
+    default: { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.72)' },
+    hot: { bg: 'rgba(249,115,22,0.14)', border: 'rgba(249,115,22,0.35)', color: '#fdba74' },
+    success: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', color: '#bbf7d0' },
+    danger: { bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', color: '#fca5a5' },
+    primary: { bg: 'rgba(59,130,246,0.18)', border: 'rgba(96,165,250,0.35)', color: '#93c5fd' },
+  }[tone];
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ padding: '5px 11px', borderRadius: 8, border: `1px solid ${styles.border}`, background: styles.bg, color: styles.color, fontSize: 11, fontWeight: 700, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1, letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
+      {children}
+    </button>
+  );
+}
+
+// ── Contact Row ───────────────────────────────────────────────────────────────
+
+function ContactRow({
+  contact,
+  agents,
+  selected,
+  onClick,
+  onMarkHot,
+  onAddTask,
+}: {
+  contact: Contact;
+  agents: { id: string; name: string }[];
+  selected: boolean;
+  onClick: () => void;
+  onMarkHot: (id: string) => void;
+  onAddTask: (id: string) => void;
+}) {
+  const health = getHealth(contact);
+  const isHot = contact.tags.includes('hot');
+  const agent = agents.find((a) => a.id === contact.assignedAgentId);
+  const age = daysSince(contact.lastActivityAt);
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 13,
+        background: selected ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.035)',
+        border: selected ? '1px solid rgba(96,165,250,0.35)' : '1px solid rgba(255,255,255,0.08)',
+        padding: '13px 14px',
+        cursor: 'pointer',
+        transition: 'all 120ms ease',
+        borderLeft: selected ? '3px solid rgba(96,165,250,0.6)' : health === 'hot' ? '3px solid #fb923c' : health === 'stale' ? '3px solid rgba(239,68,68,0.4)' : health === 'needs-followup' ? '3px solid rgba(245,158,11,0.5)' : '3px solid transparent',
+      }}
+    >
+      {/* Row 1: name + health + status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{contact.fullName}</span>
+        <HealthChip health={health} />
+        <Badge tone={STATUS_TONE[contact.status]}>{contact.status}</Badge>
+      </div>
+
+      {/* Row 2: source + tags */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+        {contact.source && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, padding: '1px 6px' }}>
+            {contact.source}
+          </span>
+        )}
+        {contact.tags.filter((t) => t !== 'hot').map((tag) => (
+          <span key={tag} style={{ fontSize: 10, fontWeight: 600, color: '#93c5fd', background: 'rgba(110,168,254,0.08)', border: '1px solid rgba(110,168,254,0.2)', borderRadius: 5, padding: '1px 6px' }}>
+            #{tag}
+          </span>
+        ))}
+      </div>
+
+      {/* Row 3: email · phone */}
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 5 }}>
+        {contact.email ?? '—'}{contact.phone ? ` · ${contact.phone}` : ''}
+      </div>
+
+      {/* Row 4: agent + last touch */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 11, color: agent ? '#93c5fd' : 'rgba(255,255,255,0.28)', fontStyle: agent ? 'normal' : 'italic' }}>
+          {agent ? agent.name : 'Unassigned'}
+        </span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+          {age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age}d ago`}
+        </span>
+      </div>
+
+      {/* Row 5: actions */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+        <ActionBtn tone={isHot ? 'hot' : 'default'} onClick={() => onMarkHot(contact.id)}>
+          {isHot ? '🔥 Hot' : 'Mark Hot'}
+        </ActionBtn>
+        <ActionBtn onClick={() => onAddTask(contact.id)}>+ Task</ActionBtn>
+        <ActionBtn tone="primary" onClick={onClick}>
+          {selected ? 'Viewing →' : 'Detail →'}
+        </ActionBtn>
+      </div>
+    </div>
+  );
+}
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+
+function DetailPanel({
+  contact,
+  agents,
+  properties,
+  opportunities,
+  tasks,
+  onAddNote,
+  onAssignAgent,
+  onMarkHot,
+  onAddTask,
+  onPushToOpportunities,
+  onClose,
+}: {
+  contact: Contact;
+  agents: { id: string; name: string }[];
+  properties: { id: string; address: string }[];
+  opportunities: { id: string; contactName: string; stage: string; value: number; propertyAddress?: string }[];
+  tasks: { id: string; title: string; completed: boolean; priority: string; contactId?: string }[];
+  onAddNote: (id: string, body: string) => void;
+  onAssignAgent: (id: string, agentId?: string) => void;
+  onMarkHot: (id: string) => void;
+  onAddTask: (id: string) => void;
+  onPushToOpportunities: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [noteText, setNoteText] = useState('');
+
+  const health = getHealth(contact);
+  const isHot = contact.tags.includes('hot');
+  const linkedProps = properties.filter((p) => contact.linkedPropertyIds.includes(p.id));
+  const relatedOpps = opportunities.filter(
+    (o) => o.contactName.toLowerCase() === contact.fullName.toLowerCase()
+  );
+  const relatedTasks = tasks.filter((t) => !t.completed && t.contactId === contact.id);
+  const hasOpportunity = relatedOpps.length > 0;
+  const age = daysSince(contact.lastActivityAt);
+
+  const handleAddNote = () => {
+    const body = noteText.trim();
+    if (!body) return;
+    onAddNote(contact.id, body);
+    setNoteText('');
+  };
+
+  const STAGE_COLOR: Record<string, string> = {
+    prospect: '#93c5fd', qualified: '#c4b5fd', proposal: '#fde68a',
+    negotiation: '#fdba74', won: '#bbf7d0', lost: '#fca5a5',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: '#fff', lineHeight: 1.1 }}>
+            {contact.fullName}
+          </h2>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
+            <HealthChip health={health} />
+            <Badge tone={STATUS_TONE[contact.status]}>{contact.status}</Badge>
+            {contact.source && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '2px 8px' }}>
+                {contact.source}
+              </span>
+            )}
+            {contact.tags.filter((t) => t !== 'hot').map((tag) => (
+              <span key={tag} style={{ fontSize: 11, fontWeight: 600, color: '#93c5fd', background: 'rgba(110,168,254,0.08)', border: '1px solid rgba(110,168,254,0.2)', borderRadius: 6, padding: '2px 8px' }}>
+                #{tag}
+              </span>
+            ))}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '5px 10px', cursor: 'pointer' }}>
+          ✕
+        </button>
+      </div>
+
+      {/* Action strip */}
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <ActionBtn tone={isHot ? 'hot' : 'default'} onClick={() => onMarkHot(contact.id)}>
+          {isHot ? '🔥 Hot' : 'Mark Hot'}
+        </ActionBtn>
+        <ActionBtn onClick={() => onAddTask(contact.id)}>+ Task</ActionBtn>
+        <ActionBtn
+          tone="success"
+          onClick={() => onPushToOpportunities(contact.id)}
+          disabled={hasOpportunity || contact.status === 'closed'}
+        >
+          {hasOpportunity ? '✓ In Pipeline' : '→ Push to Pipeline'}
+        </ActionBtn>
+      </div>
+
+      {/* Contact info + agent */}
+      <Panel>
+        <SubHeader>Contact Info</SubHeader>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Email</div>
+            <div style={{ fontSize: 13, color: contact.email ? '#fff' : 'rgba(255,255,255,0.3)', fontStyle: contact.email ? 'normal' : 'italic' }}>
+              {contact.email ?? 'Not on file'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Phone</div>
+            <div style={{ fontSize: 13, color: contact.phone ? '#fff' : 'rgba(255,255,255,0.3)', fontStyle: contact.phone ? 'normal' : 'italic' }}>
+              {contact.phone ?? 'Not on file'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Last Touch</div>
+            <div style={{ fontSize: 13, color: '#fff' }}>
+              {age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age} days ago`}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Agent</div>
+            <select
+              value={contact.assignedAgentId ?? ''}
+              onChange={(e) => onAssignAgent(contact.id, e.target.value || undefined)}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, color: contact.assignedAgentId ? '#fff' : 'rgba(255,255,255,0.38)', fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer', width: '100%' }}
+            >
+              <option value="">Unassigned</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Linked properties */}
+      {linkedProps.length > 0 && (
+        <Panel>
+          <SubHeader>Linked Properties</SubHeader>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {linkedProps.map((p) => (
+              <span key={p.id} style={{ fontSize: 12, fontWeight: 600, color: '#86efac', background: 'rgba(34,197,94,0.09)', border: '1px solid rgba(34,197,94,0.22)', borderRadius: 7, padding: '4px 10px' }}>
+                {p.address}
+              </span>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Related opportunities */}
+      {relatedOpps.length > 0 && (
+        <Panel>
+          <SubHeader>Pipeline Deals</SubHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {relatedOpps.map((o) => (
+              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{o.propertyAddress ?? 'Property TBD'}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{o.value > 0 ? fmtValue(o.value) : 'Value TBD'}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: STAGE_COLOR[o.stage] ?? '#93c5fd', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '2px 8px' }}>
+                  {o.stage.charAt(0).toUpperCase() + o.stage.slice(1)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <a href="/opportunities" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+            View in Pipeline →
+          </a>
+        </Panel>
+      )}
+
+      {/* Related tasks */}
+      {relatedTasks.length > 0 && (
+        <Panel>
+          <SubHeader>Open Tasks</SubHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {relatedTasks.map((t) => (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>{t.title}</span>
+                <Badge tone={t.priority === 'high' ? 'danger' : t.priority === 'medium' ? 'warning' : 'default'}>
+                  {t.priority}
+                </Badge>
+              </div>
+            ))}
+          </div>
+          <a href="/tasks" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+            View all tasks →
+          </a>
+        </Panel>
+      )}
+
+      {/* Notes */}
+      <Panel>
+        <SubHeader>Notes ({contact.notes.length})</SubHeader>
+        {contact.notes.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            {[...contact.notes].reverse().map((note) => (
+              <div key={note.id} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>{note.body}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                  {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', marginBottom: 10 }}>No notes yet.</div>
+        )}
+        {/* Add note */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Add a note about this contact..."
+            rows={2}
+            style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
+          />
+          <ActionBtn tone="primary" onClick={handleAddNote} disabled={!noteText.trim()}>
+            Save Note
+          </ActionBtn>
+        </div>
+      </Panel>
+
+      {/* Recommended next action */}
+      <Panel style={{ background: 'rgba(110,168,254,0.06)', border: '1px solid rgba(110,168,254,0.18)' }}>
+        <SubHeader>Recommended Next Action</SubHeader>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+          {NEXT_ACTION[health]}
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', gap: 7 }}>
+          <ActionBtn onClick={() => onAddTask(contact.id)}>Create Task</ActionBtn>
+          {!hasOpportunity && contact.status !== 'closed' && (
+            <ActionBtn tone="success" onClick={() => onPushToOpportunities(contact.id)}>
+              → Move to Pipeline
+            </ActionBtn>
+          )}
+        </div>
+      </Panel>
+
+      {/* Cross-links */}
+      <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+        {[
+          { href: '/leads', label: '← Leads' },
+          { href: '/opportunities', label: '→ Pipeline' },
+          { href: '/tasks', label: '→ Tasks' },
+        ].map(({ href, label }) => (
+          <a key={href} href={href} style={{ flex: 1, display: 'block', textAlign: 'center', padding: '8px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', fontSize: 12, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+            {label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ContactsPage() {
-const contacts = useAppStore((s) => s.contacts);
-const agents = useAppStore((s) => s.agents);
-const properties = useAppStore((s) => s.properties);
+  const contacts = useAppStore((s) => s.contacts);
+  const agents = useAppStore((s) => s.agents);
+  const properties = useAppStore((s) => s.properties);
+  const opportunities = useAppStore((s) => s.opportunities);
+  const tasks = useAppStore((s) => s.tasks);
+  const markContactHot = useAppStore((s) => s.markContactHot);
+  const addContactNote = useAppStore((s) => s.addContactNote);
+  const addContactFollowUpTask = useAppStore((s) => s.addContactFollowUpTask);
+  const assignContactToAgent = useAppStore((s) => s.assignContactToAgent);
+  const pushContactToOpportunities = useAppStore((s) => s.pushContactToOpportunities);
 
-const sortedContacts = useMemo(() => {
-return [...contacts].sort(
-(a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime()
-);
-}, [contacts]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [query, setQuery] = useState('');
 
-return (
-<main style={{ padding: 24, color: 'white' }}>
-<div style={{ marginBottom: 24 }}>
-<h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>Contacts</h1>
-<p style={{ opacity: 0.8 }}>
-Converted leads and active relationships live here.
-</p>
-</div>
+  // ── KPI ──
+  const active = useMemo(() => contacts.filter((c) => c.status === 'active'), [contacts]);
+  const hot = useMemo(() => contacts.filter((c) => c.tags.includes('hot')), [contacts]);
+  const buyers = useMemo(() => contacts.filter((c) => c.tags.includes('buyer')), [contacts]);
+  const sellers = useMemo(() => contacts.filter((c) => c.tags.includes('seller')), [contacts]);
+  const recentlyUpdated = useMemo(
+    () => contacts.filter((c) => daysSince(c.lastActivityAt) <= 3),
+    [contacts]
+  );
 
-<div
-style={{
-display: 'grid',
-gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-gap: 16,
-marginBottom: 24,
-}}
->
-<div style={summaryCard}>
-<div style={summaryLabel}>Total Contacts</div>
-<div style={summaryValue}>{contacts.length}</div>
-</div>
-<div style={summaryCard}>
-<div style={summaryLabel}>Active</div>
-<div style={summaryValue}>
-{contacts.filter((contact) => contact.status === 'active').length}
-</div>
-</div>
-<div style={summaryCard}>
-<div style={summaryLabel}>Referral / Warm</div>
-<div style={summaryValue}>
-{contacts.filter((contact) => contact.tags.includes('warm')).length}
-</div>
-</div>
-</div>
+  // ── Filtered list ──
+  const filtered = useMemo(() => {
+    return contacts.filter((c) => {
+      const q = query.toLowerCase().trim();
+      const matchSearch =
+        !q ||
+        [c.fullName, c.email ?? '', c.phone ?? '', c.source ?? '', ...c.tags]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
 
-<div style={{ display: 'grid', gap: 16 }}>
-{sortedContacts.map((contact) => {
-const assignedAgent = agents.find((agent) => agent.id === contact.assignedAgentId);
-const linkedProperties = properties.filter((property) =>
-contact.linkedPropertyIds.includes(property.id)
-);
+      const matchFilter =
+        filter === 'all' ? true :
+        filter === 'buyers' ? c.tags.includes('buyer') :
+        filter === 'sellers' ? c.tags.includes('seller') :
+        filter === 'investors' ? c.tags.includes('investor') :
+        filter === 'active' ? c.status === 'active' :
+        filter === 'hot' ? c.tags.includes('hot') :
+        filter === 'archived' ? c.status === 'closed' :
+        true;
 
-return (
-<section key={contact.id} style={panelCard}>
-<div
-style={{
-display: 'flex',
-justifyContent: 'space-between',
-gap: 16,
-alignItems: 'flex-start',
-flexWrap: 'wrap',
-}}
->
-<div>
-<h2 style={{ margin: 0, fontSize: 24 }}>{contact.fullName}</h2>
-<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-<span style={statusBadge(contact.status)}>{contact.status}</span>
-{contact.source ? (
-<span style={mutedBadge}>{contact.source}</span>
-) : null}
-{contact.tags.map((tag) => (
-<span key={tag} style={tagBadge}>
-#{tag}
-</span>
-))}
-</div>
-</div>
+      return matchSearch && matchFilter;
+    });
+  }, [contacts, filter, query]);
 
-<div style={{ textAlign: 'right', opacity: 0.75, fontSize: 13 }}>
-<div>Last activity</div>
-<div style={{ marginTop: 4 }}>{new Date(contact.lastActivityAt).toLocaleString()}</div>
-</div>
-</div>
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aHot = a.tags.includes('hot') ? 2 : 0;
+      const bHot = b.tags.includes('hot') ? 2 : 0;
+      const aHealth = getHealth(a);
+      const bHealth = getHealth(b);
+      const healthScore = (h: Health) => h === 'stale' ? -1 : h === 'needs-followup' ? 0 : 1;
+      if (bHot !== aHot) return bHot - aHot;
+      if (healthScore(aHealth) !== healthScore(bHealth)) return healthScore(bHealth) - healthScore(aHealth);
+      return new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
+    });
+  }, [filtered]);
 
-<div
-style={{
-display: 'grid',
-gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-gap: 16,
-marginTop: 20,
-}}
->
-<div style={infoCard}>
-<div style={infoLabel}>Email</div>
-<div>{contact.email || '—'}</div>
-</div>
-<div style={infoCard}>
-<div style={infoLabel}>Phone</div>
-<div>{contact.phone || '—'}</div>
-</div>
-<div style={infoCard}>
-<div style={infoLabel}>Assigned Agent</div>
-<div>{assignedAgent?.name || 'Unassigned'}</div>
-</div>
-<div style={infoCard}>
-<div style={infoLabel}>Created</div>
-<div>{new Date(contact.createdAt).toLocaleString()}</div>
-</div>
-</div>
+  const selectedContact = useMemo(
+    () => contacts.find((c) => c.id === selectedId) ?? null,
+    [contacts, selectedId]
+  );
 
-<div style={{ marginTop: 20 }}>
-<div style={sectionLabel}>Linked Properties</div>
-<div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-{linkedProperties.length ? (
-linkedProperties.map((property) => (
-<span key={property.id} style={propertyBadge}>
-{property.address}
-</span>
-))
-) : (
-<span style={{ opacity: 0.7 }}>No linked properties</span>
-)}
-</div>
-</div>
+  const handleSelect = (id: string) => {
+    setSelectedId((prev) => (prev === id ? null : id));
+  };
 
-<div style={{ marginTop: 20 }}>
-<div style={sectionLabel}>Notes</div>
-<div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-{contact.notes.length ? (
-contact.notes.map((note) => (
-<div key={note.id} style={noteCard}>
-<div style={{ fontSize: 14 }}>{note.body}</div>
-<div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
-{new Date(note.createdAt).toLocaleString()}
-</div>
-</div>
-))
-) : (
-<div style={{ opacity: 0.7 }}>No notes yet</div>
-)}
-</div>
-</div>
-</section>
-);
-})}
-</div>
-</main>
-);
+  return (
+    <AppShell>
+      {/* ── Header ── */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1.05 }}>
+          Contacts
+        </h1>
+        <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
+          Relationship command center — active clients, converted leads, and ongoing account management.
+        </p>
+      </div>
+
+      {/* ── A. KPI Strip ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+        <StatCard label="Total Contacts" value={contacts.length} subtext={`${active.length} active`} />
+        <StatCard label="Active Clients" value={active.length} subtext="Ongoing relationships" />
+        <StatCard label="Hot" value={hot.length} subtext="Priority attention" />
+        <StatCard label="Buyers / Sellers" value={`${buyers.length} / ${sellers.length}`} subtext="By role tag" />
+        <StatCard label="Recent Touch" value={recentlyUpdated.length} subtext="Updated ≤ 3 days" />
+      </div>
+
+      {/* ── B. Search + Filter ── */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'rgba(255,255,255,0.35)', pointerEvents: 'none' }}>⌕</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, email, tag..."
+            style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {FILTER_TABS.map(({ key, label }) => {
+            const active = filter === key;
+            return (
+              <button key={key} onClick={() => setFilter(key)} style={{ padding: '7px 13px', borderRadius: 9, border: active ? '1px solid rgba(96,165,250,0.4)' : '1px solid rgba(255,255,255,0.1)', background: active ? 'linear-gradient(135deg, rgba(59,130,246,0.22), rgba(99,102,241,0.15))' : 'rgba(255,255,255,0.04)', color: active ? '#fff' : 'rgba(255,255,255,0.58)', fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer' }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── C/D/E/F. Main split-pane ── */}
+      <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+
+        {/* Left: Contact list */}
+        <div style={{ flex: '0 0 400px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {sorted.length === 0 ? (
+            <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)', color: 'rgba(255,255,255,0.32)', fontSize: 13 }}>
+              No contacts match your current filter.
+            </div>
+          ) : (
+            sorted.map((c) => (
+              <ContactRow
+                key={c.id}
+                contact={c}
+                agents={agents}
+                selected={selectedId === c.id}
+                onClick={() => handleSelect(c.id)}
+                onMarkHot={markContactHot}
+                onAddTask={addContactFollowUpTask}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Right: Detail panel or empty prompt */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {selectedContact ? (
+            <DetailPanel
+              contact={selectedContact}
+              agents={agents}
+              properties={properties}
+              opportunities={opportunities}
+              tasks={tasks}
+              onAddNote={addContactNote}
+              onAssignAgent={assignContactToAgent}
+              onMarkHot={markContactHot}
+              onAddTask={addContactFollowUpTask}
+              onPushToOpportunities={pushContactToOpportunities}
+              onClose={() => setSelectedId(null)}
+            />
+          ) : (
+            <div style={{ borderRadius: 16, border: '1px dashed rgba(255,255,255,0.1)', padding: '60px 32px', textAlign: 'center', color: 'rgba(255,255,255,0.28)' }}>
+              <div style={{ fontSize: 28, marginBottom: 12 }}>↖</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Select a contact</div>
+              <div style={{ fontSize: 12 }}>View full profile, notes, linked deals, and take action.</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── G. Cross-link footer ── */}
+      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {[
+          { href: '/leads', label: '← Leads', desc: 'Early-stage intake and qualification' },
+          { href: '/opportunities', label: '→ Pipeline', desc: 'Active deal stages by contact' },
+          { href: '/tasks', label: '→ Tasks', desc: 'All follow-ups and open actions' },
+        ].map(({ href, label, desc }) => (
+          <a key={href} href={href} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', textDecoration: 'none', minWidth: 180 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{label}</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{desc}</span>
+          </a>
+        ))}
+      </div>
+    </AppShell>
+  );
 }
-
-function statusBadge(status: string): React.CSSProperties {
-if (status === 'active') {
-return {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(16,185,129,0.12)',
-border: '1px solid rgba(16,185,129,0.35)',
-color: '#86efac',
-fontSize: 12,
-fontWeight: 600,
-};
-}
-
-if (status === 'closed') {
-return {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(239,68,68,0.12)',
-border: '1px solid rgba(239,68,68,0.35)',
-color: '#fca5a5',
-fontSize: 12,
-fontWeight: 600,
-};
-}
-
-return {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(245,158,11,0.12)',
-border: '1px solid rgba(245,158,11,0.35)',
-color: '#fcd34d',
-fontSize: 12,
-fontWeight: 600,
-};
-}
-
-const summaryCard: React.CSSProperties = {
-border: '1px solid #333',
-borderRadius: 16,
-padding: 20,
-background: 'rgba(255,255,255,0.03)',
-};
-
-const summaryLabel: React.CSSProperties = {
-fontSize: 13,
-opacity: 0.7,
-marginBottom: 8,
-};
-
-const summaryValue: React.CSSProperties = {
-fontSize: 32,
-fontWeight: 700,
-};
-
-const panelCard: React.CSSProperties = {
-border: '1px solid #333',
-borderRadius: 16,
-padding: 20,
-background: 'rgba(255,255,255,0.03)',
-};
-
-const infoCard: React.CSSProperties = {
-border: '1px solid #2f2f2f',
-borderRadius: 12,
-padding: 14,
-background: 'rgba(255,255,255,0.025)',
-};
-
-const infoLabel: React.CSSProperties = {
-fontSize: 12,
-opacity: 0.65,
-marginBottom: 6,
-};
-
-const sectionLabel: React.CSSProperties = {
-fontSize: 14,
-fontWeight: 700,
-opacity: 0.85,
-};
-
-const mutedBadge: React.CSSProperties = {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(255,255,255,0.06)',
-border: '1px solid #444',
-color: '#ddd',
-fontSize: 12,
-fontWeight: 600,
-};
-
-const tagBadge: React.CSSProperties = {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(59,130,246,0.12)',
-border: '1px solid rgba(59,130,246,0.35)',
-color: '#93c5fd',
-fontSize: 12,
-fontWeight: 600,
-};
-
-const propertyBadge: React.CSSProperties = {
-display: 'inline-flex',
-padding: '4px 10px',
-borderRadius: 999,
-background: 'rgba(16,185,129,0.12)',
-border: '1px solid rgba(16,185,129,0.35)',
-color: '#86efac',
-fontSize: 12,
-fontWeight: 600,
-};
-
-const noteCard: React.CSSProperties = {
-border: '1px solid #2a2a2a',
-borderRadius: 12,
-padding: 12,
-background: 'rgba(255,255,255,0.02)',
-};
