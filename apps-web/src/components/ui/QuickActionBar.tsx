@@ -1,32 +1,36 @@
 interface ActionItem {
-label: string;
+  label: string;
+  onClick?: () => void;
 }
 
 interface QuickActionBarProps {
-actions: ActionItem[];
+  actions: ActionItem[];
 }
 
 export function QuickActionBar({ actions }: QuickActionBarProps) {
-return (
-<div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-{actions.map((action) => (
-<button
-key={action.label}
-type="button"
-style={{
-padding: '10px 14px',
-borderRadius: 12,
-border: '1px solid rgba(96,165,250,0.28)',
-background:
-'linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.12))',
-color: '#e5f0ff',
-fontWeight: 700,
-cursor: 'pointer',
-}}
->
-{action.label}
-</button>
-))}
-</div>
-);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      {actions.map((action) => (
+        <button
+          key={action.label}
+          type="button"
+          onClick={action.onClick}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 9,
+            border: '1px solid var(--r-border)',
+            background: 'var(--r-gold-faint)',
+            color: 'var(--r-gold-bright)',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            letterSpacing: '0.01em',
+            transition: 'all 140ms ease',
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
 }

@@ -1,56 +1,67 @@
 interface StatCardProps {
-label: string;
-value: string | number;
-subtext?: string;
+  label: string;
+  value: string | number;
+  subtext?: string;
+  accent?: boolean;
 }
 
-export function StatCard({ label, value, subtext }: StatCardProps) {
-return (
-<div
-style={{
-padding: 20,
-borderRadius: 18,
-background: 'rgba(255,255,255,0.045)',
-border: '1px solid rgba(255,255,255,0.08)',
-boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-}}
->
-<div
-style={{
-fontSize: 12,
-textTransform: 'uppercase',
-letterSpacing: '0.08em',
-color: 'rgba(255,255,255,0.58)',
-marginBottom: 10,
-fontWeight: 700,
-}}
->
-{label}
-</div>
+export function StatCard({ label, value, subtext, accent }: StatCardProps) {
+  return (
+    <div
+      className={`r-card r-stat-card${accent ? ' r-card-accent' : ''}`}
+      style={{
+        padding: '18px 20px',
+        borderRadius: 'var(--r-radius-lg)' as unknown as number,
+        background: accent
+          ? 'linear-gradient(155deg, #1f2840 0%, #192038 100%)'
+          : 'var(--r-grad-card)',
+        border: accent
+          ? '1px solid var(--r-border-strong)'
+          : '1px solid var(--r-border)',
+        boxShadow: accent
+          ? 'var(--r-shadow), var(--r-shadow-gold)'
+          : 'var(--r-shadow)',
+      }}
+    >
 
-<div
-style={{
-fontSize: 34,
-fontWeight: 800,
-letterSpacing: '-0.04em',
-color: '#ffffff',
-lineHeight: 1,
-}}
->
-{value}
-</div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.10em',
+          color: 'var(--r-text-3)',
+          marginBottom: 10,
+        }}
+      >
+        {label}
+      </div>
 
-{subtext ? (
-<div
-style={{
-marginTop: 10,
-fontSize: 13,
-color: 'rgba(255,255,255,0.6)',
-}}
->
-{subtext}
-</div>
-) : null}
-</div>
-);
+      <div
+        style={{
+          fontFamily: 'var(--r-font-serif)',
+          fontSize: 34,
+          fontWeight: 700,
+          letterSpacing: '-0.02em',
+          color: accent ? 'var(--r-gold-bright)' : 'var(--r-text)',
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </div>
+
+      {subtext && (
+        <div
+          style={{
+            marginTop: 9,
+            fontSize: 12,
+            color: 'var(--r-text-2)',
+            lineHeight: 1.4,
+          }}
+        >
+          {subtext}
+        </div>
+      )}
+    </div>
+  );
 }

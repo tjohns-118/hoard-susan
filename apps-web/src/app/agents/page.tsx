@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
+import { useAgents } from '@/hooks/useAgents';
 import type { Lead, Opportunity } from '@/features/opportunities/types';
 import type { Contact } from '@/features/contacts/types';
 import type { Task } from '@/features/tasks/types';
@@ -57,6 +58,10 @@ type AgentStats = {
 type DetailTab = 'leads' | 'contacts' | 'deals' | 'tasks';
 
 export default function AgentsPage() {
+  // Hydrates the store with real Supabase data on mount.
+  // Falls back to mock agents if the brokerage is not yet seeded.
+  useAgents();
+
   const agents      = useAppStore((s) => s.agents);
   const leads       = useAppStore((s) => s.leads);
   const contacts    = useAppStore((s) => s.contacts);
@@ -106,7 +111,7 @@ export default function AgentsPage() {
         id: agent.id,
         name: agent.name,
         email: agent.email,
-        role: agent.name === 'Susan Yoder' ? 'Broker / Agent' : 'Agent',
+        role: agent.role === 'broker' ? 'Broker / Agent' : agent.role === 'admin' ? 'Admin' : 'Agent',
         leads: agentLeads,
         contacts: agentContacts,
         activeOpps,

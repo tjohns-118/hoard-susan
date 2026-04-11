@@ -5,9 +5,15 @@ export type { PropertyRecord } from '@/features/properties/types';
 import type { PropertyRecord } from '@/features/properties/types';
 
 export interface AgentRecord {
-id: string;
-name: string;
-email: string;
+  id: string;         // brokerage_members.id
+  userId: string;     // app_users.id
+  name: string;       // app_users.full_name
+  email: string;      // app_users.email
+  phone?: string;     // app_users.phone
+  role: string;       // brokerage_members.role ('broker' | 'agent' | 'admin')
+  isActive: boolean;  // brokerage_members.is_active
+  profileId?: string; // agent_profiles.id
+  notes?: string;     // agent_profiles.notes
 }
 
 export interface AlertRecord {
@@ -621,16 +627,22 @@ properties: [
 ] as PropertyRecord[],
 
 agents: [
-{
-id: 'agent_1',
-name: 'Susan Yoder',
-email: 'susan@example.com',
-},
-{
-id: 'agent_2',
-name: 'James Holloway',
-email: 'james@example.com',
-},
+  {
+    id: 'agent_1',
+    userId: 'mock_user_1',
+    name: 'Susan Yoder',
+    email: 'susan@example.com',
+    role: 'broker',
+    isActive: true,
+  },
+  {
+    id: 'agent_2',
+    userId: 'mock_user_2',
+    name: 'James Holloway',
+    email: 'james@example.com',
+    role: 'agent',
+    isActive: true,
+  },
 ],
 
 alerts: [

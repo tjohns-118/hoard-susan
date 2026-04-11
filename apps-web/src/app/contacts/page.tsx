@@ -38,10 +38,21 @@ const NEXT_ACTION: Record<Health, string> = {
   normal: 'Maintain regular touchpoints and monitor for activity signals.',
 };
 
+// Earthy stage colors
+const STAGE_COLOR: Record<string, string> = {
+  prospect: '#7ca4cc', qualified: '#9b8ab4', proposal: '#e2c47c',
+  negotiation: '#c8823c', won: '#7dba82', lost: '#b06060',
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function daysSince(iso: string) {
   return Math.floor((REF.getTime() - new Date(iso).getTime()) / 86_400_000);
+}
+
+function fmtValue(v: number) {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  return `$${(v / 1_000).toFixed(0)}k`;
 }
 
 function getHealth(c: Contact): Health {
@@ -54,19 +65,15 @@ function getHealth(c: Contact): Health {
   return 'normal';
 }
 
-function fmtValue(v: number) {
-  return v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : `$${(v / 1_000).toFixed(0)}k`;
-}
-
 // ── Micro-components ──────────────────────────────────────────────────────────
 
 function HealthChip({ health }: { health: Health }) {
   if (health === 'normal') return null;
   const map = {
-    hot: { label: 'HOT', bg: 'rgba(249,115,22,0.18)', border: 'rgba(249,115,22,0.4)', color: '#fb923c' },
-    stale: { label: 'Stale', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', color: '#fca5a5' },
-    'needs-followup': { label: 'Needs Follow-Up', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', color: '#fde68a' },
-    'recently-updated': { label: 'Recent', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.28)', color: '#bbf7d0' },
+    hot: { label: 'HOT', bg: 'var(--r-warning-bg)', border: 'var(--r-warning-border)', color: 'var(--r-warning)' },
+    stale: { label: 'Stale', bg: 'var(--r-danger-bg)', border: 'var(--r-danger-border)', color: 'var(--r-danger)' },
+    'needs-followup': { label: 'Needs Follow-Up', bg: 'var(--r-warning-bg)', border: 'var(--r-warning-border)', color: 'var(--r-gold-bright)' },
+    'recently-updated': { label: 'Recent', bg: 'var(--r-success-bg)', border: 'var(--r-success-border)', color: 'var(--r-success)' },
   } as const;
   const s = map[health];
   return (
@@ -78,7 +85,7 @@ function HealthChip({ health }: { health: Health }) {
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ borderRadius: 16, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px 18px', ...style }}>
+    <div className="r-card" style={{ borderRadius: 16, background: 'var(--r-grad-card)', border: '1px solid var(--r-border)', boxShadow: 'var(--r-shadow)', padding: '16px 18px', ...style }}>
       {children}
     </div>
   );
@@ -86,7 +93,7 @@ function Panel({ children, style }: { children: React.ReactNode; style?: React.C
 
 function SubHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
       {children}
     </div>
   );
@@ -94,11 +101,11 @@ function SubHeader({ children }: { children: React.ReactNode }) {
 
 function ActionBtn({ children, onClick, tone = 'default', disabled }: { children: React.ReactNode; onClick?: () => void; tone?: 'default' | 'hot' | 'success' | 'danger' | 'primary'; disabled?: boolean }) {
   const styles = {
-    default: { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.72)' },
-    hot: { bg: 'rgba(249,115,22,0.14)', border: 'rgba(249,115,22,0.35)', color: '#fdba74' },
-    success: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', color: '#bbf7d0' },
-    danger: { bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', color: '#fca5a5' },
-    primary: { bg: 'rgba(59,130,246,0.18)', border: 'rgba(96,165,250,0.35)', color: '#93c5fd' },
+    default: { bg: 'rgba(200,164,92,0.06)', border: 'rgba(200,164,92,0.16)', color: 'var(--r-text-2)' },
+    hot: { bg: 'var(--r-warning-bg)', border: 'var(--r-warning-border)', color: 'var(--r-warning)' },
+    success: { bg: 'var(--r-success-bg)', border: 'var(--r-success-border)', color: 'var(--r-success)' },
+    danger: { bg: 'var(--r-danger-bg)', border: 'var(--r-danger-border)', color: 'var(--r-danger)' },
+    primary: { bg: 'var(--r-gold-faint)', border: 'var(--r-border)', color: 'var(--r-gold)' },
   }[tone];
   return (
     <button onClick={onClick} disabled={disabled} style={{ padding: '5px 11px', borderRadius: 8, border: `1px solid ${styles.border}`, background: styles.bg, color: styles.color, fontSize: 11, fontWeight: 700, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1, letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
@@ -132,19 +139,27 @@ function ContactRow({
   return (
     <div
       onClick={onClick}
+      className="r-row"
       style={{
         borderRadius: 13,
-        background: selected ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.035)',
-        border: selected ? '1px solid rgba(96,165,250,0.35)' : '1px solid rgba(255,255,255,0.08)',
+        background: selected ? 'rgba(200,164,92,0.08)' : 'var(--r-grad-card)',
+        border: '1px solid var(--r-border)',
         padding: '13px 14px',
         cursor: 'pointer',
-        transition: 'all 120ms ease',
-        borderLeft: selected ? '3px solid rgba(96,165,250,0.6)' : health === 'hot' ? '3px solid #fb923c' : health === 'stale' ? '3px solid rgba(239,68,68,0.4)' : health === 'needs-followup' ? '3px solid rgba(245,158,11,0.5)' : '3px solid transparent',
+        borderLeft: selected
+          ? '3px solid var(--r-gold)'
+          : health === 'hot'
+          ? '3px solid var(--r-warning)'
+          : health === 'stale'
+          ? '3px solid var(--r-danger)'
+          : health === 'needs-followup'
+          ? '3px solid var(--r-warning)'
+          : '3px solid transparent',
       }}
     >
       {/* Row 1: name + health + status */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{contact.fullName}</span>
+        <span style={{ fontFamily: 'var(--r-font-serif)', fontSize: 14, fontWeight: 700, color: 'var(--r-text)' }}>{contact.fullName}</span>
         <HealthChip health={health} />
         <Badge tone={STATUS_TONE[contact.status]}>{contact.status}</Badge>
       </div>
@@ -152,28 +167,28 @@ function ContactRow({
       {/* Row 2: source + tags */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
         {contact.source && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, padding: '1px 6px' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--r-text-3)', background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px' }}>
             {contact.source}
           </span>
         )}
         {contact.tags.filter((t) => t !== 'hot').map((tag) => (
-          <span key={tag} style={{ fontSize: 10, fontWeight: 600, color: '#93c5fd', background: 'rgba(110,168,254,0.08)', border: '1px solid rgba(110,168,254,0.2)', borderRadius: 5, padding: '1px 6px' }}>
+          <span key={tag} style={{ fontSize: 10, fontWeight: 600, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px' }}>
             #{tag}
           </span>
         ))}
       </div>
 
       {/* Row 3: email · phone */}
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 5 }}>
+      <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginBottom: 5 }}>
         {contact.email ?? '—'}{contact.phone ? ` · ${contact.phone}` : ''}
       </div>
 
       {/* Row 4: agent + last touch */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: agent ? '#93c5fd' : 'rgba(255,255,255,0.28)', fontStyle: agent ? 'normal' : 'italic' }}>
+        <span style={{ fontSize: 11, color: agent ? 'var(--r-gold)' : 'var(--r-text-3)', fontStyle: agent ? 'normal' : 'italic' }}>
           {agent ? agent.name : 'Unassigned'}
         </span>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+        <span style={{ fontSize: 10, color: 'var(--r-text-3)' }}>
           {age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age}d ago`}
         </span>
       </div>
@@ -238,41 +253,36 @@ function DetailPanel({
     setNoteText('');
   };
 
-  const STAGE_COLOR: Record<string, string> = {
-    prospect: '#93c5fd', qualified: '#c4b5fd', proposal: '#fde68a',
-    negotiation: '#fdba74', won: '#bbf7d0', lost: '#fca5a5',
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: '#fff', lineHeight: 1.1 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.1 }}>
             {contact.fullName}
           </h2>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
             <HealthChip health={health} />
             <Badge tone={STATUS_TONE[contact.status]}>{contact.status}</Badge>
             {contact.source && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '2px 8px' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--r-text-3)', background: 'rgba(200,164,92,0.06)', border: '1px solid var(--r-border)', borderRadius: 6, padding: '2px 8px' }}>
                 {contact.source}
               </span>
             )}
             {contact.tags.filter((t) => t !== 'hot').map((tag) => (
-              <span key={tag} style={{ fontSize: 11, fontWeight: 600, color: '#93c5fd', background: 'rgba(110,168,254,0.08)', border: '1px solid rgba(110,168,254,0.2)', borderRadius: 6, padding: '2px 8px' }}>
+              <span key={tag} style={{ fontSize: 11, fontWeight: 600, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 6, padding: '2px 8px' }}>
                 #{tag}
               </span>
             ))}
           </div>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '5px 10px', cursor: 'pointer' }}>
+        <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--r-border)', borderRadius: 8, color: 'var(--r-text-3)', fontSize: 13, padding: '5px 10px', cursor: 'pointer' }}>
           ✕
         </button>
       </div>
 
       {/* Action strip */}
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid var(--r-border)' }}>
         <ActionBtn tone={isHot ? 'hot' : 'default'} onClick={() => onMarkHot(contact.id)}>
           {isHot ? '🔥 Hot' : 'Mark Hot'}
         </ActionBtn>
@@ -291,29 +301,29 @@ function DetailPanel({
         <SubHeader>Contact Info</SubHeader>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Email</div>
-            <div style={{ fontSize: 13, color: contact.email ? '#fff' : 'rgba(255,255,255,0.3)', fontStyle: contact.email ? 'normal' : 'italic' }}>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Email</div>
+            <div style={{ fontSize: 13, color: contact.email ? 'var(--r-text)' : 'var(--r-text-3)', fontStyle: contact.email ? 'normal' : 'italic' }}>
               {contact.email ?? 'Not on file'}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Phone</div>
-            <div style={{ fontSize: 13, color: contact.phone ? '#fff' : 'rgba(255,255,255,0.3)', fontStyle: contact.phone ? 'normal' : 'italic' }}>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Phone</div>
+            <div style={{ fontSize: 13, color: contact.phone ? 'var(--r-text)' : 'var(--r-text-3)', fontStyle: contact.phone ? 'normal' : 'italic' }}>
               {contact.phone ?? 'Not on file'}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Last Touch</div>
-            <div style={{ fontSize: 13, color: '#fff' }}>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Last Touch</div>
+            <div style={{ fontSize: 13, color: 'var(--r-text)' }}>
               {age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age} days ago`}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Agent</div>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Agent</div>
             <select
               value={contact.assignedAgentId ?? ''}
               onChange={(e) => onAssignAgent(contact.id, e.target.value || undefined)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, color: contact.assignedAgentId ? '#fff' : 'rgba(255,255,255,0.38)', fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer', width: '100%' }}
+              style={{ background: 'rgba(200,164,92,0.06)', border: '1px solid var(--r-border)', borderRadius: 7, color: contact.assignedAgentId ? 'var(--r-text)' : 'var(--r-text-3)', fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer', width: '100%' }}
             >
               <option value="">Unassigned</option>
               {agents.map((a) => (
@@ -330,7 +340,7 @@ function DetailPanel({
           <SubHeader>Linked Properties</SubHeader>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {linkedProps.map((p) => (
-              <span key={p.id} style={{ fontSize: 12, fontWeight: 600, color: '#86efac', background: 'rgba(34,197,94,0.09)', border: '1px solid rgba(34,197,94,0.22)', borderRadius: 7, padding: '4px 10px' }}>
+              <span key={p.id} style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-success)', background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)', borderRadius: 7, padding: '4px 10px' }}>
                 {p.address}
               </span>
             ))}
@@ -344,18 +354,18 @@ function DetailPanel({
           <SubHeader>Pipeline Deals</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {relatedOpps.map((o) => (
-              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)' }}>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{o.propertyAddress ?? 'Property TBD'}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{o.value > 0 ? fmtValue(o.value) : 'Value TBD'}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)' }}>{o.propertyAddress ?? 'Property TBD'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>{o.value > 0 ? fmtValue(o.value) : 'Value TBD'}</div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: STAGE_COLOR[o.stage] ?? '#93c5fd', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '2px 8px' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: STAGE_COLOR[o.stage] ?? 'var(--r-gold)', background: 'rgba(200,164,92,0.06)', borderRadius: 6, padding: '2px 8px' }}>
                   {o.stage.charAt(0).toUpperCase() + o.stage.slice(1)}
                 </span>
               </div>
             ))}
           </div>
-          <a href="/opportunities" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+          <a href="/opportunities" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none' }}>
             View in Pipeline →
           </a>
         </Panel>
@@ -367,15 +377,15 @@ function DetailPanel({
           <SubHeader>Open Tasks</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {relatedTasks.map((t) => (
-              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>{t.title}</span>
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)' }}>
+                <span style={{ fontSize: 12, color: 'var(--r-text-2)' }}>{t.title}</span>
                 <Badge tone={t.priority === 'high' ? 'danger' : t.priority === 'medium' ? 'warning' : 'default'}>
                   {t.priority}
                 </Badge>
               </div>
             ))}
           </div>
-          <a href="/tasks" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+          <a href="/tasks" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none' }}>
             View all tasks →
           </a>
         </Panel>
@@ -387,25 +397,24 @@ function DetailPanel({
         {contact.notes.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
             {[...contact.notes].reverse().map((note) => (
-              <div key={note.id} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>{note.body}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+              <div key={note.id} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)' }}>
+                <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.5 }}>{note.body}</div>
+                <div style={{ fontSize: 10, color: 'var(--r-text-3)', marginTop: 4 }}>
                   {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', marginBottom: 10 }}>No notes yet.</div>
+          <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic', marginBottom: 10 }}>No notes yet.</div>
         )}
-        {/* Add note */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           <textarea
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Add a note about this contact..."
             rows={2}
-            style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
+            style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
           />
           <ActionBtn tone="primary" onClick={handleAddNote} disabled={!noteText.trim()}>
             Save Note
@@ -414,9 +423,9 @@ function DetailPanel({
       </Panel>
 
       {/* Recommended next action */}
-      <Panel style={{ background: 'rgba(110,168,254,0.06)', border: '1px solid rgba(110,168,254,0.18)' }}>
+      <Panel style={{ background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)' }}>
         <SubHeader>Recommended Next Action</SubHeader>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+        <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.55 }}>
           {NEXT_ACTION[health]}
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 7 }}>
@@ -436,7 +445,7 @@ function DetailPanel({
           { href: '/opportunities', label: '→ Pipeline' },
           { href: '/tasks', label: '→ Tasks' },
         ].map(({ href, label }) => (
-          <a key={href} href={href} style={{ flex: 1, display: 'block', textAlign: 'center', padding: '8px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', fontSize: 12, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>
+          <a key={href} href={href} style={{ flex: 1, display: 'block', textAlign: 'center', padding: '8px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.03)', fontSize: 12, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none' }}>
             {label}
           </a>
         ))}
@@ -463,7 +472,6 @@ export default function ContactsPage() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
 
-  // ── KPI ──
   const active = useMemo(() => contacts.filter((c) => c.status === 'active'), [contacts]);
   const hot = useMemo(() => contacts.filter((c) => c.tags.includes('hot')), [contacts]);
   const buyers = useMemo(() => contacts.filter((c) => c.tags.includes('buyer')), [contacts]);
@@ -473,7 +481,6 @@ export default function ContactsPage() {
     [contacts]
   );
 
-  // ── Filtered list ──
   const filtered = useMemo(() => {
     return contacts.filter((c) => {
       const q = query.toLowerCase().trim();
@@ -524,10 +531,10 @@ export default function ContactsPage() {
     <AppShell>
       {/* ── Header ── */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1.05 }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>
           Contacts
         </h1>
-        <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
+        <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
           Relationship command center — active clients, converted leads, and ongoing account management.
         </p>
       </div>
@@ -544,19 +551,19 @@ export default function ContactsPage() {
       {/* ── B. Search + Filter ── */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
-          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'rgba(255,255,255,0.35)', pointerEvents: 'none' }}>⌕</span>
+          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--r-text-3)', pointerEvents: 'none' }}>⌕</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name, email, tag..."
-            style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FILTER_TABS.map(({ key, label }) => {
-            const active = filter === key;
+            const isActive = filter === key;
             return (
-              <button key={key} onClick={() => setFilter(key)} style={{ padding: '7px 13px', borderRadius: 9, border: active ? '1px solid rgba(96,165,250,0.4)' : '1px solid rgba(255,255,255,0.1)', background: active ? 'linear-gradient(135deg, rgba(59,130,246,0.22), rgba(99,102,241,0.15))' : 'rgba(255,255,255,0.04)', color: active ? '#fff' : 'rgba(255,255,255,0.58)', fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer' }}>
+              <button key={key} onClick={() => setFilter(key)} className="r-tab" style={{ padding: '7px 13px', borderRadius: 9, border: '1px solid var(--r-border)', background: isActive ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.04)', color: isActive ? 'var(--r-gold-bright)' : 'var(--r-text-2)', fontSize: 12, fontWeight: isActive ? 700 : 500, cursor: 'pointer' }}>
                 {label}
               </button>
             );
@@ -570,7 +577,7 @@ export default function ContactsPage() {
         {/* Left: Contact list */}
         <div style={{ flex: '0 0 400px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {sorted.length === 0 ? (
-            <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)', color: 'rgba(255,255,255,0.32)', fontSize: 13 }}>
+            <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: 14, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.02)', color: 'var(--r-text-3)', fontSize: 13 }}>
               No contacts match your current filter.
             </div>
           ) : (
@@ -605,7 +612,7 @@ export default function ContactsPage() {
               onClose={() => setSelectedId(null)}
             />
           ) : (
-            <div style={{ borderRadius: 16, border: '1px dashed rgba(255,255,255,0.1)', padding: '60px 32px', textAlign: 'center', color: 'rgba(255,255,255,0.28)' }}>
+            <div style={{ borderRadius: 16, border: '1px dashed var(--r-border)', padding: '60px 32px', textAlign: 'center', color: 'var(--r-text-3)' }}>
               <div style={{ fontSize: 28, marginBottom: 12 }}>↖</div>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Select a contact</div>
               <div style={{ fontSize: 12 }}>View full profile, notes, linked deals, and take action.</div>
@@ -615,15 +622,15 @@ export default function ContactsPage() {
       </div>
 
       {/* ── G. Cross-link footer ── */}
-      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--r-border)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {[
           { href: '/leads', label: '← Leads', desc: 'Early-stage intake and qualification' },
           { href: '/opportunities', label: '→ Pipeline', desc: 'Active deal stages by contact' },
           { href: '/tasks', label: '→ Tasks', desc: 'All follow-ups and open actions' },
         ].map(({ href, label, desc }) => (
-          <a key={href} href={href} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', textDecoration: 'none', minWidth: 180 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{label}</span>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{desc}</span>
+          <a key={href} href={href} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.02)', textDecoration: 'none', minWidth: 180 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-gold)' }}>{label}</span>
+            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{desc}</span>
           </a>
         ))}
       </div>

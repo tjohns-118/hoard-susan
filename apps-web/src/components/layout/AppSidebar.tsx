@@ -3,86 +3,187 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const navItems = [
-{ href: '/', label: 'Dashboard' },
-{ href: '/leads', label: 'Leads' },
-{ href: '/contacts', label: 'Contacts' },
-{ href: '/opportunities', label: 'Opportunities' },
-{ href: '/properties', label: 'Properties' },
-{ href: '/tasks', label: 'Tasks' },
-{ href: '/calendar', label: 'Calendar' },
-{ href: '/templates', label: 'Templates' },
-{ href: '/agents', label: 'Agents' },
-{ href: '/alerts', label: 'Alerts' },
-{ href: '/matches', label: 'Matches' },
+const NAV_GROUPS = [
+  {
+    label: 'CRM',
+    items: [
+      { href: '/leads',         label: 'Leads' },
+      { href: '/contacts',      label: 'Contacts' },
+      { href: '/opportunities', label: 'Opportunities' },
+    ],
+  },
+  {
+    label: 'Inventory',
+    items: [
+      { href: '/properties', label: 'Properties' },
+      { href: '/matches',    label: 'Matches' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { href: '/tasks',     label: 'Tasks' },
+      { href: '/calendar',  label: 'Calendar' },
+      { href: '/templates', label: 'Templates' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { href: '/agents',    label: 'Agents' },
+      { href: '/alerts',    label: 'Alerts' },
+      { href: '/oversight', label: 'Oversight' },
+      { href: '/settings',  label: 'Settings' },
+    ],
+  },
 ];
 
 export function AppSidebar() {
-const pathname = usePathname();
+  const pathname = usePathname();
 
-return (
-<aside
-style={{
-borderRight: '1px solid rgba(255,255,255,0.08)',
-background: 'rgba(255,255,255,0.03)',
-backdropFilter: 'blur(10px)',
-padding: '20px 16px',
-position: 'sticky',
-top: 0,
-height: '100vh',
-}}
->
-<div style={{ marginBottom: 28 }}>
-<div
-style={{
-fontSize: 28,
-fontWeight: 800,
-letterSpacing: '-0.03em',
-color: '#ffffff',
-marginBottom: 6,
-}}
->
-Hoard
-</div>
-<div
-style={{
-fontSize: 12,
-color: 'rgba(255,255,255,0.6)',
-textTransform: 'uppercase',
-letterSpacing: '0.08em',
-}}
->
-Broker Command Center
-</div>
-</div>
+  return (
+    <aside
+      style={{
+        background: 'var(--r-grad-sidebar)',
+        borderRight: '1px solid var(--r-border-soft)',
+        padding: '22px 14px 24px',
+        position: 'sticky',
+        top: 0,
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+      }}
+    >
+      {/* ── Wordmark ── */}
+      <div style={{ paddingLeft: 6, marginBottom: 28, flexShrink: 0 }}>
+        <Link href="/" style={{ textDecoration: 'none' }}>
+          <div
+            style={{
+              fontFamily: 'var(--r-font-serif)',
+              fontSize: 30,
+              fontWeight: 700,
+              letterSpacing: '-0.01em',
+              lineHeight: 1,
+              background: 'var(--r-grad-gold)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              marginBottom: 5,
+            }}
+          >
+            Hoard
+          </div>
+        </Link>
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--r-text-3)',
+          }}
+        >
+          Ranch Edition
+        </div>
+      </div>
 
-<nav style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-{navItems.map((item) => {
-const active = pathname === item.href;
-return (
-<Link
-key={item.href}
-href={item.href}
-style={{
-textDecoration: 'none',
-padding: '12px 14px',
-borderRadius: 12,
-color: active ? '#ffffff' : 'rgba(255,255,255,0.75)',
-background: active
-? 'linear-gradient(135deg, rgba(59,130,246,0.35), rgba(99,102,241,0.25))'
-: 'transparent',
-border: active
-? '1px solid rgba(96,165,250,0.35)'
-: '1px solid transparent',
-fontWeight: active ? 700 : 500,
-transition: 'all 160ms ease',
-}}
->
-{item.label}
-</Link>
-);
-})}
-</nav>
-</aside>
-);
+      {/* ── Navigation ── */}
+      <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: '0.13em',
+                textTransform: 'uppercase',
+                color: 'var(--r-text-3)',
+                paddingLeft: 10,
+                marginBottom: 4,
+              }}
+            >
+              {group.label}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {group.items.map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="r-nav-link"
+                    style={{
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '9px 10px 9px 13px',
+                      borderRadius: 9,
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
+                      background: active ? 'var(--r-grad-active-nav)' : 'transparent',
+                      border: active ? '1px solid var(--r-border)' : '1px solid transparent',
+                      boxShadow: active ? '0 0 22px rgba(200,164,92,0.16), 0 2px 8px rgba(0,0,0,0.3)' : 'none',
+                      transition: 'all 140ms ease',
+                      position: 'relative',
+                    }}
+                  >
+                    {/* Active accent bar */}
+                    {active && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: '20%',
+                          bottom: '20%',
+                          width: 3,
+                          borderRadius: 999,
+                          background: 'var(--r-grad-gold)',
+                        }}
+                      />
+                    )}
+                    <span style={{ paddingLeft: active ? 4 : 0 }}>{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* ── Agent footer ── */}
+      <div
+        style={{
+          flexShrink: 0,
+          marginTop: 16,
+          paddingTop: 16,
+          borderTop: '1px solid var(--r-border-soft)',
+          paddingLeft: 4,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--r-text-2)',
+            marginBottom: 2,
+          }}
+        >
+          Susan Yoder
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            color: 'var(--r-text-3)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}
+        >
+          Broker · Ranch Properties
+        </div>
+      </div>
+    </aside>
+  );
 }

@@ -3,7 +3,9 @@
     "allow": [
       "Bash(node \"C:/Users/trist/Documents/hoard/apps-web/node_modules/.bin/tsc\" --noEmit -p \"C:/Users/trist/Documents/hoard/apps-web/tsconfig.json\")",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(node \"C:/Users/trist/Documents/hoard/apps-web/node_modules/typescript/bin/tsc\" --noEmit -p \"C:/Users/trist/Documents/hoard/apps-web/tsconfig.json\")"
+      "Bash(node \"C:/Users/trist/Documents/hoard/apps-web/node_modules/typescript/bin/tsc\" --noEmit -p \"C:/Users/trist/Documents/hoard/apps-web/tsconfig.json\")",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

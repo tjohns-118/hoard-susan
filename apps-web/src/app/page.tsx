@@ -9,7 +9,6 @@ import type { OpportunityStage } from '@/features/opportunities/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Fixed reference date matching mock data epoch so relative calcs are coherent
 const REF = new Date('2026-04-07T12:00:00.000Z');
 
 const STAGE_ORDER: OpportunityStage[] = [
@@ -28,11 +27,12 @@ const STAGE_LABEL: Record<OpportunityStage, string> = {
   lost: 'Lost',
 };
 
+// Earthy ranch palette per stage
 const STAGE_COLOR: Record<string, string> = {
-  prospect: '#93c5fd',
-  qualified: '#c4b5fd',
-  proposal: '#fde68a',
-  negotiation: '#fdba74',
+  prospect: '#7ca4cc',
+  qualified: '#9b8ab4',
+  proposal: '#e2c47c',
+  negotiation: '#c8823c',
 };
 
 const PRIORITY_TONE = {
@@ -83,7 +83,7 @@ function SectionHeader({
           style={{
             fontSize: 12,
             fontWeight: 800,
-            color: 'rgba(255,255,255,0.55)',
+            color: 'var(--r-text-3)',
             textTransform: 'uppercase',
             letterSpacing: '0.09em',
           }}
@@ -100,7 +100,7 @@ function SectionHeader({
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: '#93c5fd',
+            color: 'var(--r-gold)',
             textDecoration: 'none',
             letterSpacing: '0.02em',
           }}
@@ -121,11 +121,12 @@ function Panel({
 }) {
   return (
     <div
+      className="r-card"
       style={{
         borderRadius: 18,
-        background: 'rgba(255,255,255,0.035)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+        background: 'var(--r-grad-card)',
+        border: '1px solid var(--r-border)',
+        boxShadow: 'var(--r-shadow)',
         padding: '18px 20px',
         ...style,
       }}
@@ -150,21 +151,22 @@ function UrgencyRow({
 }) {
   return (
     <div
+      className="r-row"
       style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: '10px 12px',
         borderRadius: 11,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(200,164,92,0.04)',
+        border: '1px solid var(--r-border)',
         borderLeft: accent ? `3px solid ${accent}` : undefined,
         gap: 12,
       }}
     >
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{label}</div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 2 }}>
           {sub}
         </div>
       </div>
@@ -184,10 +186,10 @@ function AlertRow({
     level === 'critical' ? 'danger' : level === 'warning' ? 'warning' : 'default';
   const dot =
     level === 'critical'
-      ? '#ef4444'
+      ? 'var(--r-danger)'
       : level === 'warning'
-      ? '#f59e0b'
-      : '#6ea8fe';
+      ? 'var(--r-warning)'
+      : 'var(--r-gold)';
 
   return (
     <div
@@ -197,8 +199,8 @@ function AlertRow({
         gap: 10,
         padding: '9px 12px',
         borderRadius: 10,
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(200,164,92,0.03)',
+        border: '1px solid var(--r-border)',
       }}
     >
       <div
@@ -211,7 +213,7 @@ function AlertRow({
           marginTop: 4,
         }}
       />
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.5 }}>
         {message}
       </div>
     </div>
@@ -235,16 +237,16 @@ function TaskRow({
         alignItems: 'center',
         padding: '9px 12px',
         borderRadius: 10,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(200,164,92,0.04)',
+        border: '1px solid var(--r-border)',
         gap: 12,
       }}
     >
-      <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, flex: 1, lineHeight: 1.35 }}>
+      <div style={{ fontSize: 13, color: 'var(--r-text)', fontWeight: 600, flex: 1, lineHeight: 1.35 }}>
         {title}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+        <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
           {daysOld === 0 ? 'Today' : `${daysOld}d`}
         </span>
         <Badge tone={PRIORITY_TONE[priority]}>{priority}</Badge>
@@ -262,7 +264,6 @@ export default function HomePage() {
   const tasks = useAppStore((s) => s.tasks);
   const alerts = useAppStore((s) => s.alerts);
 
-  // ── KPI computations ──
   const activeLeads = useMemo(
     () => leads.filter((l) => l.status !== 'lost'),
     [leads]
@@ -285,7 +286,6 @@ export default function HomePage() {
   );
   const openTasks = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
 
-  // ── Action center ──
   const unassignedLeads = useMemo(
     () => activeLeads.filter((l) => !l.assignedAgentId),
     [activeLeads]
@@ -309,7 +309,6 @@ export default function HomePage() {
     [openOpps]
   );
 
-  // ── Pipeline snapshot ──
   const stageData = useMemo(
     () =>
       STAGE_ORDER.map((stage) => {
@@ -327,22 +326,20 @@ export default function HomePage() {
     [stageData]
   );
 
-  // ── Lead funnel ──
   const funnelData = useMemo(
     () => [
-      { label: 'New', count: leads.filter((l) => l.status === 'new').length, color: '#93c5fd' },
-      { label: 'Contacted', count: leads.filter((l) => l.status === 'contacted').length, color: '#c4b5fd' },
-      { label: 'Qualified', count: leads.filter((l) => l.status === 'qualified').length, color: '#fde68a' },
+      { label: 'New', count: leads.filter((l) => l.status === 'new').length, color: '#7ca4cc' },
+      { label: 'Contacted', count: leads.filter((l) => l.status === 'contacted').length, color: '#9b8ab4' },
+      { label: 'Qualified', count: leads.filter((l) => l.status === 'qualified').length, color: '#e2c47c' },
       {
         label: 'Converted',
         count: contacts.filter((c) => c.tags.includes('converted')).length,
-        color: '#bbf7d0',
+        color: '#7dba82',
       },
     ],
     [leads, contacts]
   );
 
-  // ── Risk panel ──
   const staleLeads = useMemo(
     () =>
       activeLeads.filter((l) => {
@@ -360,7 +357,6 @@ export default function HomePage() {
     [openOpps]
   );
 
-  // ── Tasks queue (top 5 by priority) ──
   const taskQueue = useMemo(() => {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
     return [...openTasks]
@@ -368,7 +364,6 @@ export default function HomePage() {
       .slice(0, 5);
   }, [openTasks]);
 
-  // ── Recent activity (latest-updated records) ──
   const recentActivity = useMemo(() => {
     type ActivityItem = { label: string; sub: string; time: string; tone: 'success' | 'warning' | 'default' };
     const items: ActivityItem[] = [
@@ -413,16 +408,17 @@ export default function HomePage() {
             <h1
               style={{
                 margin: 0,
+                fontFamily: 'var(--r-font-serif)',
                 fontSize: 34,
-                fontWeight: 800,
-                letterSpacing: '-0.04em',
-                color: '#fff',
-                lineHeight: 1.05,
+                fontWeight: 700,
+                letterSpacing: '-0.01em',
+                color: 'var(--r-text)',
+                lineHeight: 1.08,
               }}
             >
               Good morning, Susan.
             </h1>
-            <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
+            <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
               Monday, April 7, 2026 · Ranch Edition Broker Command Center
             </p>
           </div>
@@ -431,9 +427,9 @@ export default function HomePage() {
               style={{
                 padding: '10px 16px',
                 borderRadius: 12,
-                background: 'rgba(245,158,11,0.12)',
-                border: '1px solid rgba(245,158,11,0.3)',
-                color: '#fde68a',
+                background: 'var(--r-warning-bg)',
+                border: '1px solid var(--r-warning-border)',
+                color: 'var(--r-warning)',
                 fontSize: 13,
                 fontWeight: 700,
               }}
@@ -480,7 +476,7 @@ export default function HomePage() {
         />
       </div>
 
-      {/* ── B. Action Center + C-adjacent Risk Panel ── */}
+      {/* ── B. Action Center + Risk Panel ── */}
       <div
         style={{
           display: 'grid',
@@ -499,14 +495,13 @@ export default function HomePage() {
             countTone="warning"
           />
 
-          {/* Hot leads */}
           {hotLeads.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               <div
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: '#fb923c',
+                  color: 'var(--r-warning)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                   marginBottom: 8,
@@ -522,21 +517,20 @@ export default function HomePage() {
                     sub={`${l.source ?? 'Unknown source'} · ${l.status} · ${daysSince(l.updatedAt)}d since update`}
                     badge={l.status}
                     badgeTone="danger"
-                    accent="#fb923c"
+                    accent="var(--r-warning)"
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Unassigned leads */}
           {unassignedLeads.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               <div
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: '#fde68a',
+                  color: 'var(--r-gold-bright)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                   marginBottom: 8,
@@ -552,21 +546,20 @@ export default function HomePage() {
                     sub={`${l.source ?? 'Unknown source'} · No agent assigned`}
                     badge="Unassigned"
                     badgeTone="warning"
-                    accent="#f59e0b"
+                    accent="var(--r-warning)"
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Deals in negotiation */}
           {negotiationDeals.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               <div
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: '#fdba74',
+                  color: 'var(--r-gold)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                   marginBottom: 8,
@@ -584,7 +577,7 @@ export default function HomePage() {
                       sub={`${o.propertyAddress ?? 'Property'} · ${fmtValue(o.value)} · ${d >= 0 ? `${d}d to close` : 'Overdue'}`}
                       badge={d <= 3 ? 'Urgent' : `${d}d left`}
                       badgeTone={d <= 3 ? 'danger' : 'warning'}
-                      accent="#fdba74"
+                      accent="var(--r-gold)"
                     />
                   );
                 })}
@@ -592,14 +585,13 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Open tasks */}
           {openTasks.filter((t) => t.priority === 'high').length > 0 && (
             <div>
               <div
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: 'rgba(255,255,255,0.45)',
+                  color: 'var(--r-text-3)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                   marginBottom: 8,
@@ -629,7 +621,7 @@ export default function HomePage() {
               style={{
                 padding: '32px 0',
                 textAlign: 'center',
-                color: 'rgba(255,255,255,0.28)',
+                color: 'var(--r-text-3)',
                 fontSize: 13,
               }}
             >
@@ -640,7 +632,6 @@ export default function HomePage() {
 
         {/* Alerts & Risk Panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* System alerts */}
           <Panel>
             <SectionHeader title="Alerts" count={alerts.length} countTone="warning" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -650,7 +641,6 @@ export default function HomePage() {
             </div>
           </Panel>
 
-          {/* Stale leads */}
           {staleLeads.length > 0 && (
             <Panel>
               <SectionHeader
@@ -669,16 +659,16 @@ export default function HomePage() {
                       alignItems: 'center',
                       padding: '8px 10px',
                       borderRadius: 9,
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.06)',
+                      background: 'rgba(200,164,92,0.03)',
+                      border: '1px solid var(--r-border)',
                       gap: 10,
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)' }}>
                         {l.fullName}
                       </div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
                         {l.source ?? 'Unknown'} · {l.status}
                       </div>
                     </div>
@@ -686,9 +676,9 @@ export default function HomePage() {
                       style={{
                         fontSize: 11,
                         fontWeight: 700,
-                        color: '#fde68a',
-                        background: 'rgba(245,158,11,0.1)',
-                        border: '1px solid rgba(245,158,11,0.22)',
+                        color: 'var(--r-gold-bright)',
+                        background: 'var(--r-warning-bg)',
+                        border: '1px solid var(--r-warning-border)',
                         borderRadius: 6,
                         padding: '2px 7px',
                         whiteSpace: 'nowrap',
@@ -702,7 +692,6 @@ export default function HomePage() {
             </Panel>
           )}
 
-          {/* Deals at risk */}
           {(atRiskDeals.length > 0 || closingSoon.length > 0) && (
             <Panel>
               <SectionHeader
@@ -723,16 +712,16 @@ export default function HomePage() {
                         alignItems: 'center',
                         padding: '8px 10px',
                         borderRadius: 9,
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
+                        background: 'rgba(200,164,92,0.03)',
+                        border: '1px solid var(--r-border)',
                         gap: 10,
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)' }}>
                           {o.contactName}
                         </div>
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
+                        <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
                           {STAGE_LABEL[o.stage]} · {fmtValue(o.value)}
                         </div>
                       </div>
@@ -754,7 +743,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {stageData.map(({ stage, count, value }) => {
             const barPct = maxPipelineValue > 0 ? (value / maxPipelineValue) * 100 : 0;
-            const color = STAGE_COLOR[stage] ?? '#93c5fd';
+            const color = STAGE_COLOR[stage] ?? 'var(--r-gold)';
             return (
               <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div
@@ -773,7 +762,7 @@ export default function HomePage() {
                     flex: 1,
                     height: 28,
                     borderRadius: 7,
-                    background: 'rgba(255,255,255,0.05)',
+                    background: 'rgba(200,164,92,0.06)',
                     position: 'relative',
                     overflow: 'hidden',
                   }}
@@ -800,7 +789,7 @@ export default function HomePage() {
                         transform: 'translateY(-50%)',
                         fontSize: 12,
                         fontWeight: 700,
-                        color: 'rgba(255,255,255,0.75)',
+                        color: 'var(--r-text-2)',
                       }}
                     >
                       {fmtValue(value)}
@@ -812,13 +801,13 @@ export default function HomePage() {
                     width: 28,
                     height: 28,
                     borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.07)',
+                    background: 'rgba(200,164,92,0.08)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 12,
                     fontWeight: 800,
-                    color: count > 0 ? '#fff' : 'rgba(255,255,255,0.3)',
+                    color: count > 0 ? 'var(--r-text)' : 'var(--r-text-3)',
                     flexShrink: 0,
                   }}
                 >
@@ -829,12 +818,11 @@ export default function HomePage() {
           })}
         </div>
 
-        {/* Won summary */}
         <div
           style={{
             marginTop: 14,
             paddingTop: 14,
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            borderTop: '1px solid var(--r-border)',
             display: 'flex',
             gap: 24,
           }}
@@ -848,12 +836,12 @@ export default function HomePage() {
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
-                    color: s === 'won' ? '#bbf7d0' : '#fca5a5',
+                    color: s === 'won' ? 'var(--r-success)' : 'var(--r-danger)',
                   }}
                 >
                   {s === 'won' ? 'Won' : 'Lost'}
                 </span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+                <span style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
                   {stageOpps.length} deal{stageOpps.length !== 1 ? 's' : ''} ·{' '}
                   {v > 0 ? fmtValue(v) : '—'}
                 </span>
@@ -888,10 +876,11 @@ export default function HomePage() {
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   <div
                     style={{
+                      fontFamily: 'var(--r-font-serif)',
                       fontSize: 28,
-                      fontWeight: 800,
-                      letterSpacing: '-0.03em',
-                      color: step.count > 0 ? step.color : 'rgba(255,255,255,0.25)',
+                      fontWeight: 700,
+                      letterSpacing: '-0.02em',
+                      color: step.count > 0 ? step.color : 'var(--r-text-3)',
                     }}
                   >
                     {step.count}
@@ -900,7 +889,7 @@ export default function HomePage() {
                     style={{
                       fontSize: 11,
                       fontWeight: 700,
-                      color: 'rgba(255,255,255,0.45)',
+                      color: 'var(--r-text-3)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                       marginTop: 4,
@@ -913,7 +902,7 @@ export default function HomePage() {
                   <div
                     style={{
                       fontSize: 18,
-                      color: 'rgba(255,255,255,0.2)',
+                      color: 'var(--r-border)',
                       flexShrink: 0,
                       padding: '0 4px',
                     }}
@@ -925,7 +914,6 @@ export default function HomePage() {
             ))}
           </div>
 
-          {/* Conversion rates */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {funnelData.slice(0, 3).map((step, i) => {
               const next = funnelData[i + 1];
@@ -943,18 +931,19 @@ export default function HomePage() {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: 8,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(200,164,92,0.03)',
+                    border: '1px solid var(--r-border)',
                   }}
                 >
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
                     {step.label} → {next.label}
                   </span>
                   <span
                     style={{
+                      fontFamily: 'var(--r-font-serif)',
                       fontSize: 13,
-                      fontWeight: 800,
-                      color: rate >= 50 ? '#bbf7d0' : rate >= 25 ? '#fde68a' : '#fca5a5',
+                      fontWeight: 700,
+                      color: rate >= 50 ? 'var(--r-success)' : rate >= 25 ? 'var(--r-gold-bright)' : 'var(--r-danger)',
                     }}
                   >
                     {rate}%
@@ -978,7 +967,7 @@ export default function HomePage() {
                 style={{
                   padding: '24px 0',
                   textAlign: 'center',
-                  color: 'rgba(255,255,255,0.3)',
+                  color: 'var(--r-text-3)',
                   fontSize: 13,
                 }}
               >
@@ -1002,7 +991,7 @@ export default function HomePage() {
                   textAlign: 'center',
                   fontSize: 12,
                   fontWeight: 700,
-                  color: '#93c5fd',
+                  color: 'var(--r-gold)',
                   padding: '8px 0 2px',
                   textDecoration: 'none',
                 }}
@@ -1025,7 +1014,7 @@ export default function HomePage() {
           }}
         >
           {recentActivity.length === 0 ? (
-            <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, gridColumn: '1 / -1' }}>
+            <div style={{ color: 'var(--r-text-3)', fontSize: 13, gridColumn: '1 / -1' }}>
               No recent activity.
             </div>
           ) : (
@@ -1035,14 +1024,14 @@ export default function HomePage() {
                 style={{
                   padding: '10px 12px',
                   borderRadius: 11,
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(200,164,92,0.03)',
+                  border: '1px solid var(--r-border)',
                   borderLeft: `3px solid ${
                     item.tone === 'success'
-                      ? 'rgba(34,197,94,0.55)'
+                      ? 'rgba(90,140,94,0.7)'
                       : item.tone === 'warning'
-                      ? 'rgba(245,158,11,0.5)'
-                      : 'rgba(110,168,254,0.45)'
+                      ? 'rgba(200,130,60,0.7)'
+                      : 'rgba(200,164,92,0.6)'
                   }`,
                 }}
               >
@@ -1050,14 +1039,14 @@ export default function HomePage() {
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
-                    color: '#fff',
+                    color: 'var(--r-text)',
                     marginBottom: 3,
                     lineHeight: 1.35,
                   }}
                 >
                   {item.label}
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+                <div style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
                   {item.sub}
                 </div>
               </div>

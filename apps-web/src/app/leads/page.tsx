@@ -14,10 +14,10 @@ const STATUS_META: Record<
   LeadStatus,
   { label: string; tone: 'default' | 'warning' | 'success' | 'danger'; accent: string }
 > = {
-  new: { label: 'New', tone: 'default', accent: 'rgba(110,168,254,0.55)' },
-  contacted: { label: 'Contacted', tone: 'warning', accent: 'rgba(245,158,11,0.5)' },
-  qualified: { label: 'Qualified', tone: 'success', accent: 'rgba(34,197,94,0.55)' },
-  lost: { label: 'Lost / Archived', tone: 'danger', accent: 'rgba(239,68,68,0.4)' },
+  new: { label: 'New', tone: 'default', accent: 'rgba(200,164,92,0.6)' },
+  contacted: { label: 'Contacted', tone: 'warning', accent: 'rgba(200,130,60,0.6)' },
+  qualified: { label: 'Qualified', tone: 'success', accent: 'rgba(90,140,94,0.6)' },
+  lost: { label: 'Lost / Archived', tone: 'danger', accent: 'rgba(176,58,58,0.5)' },
 };
 
 const NEXT_ACTION: Record<LeadStatus, string> = {
@@ -53,29 +53,29 @@ function ActionBtn({
 }) {
   const styles: Record<string, React.CSSProperties> = {
     default: {
-      background: 'rgba(255,255,255,0.06)',
-      border: '1px solid rgba(255,255,255,0.12)',
-      color: 'rgba(255,255,255,0.75)',
+      background: 'rgba(200,164,92,0.06)',
+      border: '1px solid rgba(200,164,92,0.16)',
+      color: 'var(--r-text-2)',
     },
     primary: {
-      background: 'linear-gradient(135deg, rgba(59,130,246,0.4), rgba(99,102,241,0.3))',
-      border: '1px solid rgba(96,165,250,0.4)',
-      color: '#fff',
+      background: 'var(--r-gold-faint)',
+      border: '1px solid var(--r-border)',
+      color: 'var(--r-gold-bright)',
     },
     success: {
-      background: 'rgba(34,197,94,0.12)',
-      border: '1px solid rgba(34,197,94,0.3)',
-      color: '#bbf7d0',
+      background: 'var(--r-success-bg)',
+      border: '1px solid var(--r-success-border)',
+      color: 'var(--r-success)',
     },
     danger: {
-      background: 'rgba(239,68,68,0.1)',
-      border: '1px solid rgba(239,68,68,0.25)',
-      color: '#fca5a5',
+      background: 'var(--r-danger-bg)',
+      border: '1px solid var(--r-danger-border)',
+      color: 'var(--r-danger)',
     },
     hot: {
-      background: 'rgba(249,115,22,0.14)',
-      border: '1px solid rgba(249,115,22,0.35)',
-      color: '#fdba74',
+      background: 'var(--r-warning-bg)',
+      border: '1px solid var(--r-warning-border)',
+      color: 'var(--r-warning)',
     },
   };
 
@@ -110,9 +110,9 @@ function TagChip({ children }: { children: React.ReactNode }) {
         borderRadius: 6,
         fontSize: 11,
         fontWeight: 600,
-        background: 'rgba(110,168,254,0.1)',
-        border: '1px solid rgba(110,168,254,0.22)',
-        color: '#93c5fd',
+        background: 'var(--r-gold-faint)',
+        border: '1px solid var(--r-border)',
+        color: 'var(--r-gold)',
         letterSpacing: '0.01em',
       }}
     >
@@ -158,12 +158,12 @@ function LeadCard({
 
   return (
     <div
+      className="r-card"
       style={{
         borderRadius: 16,
-        background: 'rgba(255,255,255,0.035)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-        overflow: 'hidden',
+        background: 'var(--r-grad-card)',
+        border: '1px solid var(--r-border)',
+        boxShadow: 'var(--r-shadow)',
         display: 'flex',
       }}
     >
@@ -187,7 +187,14 @@ function LeadCard({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>
+            <span
+              style={{
+                fontFamily: 'var(--r-font-serif)',
+                fontSize: 16,
+                fontWeight: 700,
+                color: 'var(--r-text)',
+              }}
+            >
               {lead.fullName}
             </span>
             <Badge tone={meta.tone}>{meta.label}</Badge>
@@ -201,9 +208,9 @@ function LeadCard({
                   borderRadius: 999,
                   fontSize: 11,
                   fontWeight: 800,
-                  background: 'rgba(249,115,22,0.18)',
-                  border: '1px solid rgba(249,115,22,0.4)',
-                  color: '#fb923c',
+                  background: 'var(--r-warning-bg)',
+                  border: '1px solid var(--r-warning-border)',
+                  color: 'var(--r-warning)',
                   letterSpacing: '0.04em',
                 }}
               >
@@ -215,9 +222,9 @@ function LeadCard({
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: 'rgba(255,255,255,0.45)',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--r-text-3)',
+                  background: 'rgba(200,164,92,0.06)',
+                  border: '1px solid var(--r-border)',
                   borderRadius: 6,
                   padding: '2px 7px',
                 }}
@@ -231,7 +238,7 @@ function LeadCard({
                 <TagChip key={tag}>{tag}</TagChip>
               ))}
           </div>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap', paddingTop: 3 }}>
+          <span style={{ fontSize: 11, color: 'var(--r-text-3)', whiteSpace: 'nowrap', paddingTop: 3 }}>
             {timeAgo}
           </span>
         </div>
@@ -246,30 +253,30 @@ function LeadCard({
         >
           {/* Contact info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
               Contact
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
-              {lead.email ?? <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>No email</span>}
+            <div style={{ fontSize: 13, color: 'var(--r-text-2)' }}>
+              {lead.email ?? <span style={{ color: 'var(--r-text-3)', fontStyle: 'italic' }}>No email</span>}
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
-              {lead.phone ?? <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>No phone</span>}
+            <div style={{ fontSize: 13, color: 'var(--r-text-2)' }}>
+              {lead.phone ?? <span style={{ color: 'var(--r-text-3)', fontStyle: 'italic' }}>No phone</span>}
             </div>
           </div>
 
           {/* Assigned agent */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
               Agent
             </div>
             <select
               value={lead.assignedAgentId ?? ''}
               onChange={(e) => onAssign(lead.id, e.target.value || undefined)}
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(200,164,92,0.06)',
+                border: '1px solid var(--r-border)',
                 borderRadius: 8,
-                color: lead.assignedAgentId ? '#fff' : 'rgba(255,255,255,0.38)',
+                color: lead.assignedAgentId ? 'var(--r-text)' : 'var(--r-text-3)',
                 fontSize: 12,
                 fontWeight: 600,
                 padding: '5px 8px',
@@ -288,7 +295,7 @@ function LeadCard({
 
           {/* Linked properties */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
               Properties
             </div>
             {linkedProps.length > 0 ? (
@@ -298,9 +305,9 @@ function LeadCard({
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
-                    color: '#86efac',
-                    background: 'rgba(34,197,94,0.09)',
-                    border: '1px solid rgba(34,197,94,0.22)',
+                    color: 'var(--r-success)',
+                    background: 'var(--r-success-bg)',
+                    border: '1px solid var(--r-success-border)',
                     borderRadius: 6,
                     padding: '2px 8px',
                     display: 'inline-block',
@@ -310,7 +317,7 @@ function LeadCard({
                 </span>
               ))
             ) : (
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic' }}>
+              <span style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>
                 None linked
               </span>
             )}
@@ -328,16 +335,16 @@ function LeadCard({
           {/* Next action */}
           <div
             style={{
-              background: 'rgba(110,168,254,0.06)',
-              border: '1px solid rgba(110,168,254,0.15)',
+              background: 'var(--r-gold-faint)',
+              border: '1px solid var(--r-border)',
               borderRadius: 10,
               padding: '9px 12px',
             }}
           >
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(110,168,254,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Next Action
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.45 }}>
               {nextAction}
             </div>
           </div>
@@ -345,21 +352,21 @@ function LeadCard({
           {/* Latest note */}
           <div
             style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.07)',
+              background: 'rgba(200,164,92,0.03)',
+              border: '1px solid var(--r-border)',
               borderRadius: 10,
               padding: '9px 12px',
             }}
           >
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Latest Note
             </div>
             {latestNote ? (
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontStyle: 'italic', lineHeight: 1.45, overflow: 'hidden', maxHeight: '2.9em' }}>
+              <div style={{ fontSize: 12, color: 'var(--r-text-2)', fontStyle: 'italic', lineHeight: 1.45, overflow: 'hidden', maxHeight: '2.9em' }}>
                 {latestNote.body}
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
+              <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>
                 No notes yet
               </div>
             )}
@@ -374,7 +381,7 @@ function LeadCard({
             flexWrap: 'wrap',
             alignItems: 'center',
             paddingTop: 4,
-            borderTop: '1px solid rgba(255,255,255,0.05)',
+            borderTop: '1px solid var(--r-border)',
           }}
         >
           <ActionBtn
@@ -464,7 +471,6 @@ export default function LeadsPage() {
     });
   }, [leads, query, filter]);
 
-  // Sort: hot first, then by updatedAt desc
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
       const aHot = a.tags.includes('hot') ? 1 : 0;
@@ -527,7 +533,7 @@ export default function LeadsPage() {
               top: '50%',
               transform: 'translateY(-50%)',
               fontSize: 14,
-              color: 'rgba(255,255,255,0.35)',
+              color: 'var(--r-text-3)',
               pointerEvents: 'none',
             }}
           >
@@ -541,9 +547,9 @@ export default function LeadsPage() {
               width: '100%',
               padding: '10px 14px 10px 34px',
               borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.04)',
-              color: '#fff',
+              border: '1px solid var(--r-border)',
+              background: 'rgba(200,164,92,0.04)',
+              color: 'var(--r-text)',
               fontSize: 13,
               outline: 'none',
             }}
@@ -558,20 +564,16 @@ export default function LeadsPage() {
               <button
                 key={key}
                 onClick={() => setFilter(key)}
+                className="r-tab"
                 style={{
                   padding: '8px 14px',
                   borderRadius: 9,
-                  border: active
-                    ? '1px solid rgba(96,165,250,0.4)'
-                    : '1px solid rgba(255,255,255,0.1)',
-                  background: active
-                    ? 'linear-gradient(135deg, rgba(59,130,246,0.25), rgba(99,102,241,0.18))'
-                    : 'rgba(255,255,255,0.04)',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+                  border: '1px solid var(--r-border)',
+                  background: active ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.04)',
+                  color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
                   fontSize: 12,
                   fontWeight: active ? 700 : 500,
                   cursor: 'pointer',
-                  transition: 'all 140ms ease',
                 }}
               >
                 {label}
@@ -587,11 +589,11 @@ export default function LeadsPage() {
           <div
             style={{
               borderRadius: 16,
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.07)',
+              background: 'rgba(200,164,92,0.02)',
+              border: '1px solid var(--r-border)',
               padding: '40px 24px',
               textAlign: 'center',
-              color: 'rgba(255,255,255,0.35)',
+              color: 'var(--r-text-3)',
               fontSize: 14,
             }}
           >
@@ -619,7 +621,7 @@ export default function LeadsPage() {
         style={{
           marginTop: 32,
           paddingTop: 20,
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          borderTop: '1px solid var(--r-border)',
           display: 'flex',
           gap: 16,
           flexWrap: 'wrap',
@@ -639,15 +641,15 @@ export default function LeadsPage() {
               gap: 3,
               padding: '12px 16px',
               borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--r-border)',
+              background: 'rgba(200,164,92,0.02)',
               textDecoration: 'none',
               minWidth: 180,
               flex: 1,
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{label}</span>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{desc}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-gold)' }}>{label}</span>
+            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{desc}</span>
           </a>
         ))}
       </div>

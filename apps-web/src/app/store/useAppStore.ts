@@ -49,6 +49,7 @@ createTask: (fields: {
   propertyId?: string;
 }) => void;
 assignOpportunityToAgent: (oppId: string, agentId?: string) => void;
+setAgents: (agents: typeof mockDb.agents) => void;
 scheduleTask: (taskId: string, dueAt: string) => void;
 createOpportunityFromMatch: (params: { personId: string; personKind: 'contact' | 'lead'; propertyId: string }) => void;
 createTemplate: (fields: { name: string; category: TemplateCategory; body: string; tags: string[]; notes?: string }) => void;
@@ -385,6 +386,8 @@ opportunities: state.opportunities.map((o) =>
 o.id === oppId ? { ...o, assignedAgentId: agentId, updatedAt: nowIso() } : o
 ),
 })),
+
+setAgents: (agents) => set({ agents }),
 
 scheduleTask: (taskId, dueAt) =>
 set((state) => ({

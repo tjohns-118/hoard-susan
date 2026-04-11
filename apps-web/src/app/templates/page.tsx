@@ -9,13 +9,13 @@ import type { TemplateCategory } from '@/data/mockDb';
 
 // ── Category metadata ─────────────────────────────────────────────
 const CAT_META: Record<TemplateCategory | 'all', { label: string; color: string; bg: string; border: string }> = {
-  all:        { label: 'All',        color: 'rgba(255,255,255,0.7)',  bg: 'rgba(255,255,255,0.05)',   border: 'rgba(255,255,255,0.15)' },
-  buyer:      { label: 'Buyer',      color: '#60a5fa',                bg: 'rgba(59,130,246,0.1)',     border: 'rgba(59,130,246,0.28)' },
-  seller:     { label: 'Seller',     color: '#fbbf24',                bg: 'rgba(251,191,36,0.08)',    border: 'rgba(251,191,36,0.25)' },
-  'follow-up':{ label: 'Follow-Up',  color: '#67e8f9',                bg: 'rgba(103,232,249,0.07)',   border: 'rgba(103,232,249,0.22)' },
-  deal:       { label: 'Deal',       color: '#a78bfa',                bg: 'rgba(139,92,246,0.1)',     border: 'rgba(139,92,246,0.27)' },
-  internal:   { label: 'Internal',   color: 'rgba(255,255,255,0.5)', bg: 'rgba(255,255,255,0.04)',   border: 'rgba(255,255,255,0.12)' },
-  custom:     { label: 'Custom',     color: '#4ade80',                bg: 'rgba(74,222,128,0.07)',    border: 'rgba(74,222,128,0.22)' },
+  all:        { label: 'All',        color: 'var(--r-text-2)',     bg: 'rgba(200,164,92,0.03)',  border: 'var(--r-border)' },
+  buyer:      { label: 'Buyer',      color: '#7ca4cc',             bg: 'rgba(124,164,204,0.08)', border: 'rgba(124,164,204,0.24)' },
+  seller:     { label: 'Seller',     color: 'var(--r-gold)',       bg: 'var(--r-gold-faint)',    border: 'var(--r-border)' },
+  'follow-up':{ label: 'Follow-Up',  color: 'var(--r-gold-bright)',bg: 'var(--r-gold-faint)',    border: 'var(--r-border)' },
+  deal:       { label: 'Deal',       color: '#9b8ab4',             bg: 'rgba(155,138,180,0.08)', border: 'rgba(155,138,180,0.24)' },
+  internal:   { label: 'Internal',   color: 'var(--r-text-3)',     bg: 'rgba(200,164,92,0.03)',  border: 'var(--r-border)' },
+  custom:     { label: 'Custom',     color: 'var(--r-success)',    bg: 'var(--r-success-bg)',    border: 'var(--r-success-border)' },
 };
 
 const CAT_ORDER: TemplateCategory[] = ['buyer', 'seller', 'follow-up', 'deal', 'internal', 'custom'];
@@ -54,11 +54,11 @@ function BodyWithTokens({ body }: { body: string }) {
           <span
             key={i}
             style={{
-              background: 'rgba(96,165,250,0.15)',
-              border: '1px solid rgba(96,165,250,0.32)',
+              background: 'var(--r-gold-faint)',
+              border: '1px solid var(--r-border)',
               borderRadius: 4,
               padding: '1px 5px',
-              color: '#93c5fd',
+              color: 'var(--r-gold)',
               fontFamily: 'monospace',
               fontSize: '0.9em',
               fontWeight: 600,
@@ -182,21 +182,22 @@ export default function TemplatesPage() {
       <div style={{ marginBottom: 22 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1.05 }}>
+            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.05, fontFamily: 'var(--r-font-serif)' }}>
               Communication Library
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
+            <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--r-text-3)' }}>
               Proven messaging for every stage of the broker relationship — ready to copy and send.
             </p>
           </div>
           <button
             onClick={() => openCreate()}
+            className="r-btn-gold"
             style={{
               padding: '9px 20px',
               borderRadius: 10,
-              border: '1px solid rgba(96,165,250,0.35)',
-              background: 'linear-gradient(135deg,rgba(59,130,246,0.18),rgba(99,102,241,0.12))',
-              color: '#93c5fd',
+              border: '1px solid var(--r-border)',
+              background: 'var(--r-gold-faint)',
+              color: 'var(--r-gold-bright)',
               fontSize: 13,
               fontWeight: 700,
               cursor: 'pointer',
@@ -218,17 +219,18 @@ export default function TemplatesPage() {
 
       {/* Quick-access use cases */}
       <div style={{ display: 'flex', gap: 7, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>Quick access:</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>Quick access:</span>
         {USE_CASES.map(({ label, templateName }) => (
           <button
             key={label}
             onClick={() => jumpTo(templateName)}
+            className="r-tab"
             style={{
               padding: '5px 12px',
               borderRadius: 7,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.04)',
-              color: 'rgba(255,255,255,0.6)',
+              border: '1px solid var(--r-border)',
+              background: 'var(--r-grad-card)',
+              color: 'var(--r-text-2)',
               fontSize: 11,
               fontWeight: 600,
               cursor: 'pointer',
@@ -255,9 +257,9 @@ export default function TemplatesPage() {
                 flex: 1,
                 padding: '8px 12px',
                 borderRadius: 8,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(255,255,255,0.05)',
-                color: '#fff',
+                border: '1px solid var(--r-border)',
+                background: 'var(--r-grad-card)',
+                color: 'var(--r-text)',
                 fontSize: 12,
                 outline: 'none',
               }}
@@ -265,7 +267,7 @@ export default function TemplatesPage() {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as 'recent' | 'name')}
-              style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', fontSize: 12, cursor: 'pointer' }}
+              style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)', fontSize: 12, cursor: 'pointer' }}
             >
               <option value="name">A–Z</option>
               <option value="recent">Recent</option>
@@ -281,12 +283,13 @@ export default function TemplatesPage() {
                 <button
                   key={cat}
                   onClick={() => setCatFilter(cat)}
+                  className="r-tab"
                   style={{
                     padding: '5px 11px',
                     borderRadius: 7,
-                    border: active ? `1px solid ${cm.border}` : '1px solid rgba(255,255,255,0.08)',
-                    background: active ? cm.bg : 'rgba(255,255,255,0.02)',
-                    color: active ? cm.color : 'rgba(255,255,255,0.4)',
+                    border: active ? `1px solid ${cm.border}` : '1px solid var(--r-border)',
+                    background: active ? cm.bg : 'var(--r-grad-card)',
+                    color: active ? cm.color : 'var(--r-text-3)',
                     fontSize: 11,
                     fontWeight: active ? 700 : 500,
                     cursor: 'pointer',
@@ -301,7 +304,7 @@ export default function TemplatesPage() {
           {/* Template list */}
           <div className="template-list-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 5, overflowY: 'auto', maxHeight: 'calc(100vh - 300px)' }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.28)' }}>No templates match.</div>
+              <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'var(--r-text-3)' }}>No templates match.</div>
             ) : (
               filtered.map((t) => {
                 const cm = CAT_META[t.category];
@@ -318,17 +321,15 @@ export default function TemplatesPage() {
                       minHeight: 44,
                       flexShrink: 0,
                       borderRadius: 11,
-                      border: isSelected ? `1px solid rgba(96,165,250,0.4)` : `1px solid ${cm.border}`,
-                      background: isSelected
-                        ? 'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(99,102,241,0.07))'
-                        : cm.bg,
+                      border: isSelected ? '1px solid var(--r-border)' : `1px solid ${cm.border}`,
+                      background: isSelected ? 'var(--r-gold-faint)' : cm.bg,
                       cursor: 'pointer',
                       overflow: 'hidden',
                       width: '100%',
                     }}
                   >
                     <div style={{ width: 3, flexShrink: 0, alignSelf: 'stretch', background: cm.color }} />
-                    <span style={{ flex: 1, minWidth: 0, padding: '0 12px', fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: 1, minWidth: 0, padding: '0 12px', fontSize: 13, fontWeight: 700, color: 'var(--r-text)', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {t.name}
                     </span>
                   </button>
@@ -354,7 +355,7 @@ export default function TemplatesPage() {
               onCancelDel={() => setConfirmDel(false)}
             />
           ) : mode === 'view' && !selected ? (
-            <div style={{ padding: '60px 24px', textAlign: 'center', borderRadius: 16, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.28)', fontSize: 13 }}>
+            <div style={{ padding: '60px 24px', textAlign: 'center', borderRadius: 16, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-3)', fontSize: 13 }}>
               Select a template from the library.
             </div>
           ) : (
@@ -398,27 +399,27 @@ function ViewPanel({
       {/* Header card */}
       <div style={{ padding: '18px 22px', borderRadius: 16, border: `1px solid ${cm.border}`, background: cm.bg }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--r-text)', letterSpacing: '-0.02em', lineHeight: 1.2, fontFamily: 'var(--r-font-serif)' }}>
             {template.name}
           </h2>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: cm.color, background: cm.bg, border: `1px solid ${cm.border}`, borderRadius: 6, padding: '3px 9px' }}>
               {cm.label}
             </span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '3px 9px' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', background: 'var(--r-grad-card)', border: '1px solid var(--r-border)', borderRadius: 6, padding: '3px 9px' }}>
               {audience}
             </span>
           </div>
         </div>
         {template.notes && (
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6, marginBottom: 10 }}>
             {template.notes}
           </div>
         )}
         {template.tags.length > 0 && (
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {template.tags.map((tag) => (
-              <span key={tag} style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '1px 7px' }}>
+              <span key={tag} style={{ fontSize: 10, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 4, padding: '1px 7px' }}>
                 {tag}
               </span>
             ))}
@@ -430,12 +431,13 @@ function ViewPanel({
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           onClick={onCopy}
+          className="r-btn-gold"
           style={{
             padding: '8px 18px',
             borderRadius: 9,
-            border: copied ? '1px solid rgba(74,222,128,0.4)' : '1px solid rgba(96,165,250,0.35)',
-            background: copied ? 'rgba(74,222,128,0.1)' : 'linear-gradient(135deg,rgba(59,130,246,0.18),rgba(99,102,241,0.12))',
-            color: copied ? '#4ade80' : '#93c5fd',
+            border: copied ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
+            background: copied ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+            color: copied ? 'var(--r-success)' : 'var(--r-gold-bright)',
             fontSize: 12,
             fontWeight: 700,
             cursor: 'pointer',
@@ -449,25 +451,25 @@ function ViewPanel({
         <div style={{ marginLeft: 'auto' }}>
           {confirmDel ? (
             <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: '#fca5a5' }}>Are you sure?</span>
-              <button onClick={onDelete} style={{ ...actionBtn, color: '#f87171', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>Yes, delete</button>
+              <span style={{ fontSize: 11, color: 'var(--r-danger)' }}>Are you sure?</span>
+              <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', borderColor: 'var(--r-danger-border)', background: 'var(--r-danger-bg)' }}>Yes, delete</button>
               <button onClick={onCancelDel} style={actionBtn}>Cancel</button>
             </div>
           ) : (
-            <button onClick={onDelete} style={{ ...actionBtn, color: 'rgba(248,113,113,0.7)' }}>Delete</button>
+            <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', opacity: 0.7 }}>Delete</button>
           )}
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ padding: '20px 22px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)', fontSize: 13, lineHeight: 1.75, color: 'rgba(255,255,255,0.85)', fontFamily: 'inherit' }}>
+      <div style={{ padding: '20px 22px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', fontSize: 13, lineHeight: 1.75, color: 'var(--r-text-2)', fontFamily: 'inherit' }}>
         <BodyWithTokens body={template.body} />
       </div>
 
       {/* Placeholder legend */}
       {tokens.length > 0 && (
-        <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid rgba(96,165,250,0.15)', background: 'rgba(59,130,246,0.04)' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#60a5fa', marginBottom: 12 }}>
+        <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--r-gold)', marginBottom: 12 }}>
             Placeholder guide — {tokens.length} token{tokens.length !== 1 ? 's' : ''} in this template
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px 16px' }}>
@@ -475,12 +477,12 @@ function ViewPanel({
               const doc = PLACEHOLDER_DOCS[token];
               return (
                 <div key={token} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#93c5fd', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.25)', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {token}
                   </span>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{doc?.label ?? token.replace(/{{|}}/g, '')}</div>
-                    {doc && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)' }}>e.g. {doc.example}</div>}
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--r-text)' }}>{doc?.label ?? token.replace(/{{|}}/g, '')}</div>
+                    {doc && <div style={{ fontSize: 10, color: 'var(--r-text-3)' }}>e.g. {doc.example}</div>}
                   </div>
                 </div>
               );
@@ -490,7 +492,7 @@ function ViewPanel({
       )}
 
       {/* Meta footer */}
-      <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'rgba(255,255,255,0.28)', paddingTop: 4 }}>
+      <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--r-text-3)', paddingTop: 4 }}>
         <span>Created {fmtDate(template.createdAt)}</span>
         <span>Updated {fmtDate(template.updatedAt)}</span>
         <span>{template.body.split(/\s+/).length} words</span>
@@ -503,9 +505,9 @@ function ViewPanel({
 const actionBtn: React.CSSProperties = {
   padding: '8px 16px',
   borderRadius: 9,
-  border: '1px solid rgba(255,255,255,0.12)',
-  background: 'rgba(255,255,255,0.04)',
-  color: 'rgba(255,255,255,0.65)',
+  border: '1px solid var(--r-border)',
+  background: 'var(--r-grad-card)',
+  color: 'var(--r-text-2)',
   fontSize: 12,
   fontWeight: 600,
   cursor: 'pointer',
@@ -528,11 +530,11 @@ function EditPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Panel header */}
-      <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+      <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--r-text)', marginBottom: 4, fontFamily: 'var(--r-font-serif)' }}>
           {mode === 'create' ? 'New Template' : 'Edit Template'}
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+        <div style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
           {mode === 'create' ? 'Create a new reusable message template.' : 'Make changes and save.'}
         </div>
       </div>
@@ -543,7 +545,7 @@ function EditPanel({
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder="Template name…"
-          style={{ flex: 2, padding: '9px 13px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, fontWeight: 600, outline: 'none' }}
+          style={{ flex: 2, padding: '9px 13px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text)', fontSize: 13, fontWeight: 600, outline: 'none' }}
         />
         <select
           value={form.category}
@@ -559,15 +561,15 @@ function EditPanel({
         value={form.notes}
         onChange={(e) => onChange({ notes: e.target.value })}
         placeholder="Intended use / notes (optional)…"
-        style={{ padding: '9px 13px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', fontSize: 12, outline: 'none' }}
+        style={{ padding: '9px 13px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)', fontSize: 12, outline: 'none' }}
       />
 
       {/* Body */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Message body</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Message body</span>
           {previewTokens.length > 0 && (
-            <span style={{ fontSize: 10, color: '#93c5fd' }}>{previewTokens.length} placeholder{previewTokens.length !== 1 ? 's' : ''} detected</span>
+            <span style={{ fontSize: 10, color: 'var(--r-gold)' }}>{previewTokens.length} placeholder{previewTokens.length !== 1 ? 's' : ''} detected</span>
           )}
         </div>
         <textarea
@@ -579,9 +581,9 @@ function EditPanel({
             width: '100%',
             padding: '13px 16px',
             borderRadius: 11,
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.04)',
-            color: '#fff',
+            border: '1px solid var(--r-border)',
+            background: 'var(--r-grad-card)',
+            color: 'var(--r-text)',
             fontSize: 13,
             lineHeight: 1.7,
             fontFamily: 'inherit',
@@ -593,15 +595,15 @@ function EditPanel({
       </div>
 
       {/* Placeholder helper */}
-      <div style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid rgba(96,165,250,0.12)', background: 'rgba(59,130,246,0.03)' }}>
-        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#60a5fa', marginBottom: 8 }}>Available placeholders</div>
+      <div style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)' }}>
+        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--r-gold)', marginBottom: 8 }}>Available placeholders</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {Object.keys(PLACEHOLDER_DOCS).map((token) => (
             <button
               key={token}
               onClick={() => onChange({ body: form.body + token })}
               title={PLACEHOLDER_DOCS[token].label}
-              style={{ fontFamily: 'monospace', fontSize: 10, fontWeight: 700, color: '#93c5fd', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.22)', borderRadius: 4, padding: '2px 7px', cursor: 'pointer' }}
+              style={{ fontFamily: 'monospace', fontSize: 10, fontWeight: 700, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 4, padding: '2px 7px', cursor: 'pointer' }}
             >
               {token}
             </button>
@@ -614,7 +616,7 @@ function EditPanel({
         value={form.tags}
         onChange={(e) => onChange({ tags: e.target.value })}
         placeholder="Tags (comma-separated)…"
-        style={{ padding: '9px 13px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', fontSize: 12, outline: 'none' }}
+        style={{ padding: '9px 13px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)', fontSize: 12, outline: 'none' }}
       />
 
       {/* Save / Cancel */}
@@ -622,15 +624,17 @@ function EditPanel({
         <button
           onClick={onSave}
           disabled={!isValid}
+          className={isValid ? 'r-btn-gold' : ''}
           style={{
             padding: '10px 24px',
             borderRadius: 9,
-            border: isValid ? '1px solid rgba(96,165,250,0.4)' : '1px solid rgba(255,255,255,0.08)',
-            background: isValid ? 'linear-gradient(135deg,rgba(59,130,246,0.22),rgba(99,102,241,0.15))' : 'rgba(255,255,255,0.03)',
-            color: isValid ? '#93c5fd' : 'rgba(255,255,255,0.25)',
+            border: isValid ? '1px solid var(--r-border)' : '1px solid var(--r-border)',
+            background: isValid ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
+            color: isValid ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
             fontSize: 13,
             fontWeight: 700,
             cursor: isValid ? 'pointer' : 'default',
+            opacity: isValid ? 1 : 0.5,
           }}
         >
           {mode === 'create' ? 'Create Template' : 'Save Changes'}

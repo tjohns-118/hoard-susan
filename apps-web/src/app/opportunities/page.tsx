@@ -22,39 +22,39 @@ const STAGE_META: Record<
 > = {
   prospect: {
     label: 'Prospect',
-    bg: 'rgba(110,168,254,0.07)',
-    border: 'rgba(110,168,254,0.22)',
-    headerColor: '#93c5fd',
+    bg: 'rgba(200,164,92,0.06)',
+    border: 'rgba(200,164,92,0.18)',
+    headerColor: 'var(--r-gold-bright)',
   },
   qualified: {
     label: 'Qualified',
-    bg: 'rgba(139,92,246,0.07)',
-    border: 'rgba(139,92,246,0.25)',
-    headerColor: '#c4b5fd',
+    bg: 'rgba(155,138,180,0.07)',
+    border: 'rgba(155,138,180,0.22)',
+    headerColor: '#b8a8d0',
   },
   proposal: {
     label: 'Proposal',
-    bg: 'rgba(245,158,11,0.07)',
-    border: 'rgba(245,158,11,0.25)',
-    headerColor: '#fde68a',
+    bg: 'rgba(200,164,92,0.07)',
+    border: 'rgba(200,164,92,0.22)',
+    headerColor: 'var(--r-gold)',
   },
   negotiation: {
     label: 'Negotiation',
-    bg: 'rgba(249,115,22,0.07)',
-    border: 'rgba(249,115,22,0.25)',
-    headerColor: '#fdba74',
+    bg: 'rgba(200,130,60,0.07)',
+    border: 'rgba(200,130,60,0.22)',
+    headerColor: 'var(--r-warning)',
   },
   won: {
     label: 'Won',
-    bg: 'rgba(34,197,94,0.07)',
-    border: 'rgba(34,197,94,0.22)',
-    headerColor: '#bbf7d0',
+    bg: 'var(--r-success-bg)',
+    border: 'var(--r-success-border)',
+    headerColor: 'var(--r-success)',
   },
   lost: {
     label: 'Lost',
-    bg: 'rgba(239,68,68,0.06)',
-    border: 'rgba(239,68,68,0.18)',
-    headerColor: '#fecaca',
+    bg: 'var(--r-danger-bg)',
+    border: 'var(--r-danger-border)',
+    headerColor: 'var(--r-danger)',
   },
 };
 
@@ -95,24 +95,24 @@ function PillBtn({
 }) {
   const styles = {
     default: {
-      bg: 'rgba(255,255,255,0.07)',
-      border: 'rgba(255,255,255,0.13)',
-      color: 'rgba(255,255,255,0.7)',
+      bg: 'rgba(200,164,92,0.06)',
+      border: 'rgba(200,164,92,0.16)',
+      color: 'var(--r-text-2)',
     },
     success: {
-      bg: 'rgba(34,197,94,0.12)',
-      border: 'rgba(34,197,94,0.3)',
-      color: '#bbf7d0',
+      bg: 'var(--r-success-bg)',
+      border: 'var(--r-success-border)',
+      color: 'var(--r-success)',
     },
     danger: {
-      bg: 'rgba(239,68,68,0.12)',
-      border: 'rgba(239,68,68,0.28)',
-      color: '#fecaca',
+      bg: 'var(--r-danger-bg)',
+      border: 'var(--r-danger-border)',
+      color: 'var(--r-danger)',
     },
     accent: {
-      bg: 'rgba(110,168,254,0.13)',
-      border: 'rgba(110,168,254,0.32)',
-      color: '#93c5fd',
+      bg: 'var(--r-gold-faint)',
+      border: 'var(--r-border)',
+      color: 'var(--r-gold-bright)',
     },
   }[tone];
 
@@ -162,8 +162,8 @@ function OpportunityCard({
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.09)',
+        background: 'rgba(200,164,92,0.04)',
+        border: '1px solid var(--r-border)',
         borderRadius: 13,
         padding: 14,
         display: 'flex',
@@ -184,7 +184,7 @@ function OpportunityCard({
           style={{
             fontSize: 13,
             fontWeight: 700,
-            color: '#fff',
+            color: 'var(--r-text)',
             lineHeight: 1.3,
           }}
         >
@@ -195,7 +195,7 @@ function OpportunityCard({
 
       {/* Property */}
       {opp.propertyAddress && (
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: -3 }}>
+        <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: -3 }}>
           {opp.propertyAddress}
         </div>
       )}
@@ -204,10 +204,11 @@ function OpportunityCard({
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <span
           style={{
+            fontFamily: 'var(--r-font-serif)',
             fontSize: 19,
-            fontWeight: 800,
-            letterSpacing: '-0.03em',
-            color: '#fff',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: 'var(--r-text)',
           }}
         >
           {fmtValue(opp.value)}
@@ -216,8 +217,8 @@ function OpportunityCard({
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: 'rgba(255,255,255,0.5)',
-            background: 'rgba(255,255,255,0.07)',
+            color: 'var(--r-text-3)',
+            background: 'rgba(200,164,92,0.08)',
             borderRadius: 5,
             padding: '1px 6px',
           }}
@@ -234,7 +235,7 @@ function OpportunityCard({
           alignItems: 'center',
         }}
       >
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+        <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
           Close {closeDate}
         </span>
         {agent ? (
@@ -242,9 +243,9 @@ function OpportunityCard({
             style={{
               fontSize: 10,
               fontWeight: 700,
-              color: '#93c5fd',
-              background: 'rgba(110,168,254,0.1)',
-              border: '1px solid rgba(110,168,254,0.22)',
+              color: 'var(--r-gold)',
+              background: 'var(--r-gold-faint)',
+              border: '1px solid var(--r-border)',
               borderRadius: 5,
               padding: '2px 7px',
               letterSpacing: '0.01em',
@@ -257,7 +258,7 @@ function OpportunityCard({
             style={{
               fontSize: 10,
               fontWeight: 600,
-              color: 'rgba(255,255,255,0.3)',
+              color: 'var(--r-text-3)',
               fontStyle: 'italic',
             }}
           >
@@ -271,8 +272,8 @@ function OpportunityCard({
         <div
           style={{
             fontSize: 11,
-            color: 'rgba(255,255,255,0.6)',
-            borderLeft: '2px solid rgba(110,168,254,0.38)',
+            color: 'var(--r-text-2)',
+            borderLeft: '2px solid var(--r-border)',
             paddingLeft: 8,
             lineHeight: 1.45,
             overflow: 'hidden',
@@ -288,7 +289,7 @@ function OpportunityCard({
         <div
           style={{
             fontSize: 11,
-            color: 'rgba(255,255,255,0.38)',
+            color: 'var(--r-text-3)',
             fontStyle: 'italic',
             lineHeight: 1.4,
             overflow: 'hidden',
@@ -306,7 +307,7 @@ function OpportunityCard({
           gap: 5,
           flexWrap: 'wrap',
           paddingTop: 6,
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          borderTop: '1px solid var(--r-border)',
         }}
       >
         {next && (
@@ -396,7 +397,7 @@ export default function OpportunitiesPage() {
           style={{
             fontSize: 12,
             fontWeight: 700,
-            color: 'rgba(255,255,255,0.45)',
+            color: 'var(--r-text-3)',
             textTransform: 'uppercase',
             letterSpacing: '0.09em',
             marginBottom: 14,
@@ -422,13 +423,13 @@ export default function OpportunitiesPage() {
             return (
               <div
                 key={stage}
+                className="r-card"
                 style={{
                   flex: '0 0 264px',
                   minWidth: 264,
                   borderRadius: 18,
                   background: meta.bg,
                   border: `1px solid ${meta.border}`,
-                  overflow: 'hidden',
                 }}
               >
                 {/* Column header */}
@@ -444,8 +445,9 @@ export default function OpportunitiesPage() {
                   <div>
                     <div
                       style={{
+                        fontFamily: 'var(--r-font-serif)',
                         fontSize: 13,
-                        fontWeight: 800,
+                        fontWeight: 700,
                         color: meta.headerColor,
                         letterSpacing: '0.01em',
                       }}
@@ -455,7 +457,7 @@ export default function OpportunitiesPage() {
                     <div
                       style={{
                         fontSize: 11,
-                        color: 'rgba(255,255,255,0.4)',
+                        color: 'var(--r-text-3)',
                         marginTop: 2,
                       }}
                     >
@@ -466,8 +468,8 @@ export default function OpportunitiesPage() {
                     style={{
                       fontSize: 13,
                       fontWeight: 800,
-                      color: 'rgba(255,255,255,0.55)',
-                      background: 'rgba(255,255,255,0.08)',
+                      color: 'var(--r-text-2)',
+                      background: 'rgba(200,164,92,0.08)',
                       borderRadius: '50%',
                       width: 28,
                       height: 28,
@@ -494,7 +496,7 @@ export default function OpportunitiesPage() {
                       style={{
                         padding: '20px 0',
                         textAlign: 'center',
-                        color: 'rgba(255,255,255,0.28)',
+                        color: 'var(--r-text-3)',
                         fontSize: 12,
                       }}
                     >
@@ -524,11 +526,11 @@ export default function OpportunitiesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Won */}
         <div
+          className="r-card"
           style={{
             borderRadius: 18,
             background: STAGE_META.won.bg,
             border: `1px solid ${STAGE_META.won.border}`,
-            overflow: 'hidden',
           }}
         >
           <div
@@ -540,10 +542,24 @@ export default function OpportunitiesPage() {
               alignItems: 'center',
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#bbf7d0' }}>
+            <div
+              style={{
+                fontFamily: 'var(--r-font-serif)',
+                fontSize: 14,
+                fontWeight: 700,
+                color: 'var(--r-success)',
+              }}
+            >
               Won
             </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#bbf7d0' }}>
+            <div
+              style={{
+                fontFamily: 'var(--r-font-serif)',
+                fontSize: 14,
+                fontWeight: 700,
+                color: 'var(--r-success)',
+              }}
+            >
               {fmtValue(wonValue)}
             </div>
           </div>
@@ -558,7 +574,7 @@ export default function OpportunitiesPage() {
             {wonOpps.length === 0 ? (
               <div
                 style={{
-                  color: 'rgba(255,255,255,0.32)',
+                  color: 'var(--r-text-3)',
                   fontSize: 13,
                   padding: '6px 0',
                 }}
@@ -577,12 +593,12 @@ export default function OpportunitiesPage() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-text)' }}>
                       {opp.contactName}
                     </div>
                     {opp.propertyAddress && (
                       <div
-                        style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}
+                        style={{ fontSize: 11, color: 'var(--r-text-3)' }}
                       >
                         {opp.propertyAddress}
                       </div>
@@ -592,7 +608,7 @@ export default function OpportunitiesPage() {
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: '#bbf7d0',
+                      color: 'var(--r-success)',
                       whiteSpace: 'nowrap',
                     }}
                   >
@@ -606,11 +622,11 @@ export default function OpportunitiesPage() {
 
         {/* Lost */}
         <div
+          className="r-card"
           style={{
             borderRadius: 18,
             background: STAGE_META.lost.bg,
             border: `1px solid ${STAGE_META.lost.border}`,
-            overflow: 'hidden',
           }}
         >
           <div
@@ -622,10 +638,17 @@ export default function OpportunitiesPage() {
               alignItems: 'center',
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fecaca' }}>
+            <div
+              style={{
+                fontFamily: 'var(--r-font-serif)',
+                fontSize: 14,
+                fontWeight: 700,
+                color: 'var(--r-danger)',
+              }}
+            >
               Lost
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+            <div style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
               {lostOpps.length} deal{lostOpps.length !== 1 ? 's' : ''}
             </div>
           </div>
@@ -640,7 +663,7 @@ export default function OpportunitiesPage() {
             {lostOpps.length === 0 ? (
               <div
                 style={{
-                  color: 'rgba(255,255,255,0.32)',
+                  color: 'var(--r-text-3)',
                   fontSize: 13,
                   padding: '6px 0',
                 }}
@@ -663,14 +686,14 @@ export default function OpportunitiesPage() {
                       style={{
                         fontSize: 13,
                         fontWeight: 600,
-                        color: 'rgba(255,255,255,0.65)',
+                        color: 'var(--r-text-2)',
                       }}
                     >
                       {opp.contactName}
                     </div>
                     {opp.propertyAddress && (
                       <div
-                        style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)' }}
+                        style={{ fontSize: 11, color: 'var(--r-text-3)' }}
                       >
                         {opp.propertyAddress}
                       </div>
@@ -680,7 +703,7 @@ export default function OpportunitiesPage() {
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: '#fca5a5',
+                      color: 'var(--r-danger)',
                       whiteSpace: 'nowrap',
                     }}
                   >

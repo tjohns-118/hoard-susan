@@ -1,32 +1,42 @@
 interface EmptyStateProps {
-title: string;
-description: string;
+  title: string;
+  description: string;
 }
 
 export function EmptyState({ title, description }: EmptyStateProps) {
-return (
-<div
-style={{
-padding: '40px 20px',
-textAlign: 'center',
-borderRadius: 16,
-background: 'rgba(255,255,255,0.03)',
-border: '1px dashed rgba(255,255,255,0.12)',
-}}
->
-<div
-style={{
-fontSize: 18,
-fontWeight: 700,
-color: '#fff',
-marginBottom: 8,
-}}
->
-{title}
-</div>
-<div style={{ color: 'rgba(255,255,255,0.58)', fontSize: 14 }}>
-{description}
-</div>
-</div>
-);
+  return (
+    <div
+      style={{
+        padding: '44px 24px',
+        textAlign: 'center',
+        borderRadius: 'var(--r-radius-lg)' as unknown as number,
+        background: 'rgba(255,255,255,0.015)',
+        border: '1px dashed var(--r-border)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--r-font-serif)',
+          fontSize: 18,
+          fontWeight: 600,
+          color: 'var(--r-text-2)',
+          marginBottom: 8,
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          color: 'var(--r-text-3)',
+          fontSize: 13,
+          lineHeight: 1.65,
+          maxWidth: 380,
+          margin: '0 auto',
+        }}
+      >
+        {description}
+      </div>
+    </div>
+  );
 }
