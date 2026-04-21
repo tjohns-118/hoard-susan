@@ -1,42 +1,58 @@
 'use client';
 
 /**
- * useAgents — React hook for the agent system.
+ * useAgents — fetches real agent data from /api/agents and writes it into
+ * useAppStore.agents on every mount. Exposes mutations that POST/PATCH/DELETE
+ * through the same server route.
  *
- * On mount, fetches real agents from Supabase and hydrates useAppStore.agents
- * so all existing workload calculations keep working.
- *
- * Falls back to mock data silently if the brokerage is not yet seeded.
- * Exposes createAgent, updateAgentRole, removeAgent for mutating Supabase
- * via the /api/agents server route (which uses the service role key).
+ * No mock fallback: if ACTIVE_BROKERAGE_ID is configured, Supabase is the only
+ * source of truth. The store is always overwritten with whatever the server returns.
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { fetchAgents } from '@/lib/agentService';
 import { useAppStore } from '@/app/store/useAppStore';
 import type { AgentRecord } from '@/data/mockDb';
 
 export function useAgents() {
+  const router    = useRouter();
   const agents    = useAppStore((s) => s.agents);
   const setAgents = useAppStore((s) => s.setAgents);
-  const loadedRef = useRef(false);
 
   const reload = useCallback(async () => {
     const data = await fetchAgents();
-    if (data.length > 0) {
-      setAgents(data);
-    }
-    // If data is empty (brokerage not seeded), keep existing mock agents so the
-    // UI remains functional during development.
+    console.log('[useAgents reload] writing', data.length, 'agent(s) to store');
+    // Always overwrite — Supabase is the source of truth.
+    // Previously this had an `if (data.length > 0)` guard which silently kept
+    // mock fallback data whenever RLS blocked the anon-key read. Removed.
+    setAgents(data);
   }, [setAgents]);
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
     reload();
   }, [reload]);
 
-  // ── Mutations (routed through /api/agents, which uses supabaseAdmin) ─────────
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+
+  async function callApi(
+    method: 'POST' | 'PATCH' | 'DELETE',
+    urlOrPath: string,
+    body?: object,
+  ) {
+    const res = await fetch(urlOrPath, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? `${method} ${urlOrPath} failed`);
+    router.refresh();
+    await reload();
+    return json;
+  }
+
+  // ── Mutations ─────────────────────────────────────────────────────────────────
 
   async function createAgent(data: {
     name: string;
@@ -44,46 +60,20 @@ export function useAgents() {
     phone?: string;
     role?: string;
   }): Promise<AgentRecord['id']> {
-    const res = await fetch('/api/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? 'Failed to create agent');
-    await reload();
+    const json = await callApi('POST', '/api/agents', data);
     return json.memberId as string;
   }
 
   async function updateAgentRole(memberId: string, role: string) {
-    const res = await fetch('/api/agents', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId, role: role.toLowerCase() }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? 'Failed to update role');
-    await reload();
+    await callApi('PATCH', '/api/agents', { memberId, role: role.toLowerCase() });
   }
 
   async function updateAgentNotes(memberId: string, notes: string) {
-    const res = await fetch('/api/agents', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId, notes }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? 'Failed to update notes');
-    await reload();
+    await callApi('PATCH', '/api/agents', { memberId, notes });
   }
 
   async function removeAgent(memberId: string) {
-    const res = await fetch(`/api/agents?memberId=${encodeURIComponent(memberId)}`, {
-      method: 'DELETE',
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? 'Failed to remove agent');
-    await reload();
+    await callApi('DELETE', `/api/agents?memberId=${encodeURIComponent(memberId)}`);
   }
 
   return {

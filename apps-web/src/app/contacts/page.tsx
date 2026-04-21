@@ -1,15 +1,27 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
-import type { Contact } from '@/features/contacts/types';
+import { useContacts } from '@/hooks/useContacts';
+import { useAgents } from '@/hooks/useAgents';
+import { useOpportunities } from '@/hooks/useOpportunities';
+import { useTasks } from '@/hooks/useTasks';
+import type { Contact, ContactRole, BuyerProfile, SellerProfile } from '@/features/contacts/types';
+import {
+  EMPTY_BUYER, EMPTY_SELLER, PROP_TYPE_LABELS, CONDITION_LABELS,
+  fmtPrice, inputStyle, selectStyle,
+  FieldLabel, TagPills, RoleBadge, ProfileSummary, ProfilePanel,
+  ProfileFormSection,
+} from '@/components/crm/ProfileUi';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const REF = new Date('2026-04-07T12:00:00.000Z');
+const REF = new Date(); // current date — drives staleness and recency calculations
 
 type FilterKey = 'all' | 'buyers' | 'sellers' | 'investors' | 'active' | 'hot' | 'archived';
 type Health = 'hot' | 'stale' | 'needs-followup' | 'recently-updated' | 'normal';
@@ -157,25 +169,22 @@ function ContactRow({
           : '3px solid transparent',
       }}
     >
-      {/* Row 1: name + health + status */}
+      {/* Row 1: name + health + status + role */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
         <span style={{ fontFamily: 'var(--r-font-serif)', fontSize: 14, fontWeight: 700, color: 'var(--r-text)' }}>{contact.fullName}</span>
         <HealthChip health={health} />
         <Badge tone={STATUS_TONE[contact.status]}>{contact.status}</Badge>
+        <RoleBadge role={contact.role} />
       </div>
 
-      {/* Row 2: source + tags */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+      {/* Row 2: source + profile summary */}
+      <div style={{ marginBottom: 5 }}>
         {contact.source && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--r-text-3)', background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--r-text-3)', background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px', marginRight: 4 }}>
             {contact.source}
           </span>
         )}
-        {contact.tags.filter((t) => t !== 'hot').map((tag) => (
-          <span key={tag} style={{ fontSize: 10, fontWeight: 600, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px' }}>
-            #{tag}
-          </span>
-        ))}
+        <ProfileSummary subject={contact} />
       </div>
 
       {/* Row 3: email · phone */}
@@ -220,6 +229,8 @@ function DetailPanel({
   onMarkHot,
   onAddTask,
   onPushToOpportunities,
+  onUpdateBuyerProfile,
+  onUpdateSellerProfile,
   onClose,
 }: {
   contact: Contact;
@@ -232,6 +243,8 @@ function DetailPanel({
   onMarkHot: (id: string) => void;
   onAddTask: (id: string) => void;
   onPushToOpportunities: (id: string) => void;
+  onUpdateBuyerProfile:  (id: string, p: BuyerProfile | null, role: ContactRole) => Promise<void>;
+  onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
   onClose: () => void;
 }) {
   const [noteText, setNoteText] = useState('');
@@ -332,6 +345,16 @@ function DetailPanel({
             </select>
           </div>
         </div>
+      </Panel>
+
+      {/* Buyer / Seller profile */}
+      <Panel>
+        <SubHeader>Profile</SubHeader>
+        <ProfilePanel
+          subject={contact}
+          onUpdateBuyerProfile={onUpdateBuyerProfile}
+          onUpdateSellerProfile={onUpdateSellerProfile}
+        />
       </Panel>
 
       {/* Linked properties */}
@@ -457,25 +480,120 @@ function DetailPanel({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ContactsPage() {
-  const contacts = useAppStore((s) => s.contacts);
-  const agents = useAppStore((s) => s.agents);
-  const properties = useAppStore((s) => s.properties);
+  // Hydrate contacts from Supabase on mount (replaces mock data unconditionally).
+  // Provides Supabase-backed mutations for the three ops that have DB wiring.
+  const {
+    contacts,
+    markContactHot,
+    addContactNote,
+    assignContactToAgent,
+    createContact,
+    updateBuyerProfile,
+    updateSellerProfile,
+  } = useContacts();
+
+  // Hydrate agents from Supabase so agent names resolve correctly in the UI.
+  useAgents();
+
+  const agents      = useAppStore((s) => s.agents);
+  const properties  = useAppStore((s) => s.properties);
   const opportunities = useAppStore((s) => s.opportunities);
-  const tasks = useAppStore((s) => s.tasks);
-  const markContactHot = useAppStore((s) => s.markContactHot);
-  const addContactNote = useAppStore((s) => s.addContactNote);
-  const addContactFollowUpTask = useAppStore((s) => s.addContactFollowUpTask);
-  const assignContactToAgent = useAppStore((s) => s.assignContactToAgent);
-  const pushContactToOpportunities = useAppStore((s) => s.pushContactToOpportunities);
+  const tasks       = useAppStore((s) => s.tasks);
+
+  const { createTask }         = useTasks();
+  const { createOpportunity }  = useOpportunities();
+
+  async function handleAddContactTask(contactId: string) {
+    const c = contacts.find((x) => x.id === contactId);
+    if (!c) return;
+    try {
+      await createTask({
+        title:     `Follow up with ${c.fullName}`,
+        priority:  c.tags.includes('hot') ? 'high' : 'medium',
+        contactId,
+      });
+    } catch (err) {
+      console.error('[handleAddContactTask]', err);
+    }
+  }
+
+  // Push a contact into the pipeline as a new Prospect opportunity.
+  // Calls Supabase directly via useOpportunities so the deal persists.
+  async function pushContactToOpportunities(contactId: string) {
+    const c = contacts.find((x) => x.id === contactId);
+    if (!c) return;
+    const alreadyExists = opportunities.some(
+      (o) => o.contactName.toLowerCase() === c.fullName.toLowerCase()
+    );
+    if (alreadyExists) return;
+    const firstProp = properties.find((p) => c.linkedPropertyIds.includes(p.id));
+    try {
+      await createOpportunity({
+        contactName:        c.fullName,
+        propertyAddress:    firstProp?.address,
+        propertyId:         firstProp?.id,
+        assignedAgentId:    c.assignedAgentId,
+        stage:              'prospect',
+        value:              0,
+        probability:        15,
+        priority:           'medium',
+        nextStep:           'Initial qualification — review profile and schedule intro call.',
+        notes:              c.notes.length > 0 ? [c.notes[c.notes.length - 1].body] : [],
+      });
+    } catch (err) {
+      console.error('[pushContactToOpportunities]', err);
+    }
+  }
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
 
+  // ── Add Contact form state ─────────────────────────────────────────────────
+  const [showAddForm,  setShowAddForm]  = useState(false);
+  const [addName,      setAddName]      = useState('');
+  const [addEmail,     setAddEmail]     = useState('');
+  const [addPhone,     setAddPhone]     = useState('');
+  const [addSource,    setAddSource]    = useState('');
+  const [addRole,      setAddRole]      = useState<ContactRole>('buyer');
+  const [addBuyer,     setAddBuyer]     = useState<BuyerProfile>(EMPTY_BUYER);
+  const [addSeller,    setAddSeller]    = useState<SellerProfile>(EMPTY_SELLER);
+  const [addError,     setAddError]     = useState('');
+  const [addSaving,    setAddSaving]    = useState(false);
+
+  function resetAddForm() {
+    setShowAddForm(false);
+    setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
+    setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
+    setAddError('');
+  }
+
+  async function handleAddContact() {
+    if (!addName.trim()) { setAddError('Full name is required.'); return; }
+    setAddSaving(true);
+    setAddError('');
+    try {
+      await createContact({
+        fullName:       addName,
+        email:          addEmail  || undefined,
+        phone:          addPhone  || undefined,
+        source:         addSource || undefined,
+        role:           addRole,
+        buyerProfile:   (addRole === 'buyer'  || addRole === 'both') ? addBuyer  : undefined,
+        sellerProfile:  (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+      });
+      resetAddForm();
+    } catch (e: any) {
+      setAddError(e?.message ?? 'Failed to create contact.');
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
   const active = useMemo(() => contacts.filter((c) => c.status === 'active'), [contacts]);
   const hot = useMemo(() => contacts.filter((c) => c.tags.includes('hot')), [contacts]);
-  const buyers = useMemo(() => contacts.filter((c) => c.tags.includes('buyer')), [contacts]);
-  const sellers = useMemo(() => contacts.filter((c) => c.tags.includes('seller')), [contacts]);
+  const buyers  = useMemo(() => contacts.filter((c) => c.role === 'buyer'  || c.role === 'both' || c.tags.includes('buyer')),  [contacts]);
+  const sellers = useMemo(() => contacts.filter((c) => c.role === 'seller' || c.role === 'both' || c.tags.includes('seller')), [contacts]);
   const recentlyUpdated = useMemo(
     () => contacts.filter((c) => daysSince(c.lastActivityAt) <= 3),
     [contacts]
@@ -492,13 +610,13 @@ export default function ContactsPage() {
           .includes(q);
 
       const matchFilter =
-        filter === 'all' ? true :
-        filter === 'buyers' ? c.tags.includes('buyer') :
-        filter === 'sellers' ? c.tags.includes('seller') :
-        filter === 'investors' ? c.tags.includes('investor') :
-        filter === 'active' ? c.status === 'active' :
-        filter === 'hot' ? c.tags.includes('hot') :
-        filter === 'archived' ? c.status === 'closed' :
+        filter === 'all'      ? true :
+        filter === 'buyers'   ? (c.role === 'buyer'  || c.role === 'both' || c.tags.includes('buyer'))  :
+        filter === 'sellers'  ? (c.role === 'seller' || c.role === 'both' || c.tags.includes('seller')) :
+        filter === 'investors'? (c.buyerProfile?.tags.includes('investor') ?? c.tags.includes('investor')) :
+        filter === 'active'   ? c.status === 'active'  :
+        filter === 'hot'      ? c.tags.includes('hot') :
+        filter === 'archived' ? c.status === 'closed'  :
         true;
 
       return matchSearch && matchFilter;
@@ -569,7 +687,65 @@ export default function ContactsPage() {
             );
           })}
         </div>
+
+        {/* Add Contact button */}
+        <button
+          onClick={() => setShowAddForm((v) => !v)}
+          style={{
+            background: showAddForm ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.06)',
+            border: '1px solid var(--r-border)',
+            color: 'var(--r-gold-bright)',
+            padding: '7px 15px',
+            borderRadius: 9,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            letterSpacing: '0.01em',
+          }}
+        >
+          + Add Contact
+        </button>
       </div>
+
+      {/* ── Add Contact inline form ── */}
+      {showAddForm && (
+        <div style={{ marginBottom: 18, borderRadius: 14, background: 'var(--r-grad-card)', border: '1px solid var(--r-border)', boxShadow: 'var(--r-shadow)', padding: '20px 22px' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--r-text)', marginBottom: 16, fontFamily: 'var(--r-font-serif)' }}>New Contact</div>
+
+          {/* Basic fields */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div>
+              <FieldLabel>Full Name *</FieldLabel>
+              <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Jane Smith" style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <input value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="jane@example.com" type="email" style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Phone</FieldLabel>
+              <input value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="(555) 000-0000" type="tel" style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Source</FieldLabel>
+              <input value={addSource} onChange={(e) => setAddSource(e.target.value)} placeholder="Referral, Website..." style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+          </div>
+
+          <ProfileFormSection
+            role={addRole}     setRole={setAddRole}
+            buyer={addBuyer}   setBuyer={setAddBuyer}
+            seller={addSeller} setSeller={setAddSeller}
+          />
+
+          {addError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn tone="primary" onClick={handleAddContact} disabled={addSaving}>{addSaving ? 'Saving…' : 'Save Contact'}</ActionBtn>
+            <ActionBtn tone="default" onClick={resetAddForm}>Cancel</ActionBtn>
+          </div>
+        </div>
+      )}
 
       {/* ── C/D/E/F. Main split-pane ── */}
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
@@ -589,7 +765,7 @@ export default function ContactsPage() {
                 selected={selectedId === c.id}
                 onClick={() => handleSelect(c.id)}
                 onMarkHot={markContactHot}
-                onAddTask={addContactFollowUpTask}
+                onAddTask={handleAddContactTask}
               />
             ))
           )}
@@ -607,8 +783,10 @@ export default function ContactsPage() {
               onAddNote={addContactNote}
               onAssignAgent={assignContactToAgent}
               onMarkHot={markContactHot}
-              onAddTask={addContactFollowUpTask}
+              onAddTask={handleAddContactTask}
               onPushToOpportunities={pushContactToOpportunities}
+              onUpdateBuyerProfile={updateBuyerProfile}
+              onUpdateSellerProfile={updateSellerProfile}
               onClose={() => setSelectedId(null)}
             />
           ) : (

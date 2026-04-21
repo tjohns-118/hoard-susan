@@ -1,80 +1,103 @@
 'use client';
 
 import { create } from 'zustand';
-import { mockDb } from '@/data/mockDb';
+import type { AgentRecord, AlertRecord, EventRecord, MatchRecord, TemplateRecord, TemplateCategory } from '@/data/mockDb';
 import type { Contact } from '@/features/contacts/types';
 import type { Lead, LeadStatus, Opportunity, OpportunityStage } from '@/features/opportunities/types';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
 import type { Task, TaskPriority } from '@/features/tasks/types';
-import type { TemplateRecord, TemplateCategory } from '@/data/mockDb';
 
 type AppState = {
-contacts: Contact[];
-leads: Lead[];
-opportunities: Opportunity[];
-tasks: Task[];
-properties: PropertyRecord[];
-agents: typeof mockDb.agents;
-alerts: typeof mockDb.alerts;
-events: typeof mockDb.events;
-matches: typeof mockDb.matches;
-templates: typeof mockDb.templates;
+  // ── Collections (all start empty; hooks replace with real Supabase data) ──────
+  contacts:      Contact[];
+  leads:         Lead[];
+  opportunities: Opportunity[];
+  tasks:         Task[];
+  properties:    PropertyRecord[];
+  agents:        AgentRecord[];
+  alerts:        AlertRecord[];   // computed dynamically — always empty in store
+  events:        EventRecord[];   // calendar events — wired to Supabase events table
+  matches:       MatchRecord[];   // pre-computed matches — computed client-side, not stored
+  templates:     TemplateRecord[];
 
-toggleTask: (taskId: string) => void;
-updateLeadStatus: (leadId: string, status: LeadStatus) => void;
-assignLeadToAgent: (leadId: string, agentId?: string) => void;
-addLeadNote: (leadId: string, body: string) => void;
-convertLeadToContact: (leadId: string) => void;
-markContactHot: (contactId: string) => void;
-addContactNote: (contactId: string, body: string) => void;
-addContactFollowUpTask: (contactId: string) => void;
-assignContactToAgent: (contactId: string, agentId?: string) => void;
-pushContactToOpportunities: (contactId: string) => void;
-markLeadHot: (leadId: string) => void;
-addLeadFollowUpTask: (leadId: string) => void;
-moveOpportunityStage: (oppId: string, stage: OpportunityStage) => void;
-markOpportunityWon: (oppId: string) => void;
-markOpportunityLost: (oppId: string) => void;
-addOpportunityFollowUpTask: (oppId: string) => void;
-addPropertyNote: (propertyId: string, body: string) => void;
-addPropertyFollowUpTask: (propertyId: string) => void;
-updatePropertyStatus: (propertyId: string, status: PropertyStatus) => void;
-createTask: (fields: {
-  title: string;
-  priority: TaskPriority;
-  dueAt?: string;
-  contactId?: string;
-  leadId?: string;
-  opportunityId?: string;
-  propertyId?: string;
-}) => void;
-assignOpportunityToAgent: (oppId: string, agentId?: string) => void;
-setAgents: (agents: typeof mockDb.agents) => void;
-scheduleTask: (taskId: string, dueAt: string) => void;
-createOpportunityFromMatch: (params: { personId: string; personKind: 'contact' | 'lead'; propertyId: string }) => void;
-createTemplate: (fields: { name: string; category: TemplateCategory; body: string; tags: string[]; notes?: string }) => void;
-updateTemplate: (id: string, fields: { name: string; category: TemplateCategory; body: string; tags: string[]; notes?: string }) => void;
-deleteTemplate: (id: string) => void;
-duplicateTemplate: (id: string) => void;
+  // ── Role (V1: no auth — persisted to localStorage, toggled manually) ──────────
+  currentRole:    'broker' | 'agent';
+  setCurrentRole: (role: 'broker' | 'agent') => void;
+
+  // ── Setters (called by hooks after Supabase fetch) ────────────────────────────
+  setAgents:        (agents:        AgentRecord[])        => void;
+  setContacts:      (contacts:      Contact[])            => void;
+  setLeads:         (leads:         Lead[])               => void;
+  setOpportunities: (opportunities: Opportunity[])        => void;
+  setTasks:         (tasks:         Task[])               => void;
+  setProperties:    (properties:    PropertyRecord[])     => void;
+  setTemplates:     (templates:     TemplateRecord[])     => void;
+  setEvents:        (events:        EventRecord[])        => void;
+
+  // ── Zustand-only local mutations (optimistic UI / Supabase write pending) ──────
+  toggleTask:              (taskId: string) => void;
+  updateLeadStatus:        (leadId: string, status: LeadStatus) => void;
+  assignLeadToAgent:       (leadId: string, agentId?: string) => void;
+  addLeadNote:             (leadId: string, body: string) => void;
+  markContactHot:          (contactId: string) => void;
+  addContactNote:          (contactId: string, body: string) => void;
+  addContactFollowUpTask:  (contactId: string) => void;
+  assignContactToAgent:    (contactId: string, agentId?: string) => void;
+  markLeadHot:             (leadId: string) => void;
+  addLeadFollowUpTask:     (leadId: string) => void;
+  moveOpportunityStage:    (oppId: string, stage: OpportunityStage) => void;
+  markOpportunityWon:      (oppId: string) => void;
+  markOpportunityLost:     (oppId: string) => void;
+  addOpportunityFollowUpTask: (oppId: string) => void;
+  addPropertyNote:         (propertyId: string, body: string) => void;
+  addPropertyFollowUpTask: (propertyId: string) => void;
+  updatePropertyStatus:    (propertyId: string, status: PropertyStatus) => void;
+  createTask: (fields: {
+    title: string;
+    priority: TaskPriority;
+    dueAt?: string;
+    contactId?: string;
+    leadId?: string;
+    opportunityId?: string;
+    propertyId?: string;
+  }) => void;
+  assignOpportunityToAgent: (oppId: string, agentId?: string) => void;
+  scheduleTask:  (taskId: string, dueAt: string) => void;
+
+  // ── Template mutations (delegated to useTemplates hook; kept for compat) ──────
+  createTemplate:    (fields: { name: string; category: TemplateCategory; body: string; tags: string[]; notes?: string }) => void;
+  updateTemplate:    (id: string, fields: { name: string; category: TemplateCategory; body: string; tags: string[]; notes?: string }) => void;
+  deleteTemplate:    (id: string) => void;
+  duplicateTemplate: (id: string) => void;
 };
 
 const nowIso = () => new Date().toISOString();
-const REF_DATE = new Date('2026-04-07T12:00:00.000Z');
 
 const makeId = (prefix: string) =>
 `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export const useAppStore = create<AppState>((set) => ({
-contacts: mockDb.contacts,
-leads: mockDb.leads,
-opportunities: mockDb.opportunities,
-tasks: mockDb.tasks,
-properties: mockDb.properties,
-agents: mockDb.agents,
-alerts: mockDb.alerts,
-events: mockDb.events,
-matches: mockDb.matches,
-templates: mockDb.templates,
+// All collections start empty. Supabase hooks replace these on every mount.
+// No mock data survives after hydration.
+contacts:      [],
+leads:         [],
+opportunities: [],
+tasks:         [],
+properties:    [],
+agents:        [],
+alerts:        [],    // computed dynamically from real data in each component
+events:        [],    // populated by a future useEvents hook
+matches:       [],    // computed client-side by the matches page, not stored
+
+templates:     [],
+
+currentRole: (typeof window !== 'undefined'
+  ? (localStorage.getItem('hoard-role') as 'broker' | 'agent') ?? 'broker'
+  : 'broker') as 'broker' | 'agent',
+setCurrentRole: (role) => {
+  try { if (typeof window !== 'undefined') localStorage.setItem('hoard-role', role); } catch (_) {}
+  set({ currentRole: role });
+},
 
 toggleTask: (taskId) =>
 set((state) => ({
@@ -134,46 +157,9 @@ updatedAt: nowIso(),
 ),
 })),
 
-convertLeadToContact: (leadId) =>
-set((state) => {
-const lead = state.leads.find((item) => item.id === leadId);
-if (!lead) return state;
-
-const convertedContact: Contact = {
-id: makeId('contact'),
-fullName: lead.fullName,
-email: lead.email,
-phone: lead.phone,
-status: 'active',
-source: lead.source,
-assignedAgentId: lead.assignedAgentId,
-linkedPropertyIds: lead.linkedPropertyIds,
-notes: lead.notes.map((note) => ({
-id: makeId('cnote'),
-body: note.body,
-createdAt: note.createdAt,
-})),
-tags: [...lead.tags, 'converted'],
-lastActivityAt: nowIso(),
-createdAt: nowIso(),
-updatedAt: nowIso(),
-};
-
-const conversionTask: Task = {
-id: makeId('task'),
-title: `Follow up with ${lead.fullName}`,
-completed: false,
-priority: 'high',
-contactId: convertedContact.id,
-createdAt: nowIso(),
-};
-
-return {
-contacts: [convertedContact, ...state.contacts],
-leads: state.leads.filter((item) => item.id !== leadId),
-tasks: [conversionTask, ...state.tasks],
-};
-}),
+// convertLeadToContact removed — conversion is now handled server-side via
+// PATCH /api/leads { action: 'convert' }. The leads page calls the API then
+// reloads both leads and contacts via their respective hooks.
 
 markContactHot: (contactId) =>
 set((state) => ({
@@ -231,41 +217,8 @@ c.id === contactId
 ),
 })),
 
-pushContactToOpportunities: (contactId) =>
-set((state) => {
-const c = state.contacts.find((x) => x.id === contactId);
-if (!c) return state;
-const alreadyExists = state.opportunities.some(
-(o) => o.contactName.toLowerCase() === c.fullName.toLowerCase()
-);
-if (alreadyExists) return state;
-const firstProp = state.properties.find((p) =>
-c.linkedPropertyIds.includes(p.id)
-);
-const closeDate = new Date(REF_DATE.getTime() + 30 * 86_400_000)
-.toISOString()
-.slice(0, 10);
-const newOpp = {
-id: makeId('opp'),
-contactName: c.fullName,
-propertyAddress: firstProp?.address,
-propertyId: firstProp?.id,
-assignedAgentId: c.assignedAgentId,
-stage: 'prospect' as const,
-value: 0,
-probability: 15,
-expectedCloseDate: closeDate,
-priority: 'medium' as const,
-nextStep: 'Initial qualification — review profile and schedule intro call.',
-notes:
-c.notes.length > 0
-? [c.notes[c.notes.length - 1].body]
-: [],
-createdAt: nowIso(),
-updatedAt: nowIso(),
-};
-return { opportunities: [newOpp, ...state.opportunities] };
-}),
+// pushContactToOpportunities removed — the contacts page now calls
+// useOpportunities().createOpportunity() directly so the deal is persisted to Supabase.
 
 markLeadHot: (leadId) =>
 set((state) => ({
@@ -308,7 +261,7 @@ markOpportunityWon: (oppId) =>
 set((state) => ({
 opportunities: state.opportunities.map((o) =>
 o.id === oppId
-? { ...o, stage: 'won' as const, probability: 100, updatedAt: nowIso() }
+? { ...o, stage: 'closed' as const, probability: 100, updatedAt: nowIso() }
 : o
 ),
 })),
@@ -387,7 +340,14 @@ o.id === oppId ? { ...o, assignedAgentId: agentId, updatedAt: nowIso() } : o
 ),
 })),
 
-setAgents: (agents) => set({ agents }),
+setAgents:        (agents)        => set({ agents }),
+setContacts:      (contacts)      => set({ contacts }),
+setLeads:         (leads)         => set({ leads }),
+setOpportunities: (opportunities) => set({ opportunities }),
+setTasks:         (tasks)         => set({ tasks }),
+setProperties:    (properties)    => set({ properties }),
+setTemplates:     (templates)     => set({ templates }),
+setEvents:        (events)        => set({ events }),
 
 scheduleTask: (taskId, dueAt) =>
 set((state) => ({
@@ -450,38 +410,6 @@ createdAt: nowIso(),
 return { tasks: [task, ...state.tasks] };
 }),
 
-createOpportunityFromMatch: ({ personId, personKind, propertyId }) =>
-set((state) => {
-  const person = personKind === 'contact'
-    ? state.contacts.find((c) => c.id === personId)
-    : state.leads.find((l) => l.id === personId);
-  if (!person) return state;
-  const property = state.properties.find((p) => p.id === propertyId);
-  if (!property) return state;
-
-  const alreadyExists = state.opportunities.some(
-    (o) => o.propertyId === propertyId &&
-      o.contactName.toLowerCase() === person.fullName.toLowerCase()
-  );
-  if (alreadyExists) return state;
-
-  const closeDate = new Date(REF_DATE.getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
-  const newOpp = {
-    id: makeId('opp'),
-    contactName: person.fullName,
-    propertyAddress: property.address,
-    propertyId,
-    assignedAgentId: person.assignedAgentId,
-    stage: 'prospect' as const,
-    value: property.price,
-    probability: 20,
-    expectedCloseDate: closeDate,
-    priority: person.tags.includes('hot') ? 'high' as const : 'medium' as const,
-    nextStep: 'Review match profile and schedule initial discovery call.',
-    notes: [`Created from match engine — ${person.fullName} × ${property.address}.`],
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-  return { opportunities: [newOpp, ...state.opportunities] };
-}),
+// createOpportunityFromMatch removed — matches page now calls
+// useOpportunities().createOpportunity() directly so deals are persisted to Supabase.
 }));

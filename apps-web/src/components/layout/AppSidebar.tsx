@@ -2,8 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAppStore } from '@/app/store/useAppStore';
+import { useAgents } from '@/hooks/useAgents';
+import { useCallback } from 'react';
 
 const NAV_GROUPS = [
+  {
+    label: 'Dashboard',
+    items: [
+      { href: '/', label: 'Dashboard' },
+    ],
+  },
   {
     label: 'CRM',
     items: [
@@ -39,7 +48,16 @@ const NAV_GROUPS = [
 ];
 
 export function AppSidebar() {
-  const pathname = usePathname();
+  const pathname       = usePathname();
+  useAgents(); // hydrates store on every page
+  const agents         = useAppStore((s) => s.agents);
+  const currentRole    = useAppStore((s) => s.currentRole);
+  const setCurrentRole = useAppStore((s) => s.setCurrentRole);
+  const broker         = agents.find((a) => a.role === 'broker') ?? agents[0];
+
+  const toggleRole = useCallback(() => {
+    setCurrentRole(currentRole === 'broker' ? 'agent' : 'broker');
+  }, [currentRole, setCurrentRole]);
 
   return (
     <aside
@@ -153,7 +171,7 @@ export function AppSidebar() {
         ))}
       </nav>
 
-      {/* ── Agent footer ── */}
+      {/* ── Role footer ── */}
       <div
         style={{
           flexShrink: 0,
@@ -163,25 +181,28 @@ export function AppSidebar() {
           paddingLeft: 4,
         }}
       >
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: 'var(--r-text-2)',
-            marginBottom: 2,
-          }}
-        >
-          Susan Yoder
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text-2)', marginBottom: 2 }}>
+          {broker?.name ?? '—'}
         </div>
-        <div
-          style={{
-            fontSize: 10,
-            color: 'var(--r-text-3)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-          }}
-        >
-          Broker · Ranch Properties
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
+            color: currentRole === 'broker' ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+          }}>
+            {currentRole === 'broker' ? 'Broker View' : 'Agent View'}
+          </span>
+          <button
+            onClick={toggleRole}
+            title={`Switch to ${currentRole === 'broker' ? 'agent' : 'broker'} view`}
+            style={{
+              padding: '2px 8px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+              border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
+              color: 'var(--r-text-3)', cursor: 'pointer', letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Switch
+          </button>
         </div>
       </div>
     </aside>

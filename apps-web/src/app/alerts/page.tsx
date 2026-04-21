@@ -1,19 +1,19 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
-
-const REF = new Date('2026-04-07T12:00:00.000Z');
-const REF_TODAY = '2026-04-07';
+import { getStageDefinition } from '@/features/pipeline/definitions';
 
 function daysAgo(iso: string): number {
-  return Math.round((REF.getTime() - new Date(iso).getTime()) / 86_400_000);
+  return Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
 
 function daysUntil(dateStr: string): number {
-  return Math.round((new Date(`${dateStr}T12:00:00.000Z`).getTime() - REF.getTime()) / 86_400_000);
+  return Math.round((new Date(`${dateStr}T12:00:00.000Z`).getTime() - Date.now()) / 86_400_000);
 }
 
 type AlertSeverity = 'critical' | 'warning' | 'opportunity' | 'info';
@@ -58,6 +58,8 @@ export default function AlertsPage() {
   // ── Build computed alerts from live store state ─────────────────
   const allAlerts = useMemo((): ComputedAlert[] => {
     const list: ComputedAlert[] = [];
+    const NOW      = Date.now();
+    const REF_TODAY = new Date().toISOString().slice(0, 10);
 
     // CRITICAL — hot lead with no agent
     leads.filter((l) => !l.assignedAgentId && l.tags.includes('hot')).forEach((l) => {
@@ -74,18 +76,83 @@ export default function AlertsPage() {
       });
     });
 
-    // CRITICAL — negotiation deals closing ≤ 4 days
+    // CRITICAL — deals under contract (broker notification required)
     opportunities
-      .filter((o) => o.stage === 'negotiation' && o.expectedCloseDate)
+      .filter((o) => o.stage === 'under_contract')
+      .forEach((o) => {
+        const stageDef = getStageDefinition('under_contract', o.pipelineType);
+        const daysInStage = o.stageUpdatedAt
+          ? Math.round((NOW - new Date(o.stageUpdatedAt).getTime()) / 86_400_000) : 0;
+        list.push({
+          id: `under-contract-${o.id}`,
+          severity: 'critical',
+          category: 'Contract',
+          title: `Deal under contract — ${o.contactName}`,
+          body: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''} is under contract (${o.pipelineType} pipeline). ${stageDef?.owner === 'broker' ? 'Broker action required.' : ''} ${daysInStage > 0 ? `${daysInStage}d in this stage.` : 'Just entered.'}`,
+          entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+          timing: daysInStage > 0 ? `${daysInStage}d in stage` : 'Just entered',
+          agentId: o.assignedAgentId,
+          primaryLabel: 'View Pipeline',
+          primaryHref: '/opportunities',
+        });
+      });
+
+    // CRITICAL — offer received on seller deal (time-sensitive)
+    opportunities
+      .filter((o) => o.stage === 'offer_received')
+      .forEach((o) => {
+        const daysInStage = o.stageUpdatedAt
+          ? Math.round((NOW - new Date(o.stageUpdatedAt).getTime()) / 86_400_000) : 0;
+        list.push({
+          id: `offer-received-${o.id}`,
+          severity: 'critical',
+          category: 'Offer',
+          title: `Offer received — present to seller — ${o.contactName}`,
+          body: `An offer has been received on ${o.propertyAddress ?? 'this listing'}. Seller must be notified within 24 hours. ${daysInStage > 0 ? `${daysInStage}d since offer received.` : 'Just received.'}`,
+          entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+          timing: daysInStage > 0 ? `${daysInStage}d waiting` : 'Act now',
+          agentId: o.assignedAgentId,
+          primaryLabel: 'View Pipeline',
+          primaryHref: '/opportunities',
+        });
+      });
+
+    // CRITICAL — clear_to_close not yet closed (time-sensitive)
+    opportunities
+      .filter((o) => o.stage === 'clear_to_close')
+      .forEach((o) => {
+        const daysInStage = o.stageUpdatedAt
+          ? Math.round((NOW - new Date(o.stageUpdatedAt).getTime()) / 86_400_000) : 0;
+        list.push({
+          id: `ctc-${o.id}`,
+          severity: daysInStage > 3 ? 'critical' : 'warning',
+          category: 'Closing',
+          title: `Clear to close — schedule closing — ${o.contactName}`,
+          body: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''} is clear to close. Closing must be scheduled immediately. ${daysInStage > 3 ? `Already ${daysInStage}d in this stage — at risk of delay.` : ''}`,
+          entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+          timing: daysInStage > 0 ? `${daysInStage}d since CTC` : 'Just cleared',
+          agentId: o.assignedAgentId,
+          primaryLabel: 'View Pipeline',
+          primaryHref: '/opportunities',
+        });
+      });
+
+    // CRITICAL — closing deadline ≤ 4 days on contract-stage deals
+    opportunities
+      .filter((o) => {
+        const contractStages = ['under_contract','inspections','repair_negotiation','appraisal','clear_to_close'];
+        return contractStages.includes(o.stage) && o.expectedCloseDate;
+      })
       .filter((o) => { const d = daysUntil(o.expectedCloseDate!); return d >= 0 && d <= 4; })
       .forEach((o) => {
         const d = daysUntil(o.expectedCloseDate!);
+        const stageDef = getStageDefinition(o.stage, o.pipelineType);
         list.push({
-          id: `neg-closing-${o.id}`,
+          id: `closing-deadline-${o.id}`,
           severity: 'critical',
           category: 'Deal Deadline',
-          title: `Negotiation closing in ${d} day${d !== 1 ? 's' : ''} — ${o.contactName}`,
-          body: `${o.propertyAddress ?? 'This deal'} is in final negotiation. Target close ${o.expectedCloseDate}. Next step: ${o.nextStep ?? 'review and act'}`,
+          title: `Closing deadline in ${d} day${d !== 1 ? 's' : ''} — ${o.contactName}`,
+          body: `${o.propertyAddress ?? 'This deal'} is at ${stageDef?.label ?? o.stage} with close date ${o.expectedCloseDate}. Next step: ${o.nextStep ?? 'review and act immediately'}`,
           entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
           timing: `${d}d remaining`,
           agentId: o.assignedAgentId,
@@ -98,7 +165,7 @@ export default function AlertsPage() {
     tasks
       .filter((t) => !t.completed && t.priority === 'high' && t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY)
       .forEach((t) => {
-        const d = Math.round((REF.getTime() - new Date(t.dueAt!).getTime()) / 86_400_000);
+        const d = Math.round((NOW - new Date(t.dueAt!).getTime()) / 86_400_000);
         // Resolve owning agent via entity
         let agentId: string | undefined;
         if (t.leadId)        agentId = leads.find((l) => l.id === t.leadId)?.assignedAgentId;
@@ -133,24 +200,76 @@ export default function AlertsPage() {
       });
     });
 
-    // WARNING — proposal deadline approaching (5–10 days)
+    // WARNING — unsigned blocking documents (agreement sent but not signed after 48h)
     opportunities
-      .filter((o) => o.stage === 'proposal' && o.expectedCloseDate)
-      .filter((o) => { const d = daysUntil(o.expectedCloseDate!); return d > 0 && d <= 10; })
+      .filter((o) => !['closed','post_close_followup','lost'].includes(o.stage))
       .forEach((o) => {
-        const d = daysUntil(o.expectedCloseDate!);
-        list.push({
-          id: `proposal-deadline-${o.id}`,
-          severity: 'warning',
-          category: 'Deal Deadline',
-          title: `Proposal deadline in ${d}d — ${o.contactName}`,
-          body: `${o.propertyAddress ?? 'Property'} proposal must be finalized. Next: ${o.nextStep ?? 'review and send'}`,
-          entity: o.contactName,
-          timing: `${d} days to target close`,
-          agentId: o.assignedAgentId,
-          primaryLabel: 'View Pipeline',
-          primaryHref: '/opportunities',
+        const blockingUnsigned = (o.documents ?? []).filter(
+          (d) => d.blockingNextStage && d.status !== 'signed' && d.requiredForStage === o.stage
+        );
+        blockingUnsigned.forEach((doc) => {
+          const sentAgo = doc.sentAt
+            ? Math.round((NOW - new Date(doc.sentAt).getTime()) / 86_400_000) : null;
+          if (sentAgo !== null && sentAgo >= 2) {
+            list.push({
+              id: `unsigned-doc-${o.id}-${doc.key}`,
+              severity: 'warning',
+              category: 'Document',
+              title: `Unsigned document blocking deal — ${o.contactName}`,
+              body: `"${doc.label}" was sent ${sentAgo}d ago and is unsigned. This document is required to advance past the ${getStageDefinition(o.stage, o.pipelineType)?.label ?? o.stage} stage.`,
+              entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+              timing: `Sent ${sentAgo}d ago`,
+              agentId: o.assignedAgentId,
+              primaryLabel: 'View Pipeline',
+              primaryHref: '/opportunities',
+            });
+          }
         });
+      });
+
+    // WARNING — agreement sent but not signed for 24+ hours (buyer or seller)
+    opportunities
+      .filter((o) => o.stage === 'buyer_agreement_sent' || o.stage === 'listing_agreement_sent')
+      .forEach((o) => {
+        const daysInStage = o.stageUpdatedAt
+          ? Math.round((NOW - new Date(o.stageUpdatedAt).getTime()) / 86_400_000) : 0;
+        if (daysInStage >= 1) {
+          const isBuyer = o.stage === 'buyer_agreement_sent';
+          list.push({
+            id: `agreement-pending-${o.id}`,
+            severity: 'warning',
+            category: 'Agreement',
+            title: `${isBuyer ? 'Buyer' : 'Listing'} agreement not signed — ${o.contactName}`,
+            body: `${isBuyer ? 'Buyer agreement' : 'Listing agreement'} was sent ${daysInStage}d ago and has not been signed. Follow up is overdue.`,
+            entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+            timing: `${daysInStage}d waiting`,
+            agentId: o.assignedAgentId,
+            primaryLabel: 'View Pipeline',
+            primaryHref: '/opportunities',
+          });
+        }
+      });
+
+    // WARNING — appraisal stage with no movement for 7+ days
+    opportunities
+      .filter((o) => o.stage === 'appraisal')
+      .forEach((o) => {
+        const daysInStage = o.stageUpdatedAt
+          ? Math.round((NOW - new Date(o.stageUpdatedAt).getTime()) / 86_400_000) : 0;
+        if (daysInStage >= 7) {
+          list.push({
+            id: `appraisal-stale-${o.id}`,
+            severity: 'warning',
+            category: 'Appraisal',
+            title: `Appraisal overdue — ${o.contactName}`,
+            body: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''} has been in appraisal for ${daysInStage} days. Follow up with lender on appraisal status.`,
+            entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
+            timing: `${daysInStage}d at appraisal`,
+            agentId: o.assignedAgentId,
+            primaryLabel: 'View Pipeline',
+            primaryHref: '/opportunities',
+          });
+        }
       });
 
     // WARNING — hot leads stale ≥ 7 days (assigned)
@@ -171,18 +290,24 @@ export default function AlertsPage() {
         });
       });
 
-    // WARNING — stalled active opportunities ≥ 8 days no update
+    // WARNING — stalled active opportunities ≥ 8 days no stage movement
     opportunities
-      .filter((o) => !['won', 'lost'].includes(o.stage) && daysAgo(o.updatedAt) >= 8)
+      .filter((o) => !['closed', 'post_close_followup', 'lost'].includes(o.stage))
+      .filter((o) => {
+        const stageAge = o.stageUpdatedAt ? daysAgo(o.stageUpdatedAt) : daysAgo(o.updatedAt);
+        return stageAge >= 8;
+      })
       .forEach((o) => {
+        const stageAge = o.stageUpdatedAt ? daysAgo(o.stageUpdatedAt) : daysAgo(o.updatedAt);
+        const stageDef = getStageDefinition(o.stage, o.pipelineType);
         list.push({
           id: `stalled-opp-${o.id}`,
           severity: 'warning',
           category: 'Deal Stalled',
-          title: `Deal stalled — ${o.contactName}`,
-          body: `This ${o.stage} deal (${o.propertyAddress ?? 'no property'}) has had no activity for ${daysAgo(o.updatedAt)} days. Deals that stall at ${o.stage} have a 40% higher drop rate.`,
+          title: `Deal stalled at ${stageDef?.label ?? o.stage} — ${o.contactName}`,
+          body: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''} has had no stage movement for ${stageAge} days at ${stageDef?.label ?? o.stage}. Deals that stall here have a higher drop rate.`,
           entity: `${o.contactName}${o.propertyAddress ? ` / ${o.propertyAddress}` : ''}`,
-          timing: `${daysAgo(o.updatedAt)}d no movement`,
+          timing: `${stageAge}d no movement`,
           agentId: o.assignedAgentId,
           primaryLabel: 'View Pipeline',
           primaryHref: '/opportunities',
@@ -193,7 +318,7 @@ export default function AlertsPage() {
     tasks
       .filter((t) => !t.completed && t.priority === 'medium' && t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY)
       .forEach((t) => {
-        const d = Math.round((REF.getTime() - new Date(t.dueAt!).getTime()) / 86_400_000);
+        const d = Math.round((NOW - new Date(t.dueAt!).getTime()) / 86_400_000);
         let agentId: string | undefined;
         if (t.leadId)        agentId = leads.find((l) => l.id === t.leadId)?.assignedAgentId;
         if (t.contactId)     agentId = contacts.find((c) => c.id === t.contactId)?.assignedAgentId;
@@ -215,9 +340,9 @@ export default function AlertsPage() {
     // WARNING — agent workload imbalance
     const agentWorkload = agents.map((a) => {
       const aLeads   = leads.filter((l) => l.assignedAgentId === a.id);
-      const aOpps    = opportunities.filter((o) => o.assignedAgentId === a.id && !['won', 'lost'].includes(o.stage));
+      const aOpps    = opportunities.filter((o) => o.assignedAgentId === a.id && !['closed', 'post_close_followup', 'lost'].includes(o.stage));
       const aHot     = aLeads.filter((l) => l.tags.includes('hot'));
-      const aNeg     = aOpps.filter((o) => o.stage === 'negotiation');
+      const aNeg     = aOpps.filter((o) => ['negotiating','repair_negotiation','offer_received','offer_submitted'].includes(o.stage));
       const aTasks   = tasks.filter((t) => {
         if (t.completed) return false;
         if (t.leadId)        return leads.find((l) => l.id === t.leadId)?.assignedAgentId === a.id;
@@ -286,7 +411,7 @@ export default function AlertsPage() {
     contacts
       .filter((c) => {
         const inPipeline = opportunities.some(
-          (o) => o.contactName.toLowerCase() === c.fullName.toLowerCase() && !['won', 'lost'].includes(o.stage)
+          (o) => o.contactName.toLowerCase() === c.fullName.toLowerCase() && !['closed', 'post_close_followup', 'lost'].includes(o.stage)
         );
         return c.tags.includes('hot') && !inPipeline;
       })
@@ -357,16 +482,16 @@ export default function AlertsPage() {
         });
       });
 
-    // INFO — recently won deals (celebrate + prospect next move)
+    // INFO — recently closed deals (celebrate + referral ask)
     opportunities
-      .filter((o) => o.stage === 'won' && daysAgo(o.updatedAt) <= 21)
+      .filter((o) => (o.stage === 'closed' || o.stage === 'post_close_followup') && daysAgo(o.updatedAt) <= 21)
       .forEach((o) => {
         list.push({
-          id: `won-${o.id}`,
+          id: `closed-${o.id}`,
           severity: 'info',
-          category: 'Deal Won',
+          category: 'Deal Closed',
           title: `Closed deal — ${o.contactName}`,
-          body: `${o.propertyAddress ?? 'Deal'} closed successfully ${daysAgo(o.updatedAt)}d ago. Request a testimonial and check the buyer's network for referral pipeline.`,
+          body: `${o.propertyAddress ?? 'Deal'} closed successfully ${daysAgo(o.updatedAt)}d ago. Request a testimonial and check client's network for referral pipeline.`,
           entity: o.contactName,
           timing: `${daysAgo(o.updatedAt)}d ago`,
           agentId: o.assignedAgentId,
@@ -413,7 +538,7 @@ export default function AlertsPage() {
           Intelligence Center
         </h1>
         <p style={{ margin: '6px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
-          Live risk signals, deal urgency, and operational intelligence — April 7, 2026.
+          Live risk signals, deal urgency, and operational intelligence.
         </p>
       </div>
 
@@ -429,7 +554,7 @@ export default function AlertsPage() {
       <div style={{ marginBottom: 22, borderRadius: 16, border: '1px solid rgba(96,165,250,0.2)', background: 'linear-gradient(135deg,rgba(59,130,246,0.06),rgba(99,102,241,0.04))', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#60a5fa' }}>
-            System Intelligence · April 7
+            System Intelligence
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
@@ -661,6 +786,137 @@ export default function AlertsPage() {
           })}
         </div>
       )}
+      {/* ── AI Guidance section — clearly labeled as V1 rules-based ── */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--r-gold)' }}>
+            Broker Guidance
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase',
+            letterSpacing: '0.07em', padding: '2px 7px', borderRadius: 4,
+            border: '1px solid var(--r-border)', background: 'rgba(255,255,255,0.02)',
+          }}>
+            Rules-based · V1 · Not AI
+          </span>
+        </div>
+        <div style={{ borderRadius: 14, border: '1px solid rgba(200,164,92,0.15)', background: 'linear-gradient(135deg,rgba(200,164,92,0.04),rgba(255,255,255,0.01))', overflow: 'hidden' }}>
+          {buildGuidanceBullets({ leads, contacts, opportunities, tasks }).map((item, i, arr) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+                padding: '14px 20px',
+                borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+              }}
+            >
+              <span style={{ fontSize: 14, color: item.accent, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 3 }}>{item.title}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>{item.body}</div>
+              </div>
+              {item.href && (
+                <a
+                  href={item.href}
+                  style={{
+                    marginLeft: 'auto', flexShrink: 0, fontSize: 12, fontWeight: 700,
+                    color: item.accent, textDecoration: 'none', padding: '5px 13px',
+                    borderRadius: 7, border: `1px solid ${item.accent}44`,
+                    background: `${item.accent}0f`,
+                    alignSelf: 'center',
+                  }}
+                >
+                  {item.action} →
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>
+          Guidance generated from live brokerage data using deterministic rules. AI-powered recommendations will replace this panel in a future release.
+        </div>
+      </div>
     </AppShell>
   );
+}
+
+// ── Deterministic guidance builder ────────────────────────────────────────────
+
+function buildGuidanceBullets({
+  leads, contacts, opportunities, tasks,
+}: {
+  leads:         { id: string; fullName: string; tags: string[]; assignedAgentId?: string; status: string; updatedAt: string }[];
+  contacts:      { id: string; fullName: string; tags: string[]; status: string; lastActivityAt: string }[];
+  opportunities: { id: string; contactName: string; stage: string; expectedCloseDate: string; updatedAt: string; stageUpdatedAt?: string; probability: number }[];
+  tasks:         { id: string; title: string; priority: string; dueAt?: string; completed: boolean }[];
+}): { icon: string; title: string; body: string; accent: string; href?: string; action?: string }[] {
+  const NOW = Date.now();
+  const TODAY = new Date().toISOString().slice(0, 10);
+  const bullets: ReturnType<typeof buildGuidanceBullets> = [];
+
+  const hotUnassigned = leads.filter((l) => l.tags.includes('hot') && !l.assignedAgentId);
+  if (hotUnassigned.length > 0)
+    bullets.push({
+      icon: '🔥', accent: '#fbbf24',
+      title: `Assign ${hotUnassigned.length} hot lead${hotUnassigned.length > 1 ? 's' : ''} immediately`,
+      body: `Hot leads without an owner go cold within 24–48 hours. Assign ${hotUnassigned.map((l) => l.fullName).join(', ')} now.`,
+      href: '/leads', action: 'View Leads',
+    });
+
+  const closingThisWeek = opportunities.filter((o) => {
+    if (['closed','post_close_followup','lost'].includes(o.stage)) return false;
+    const d = Math.ceil((new Date(o.expectedCloseDate).getTime() - NOW) / 86_400_000);
+    return d >= 0 && d <= 7;
+  });
+  if (closingThisWeek.length > 0)
+    bullets.push({
+      icon: '📅', accent: '#4ade80',
+      title: `${closingThisWeek.length} deal${closingThisWeek.length > 1 ? 's' : ''} closing this week`,
+      body: `Confirm lender clearance, document signing, and title company readiness for: ${closingThisWeek.map((o) => o.contactName).join(', ')}.`,
+      href: '/opportunities', action: 'View Pipeline',
+    });
+
+  const stalled = opportunities.filter((o) => {
+    if (['closed','post_close_followup','lost'].includes(o.stage)) return false;
+    const age = Math.round((NOW - new Date(o.stageUpdatedAt ?? o.updatedAt).getTime()) / 86_400_000);
+    return age >= 10;
+  });
+  if (stalled.length > 0)
+    bullets.push({
+      icon: '⚠', accent: '#f87171',
+      title: `${stalled.length} stalled deal${stalled.length > 1 ? 's' : ''} need movement`,
+      body: `Deals that stall for 10+ days have a significantly higher drop rate. Check in with agents on: ${stalled.map((o) => o.contactName).slice(0, 3).join(', ')}${stalled.length > 3 ? ' + more' : ''}.`,
+      href: '/opportunities', action: 'View Pipeline',
+    });
+
+  const overdueHigh = tasks.filter((t) => !t.completed && t.priority === 'high' && t.dueAt && t.dueAt.slice(0, 10) < TODAY);
+  if (overdueHigh.length > 0)
+    bullets.push({
+      icon: '⚡', accent: '#fca5a5',
+      title: `Clear ${overdueHigh.length} overdue high-priority task${overdueHigh.length > 1 ? 's' : ''}`,
+      body: `High-priority tasks more than 1 day overdue suggest blocked action items. Verify these are progressing or reassign.`,
+      href: '/tasks', action: 'View Tasks',
+    });
+
+  const reactivate = contacts.filter((c) => {
+    if (c.status !== 'active') return false;
+    const d = Math.round((NOW - new Date(c.lastActivityAt).getTime()) / 86_400_000);
+    return d >= 14;
+  });
+  if (reactivate.length > 0)
+    bullets.push({
+      icon: '↩', accent: '#7ca4cc',
+      title: `Re-engage ${reactivate.length} inactive contact${reactivate.length > 1 ? 's' : ''}`,
+      body: `Active contacts with 14+ days of silence risk disengaging. A short check-in or template message keeps the relationship warm.`,
+      href: '/contacts', action: 'View Contacts',
+    });
+
+  if (bullets.length === 0)
+    bullets.push({
+      icon: '✓', accent: '#4ade80',
+      title: 'Brokerage is operating cleanly',
+      body: 'No critical gaps detected in today\'s snapshot. Good time for lead development, template outreach, or pipeline review.',
+    });
+
+  return bullets;
 }

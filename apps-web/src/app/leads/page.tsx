@@ -1,12 +1,21 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
-import type { Lead, LeadStatus } from '@/features/opportunities/types';
+import { useLeads } from '@/hooks/useLeads';
+import { useTasks } from '@/hooks/useTasks';
+import type { Lead, LeadStatus, ContactRole, BuyerProfile, SellerProfile } from '@/features/opportunities/types';
+import {
+  EMPTY_BUYER, EMPTY_SELLER,
+  RoleBadge, ProfileSummary, ProfilePanel, ProfileFormSection,
+  FieldLabel, inputStyle, selectStyle,
+} from '@/components/crm/ProfileUi';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +141,8 @@ function LeadCard({
   onMarkHot,
   onAddTask,
   onUpdateStatus,
+  onUpdateBuyerProfile,
+  onUpdateSellerProfile,
 }: {
   lead: Lead;
   agents: { id: string; name: string; email: string }[];
@@ -141,12 +152,15 @@ function LeadCard({
   onMarkHot: (id: string) => void;
   onAddTask: (id: string) => void;
   onUpdateStatus: (id: string, status: LeadStatus) => void;
+  onUpdateBuyerProfile:  (id: string, p: BuyerProfile  | null, role: ContactRole) => Promise<void>;
+  onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
 }) {
   const isHot = lead.tags.includes('hot');
   const meta = STATUS_META[lead.status];
   const latestNote = lead.notes.at(-1);
   const linkedProps = properties.filter((p) => lead.linkedPropertyIds.includes(p.id));
   const nextAction = NEXT_ACTION[lead.status];
+  const [showProfile, setShowProfile] = useState(false);
 
   const timeAgo = (() => {
     const ms = Date.now() - new Date(lead.updatedAt).getTime();
@@ -232,16 +246,15 @@ function LeadCard({
                 {lead.source}
               </span>
             )}
-            {lead.tags
-              .filter((t) => t !== 'hot')
-              .map((tag) => (
-                <TagChip key={tag}>{tag}</TagChip>
-              ))}
+            <RoleBadge role={lead.role} />
           </div>
           <span style={{ fontSize: 11, color: 'var(--r-text-3)', whiteSpace: 'nowrap', paddingTop: 3 }}>
             {timeAgo}
           </span>
         </div>
+
+        {/* Row 1.5: Profile summary (compact) */}
+        <ProfileSummary subject={lead} />
 
         {/* Row 2: Contact info + agent + property */}
         <div
@@ -419,7 +432,22 @@ function LeadCard({
           >
             Archive
           </ActionBtn>
+
+          <ActionBtn tone="default" onClick={() => setShowProfile((v) => !v)}>
+            {showProfile ? 'Close Profile' : 'Profile'}
+          </ActionBtn>
         </div>
+
+        {/* Row 5: Expandable profile panel */}
+        {showProfile && (
+          <div style={{ borderTop: '1px solid var(--r-border)', paddingTop: 12 }}>
+            <ProfilePanel
+              subject={lead}
+              onUpdateBuyerProfile={onUpdateBuyerProfile}
+              onUpdateSellerProfile={onUpdateSellerProfile}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -428,17 +456,90 @@ function LeadCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function LeadsPage() {
-  const leads = useAppStore((s) => s.leads);
+  // Hydrate leads from Supabase on mount (contacts with stage='lead').
+  const {
+    leads, createLead, updateBuyerProfile, updateSellerProfile, convertLead,
+    reload: reloadLeads, assignLeadToAgent, markLeadHot, updateLeadStatus,
+  } = useLeads();
+  const { createTask } = useTasks();
+
   const agents = useAppStore((s) => s.agents);
   const properties = useAppStore((s) => s.properties);
-  const convertLeadToContact = useAppStore((s) => s.convertLeadToContact);
-  const assignLeadToAgent = useAppStore((s) => s.assignLeadToAgent);
-  const markLeadHot = useAppStore((s) => s.markLeadHot);
-  const addLeadFollowUpTask = useAppStore((s) => s.addLeadFollowUpTask);
-  const updateLeadStatus = useAppStore((s) => s.updateLeadStatus);
+  const setContacts = useAppStore((s) => s.setContacts);
+
+  // Convert lead → active contact via Supabase (stage change in-place).
+  // After conversion, reload leads and re-fetch contacts so both lists reflect reality.
+  async function handleConvertLead(leadId: string) {
+    try {
+      await convertLead(leadId);
+      // Reload contacts so the converted contact appears on the /contacts page.
+      const res = await fetch('/api/contacts', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setContacts(data);
+      }
+    } catch (err) {
+      console.error('[handleConvertLead]', err);
+    }
+  }
+
+  async function handleAddTask(leadId: string) {
+    const lead = leads.find((l) => l.id === leadId);
+    if (!lead) return;
+    try {
+      await createTask({
+        title:    `Follow up with ${lead.fullName}`,
+        priority: lead.tags.includes('hot') ? 'high' : 'medium',
+        leadId,
+      });
+    } catch (err) {
+      console.error('[handleAddTask]', err);
+    }
+  }
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterTab>('all');
+
+  // ── Add Lead form state ────────────────────────────────────────────────────
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addSource, setAddSource] = useState('');
+  const [addRole, setAddRole] = useState<ContactRole>('buyer');
+  const [addBuyer, setAddBuyer] = useState<BuyerProfile>(EMPTY_BUYER);
+  const [addSeller, setAddSeller] = useState<SellerProfile>(EMPTY_SELLER);
+  const [addError, setAddError] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
+
+  function resetAddForm() {
+    setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
+    setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
+    setAddError('');
+  }
+
+  async function handleAddLead() {
+    if (!addName.trim()) { setAddError('Full name is required.'); return; }
+    setAddSaving(true);
+    setAddError('');
+    try {
+      await createLead({
+        fullName: addName,
+        email: addEmail || undefined,
+        phone: addPhone || undefined,
+        source: addSource || undefined,
+        role: addRole,
+        buyerProfile: (addRole === 'buyer' || addRole === 'both') ? addBuyer : undefined,
+        sellerProfile: (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+      });
+      setShowAddForm(false);
+      resetAddForm();
+    } catch (e: any) {
+      setAddError(e?.message ?? 'Failed to create lead.');
+    } finally {
+      setAddSaving(false);
+    }
+  }
 
   const stats = useMemo(() => {
     const active = leads.filter((l) => l.status !== 'lost');
@@ -581,7 +682,104 @@ export default function LeadsPage() {
             );
           })}
         </div>
+
+        {/* Add Lead button */}
+        <button
+          onClick={() => setShowAddForm((v) => !v)}
+          style={{
+            background: showAddForm ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.06)',
+            border: '1px solid var(--r-border)',
+            color: 'var(--r-gold-bright)',
+            padding: '8px 16px',
+            borderRadius: 9,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            letterSpacing: '0.01em',
+          }}
+        >
+          + Add Lead
+        </button>
       </div>
+
+      {/* ── Add Lead inline form ── */}
+      {showAddForm && (
+        <div
+          style={{
+            marginBottom: 20,
+            borderRadius: 14,
+            background: 'var(--r-grad-card)',
+            border: '1px solid var(--r-border)',
+            boxShadow: 'var(--r-shadow)',
+            padding: '18px 20px',
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)', marginBottom: 14, fontFamily: 'var(--r-font-serif)' }}>
+            New Lead
+          </div>
+          {/* Basic fields */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <FieldLabel>Full Name *</FieldLabel>
+              <input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Jane Smith"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <input
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="jane@example.com"
+                type="email"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <FieldLabel>Phone</FieldLabel>
+              <input
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="(555) 000-0000"
+                type="tel"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <FieldLabel>Source</FieldLabel>
+              <input
+                value={addSource}
+                onChange={(e) => setAddSource(e.target.value)}
+                placeholder="Website, Referral, Social..."
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {/* Role + profile fields */}
+          <ProfileFormSection
+            role={addRole}     setRole={setAddRole}
+            buyer={addBuyer}   setBuyer={setAddBuyer}
+            seller={addSeller} setSeller={setAddSeller}
+          />
+
+          {addError && (
+            <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <ActionBtn tone="primary" onClick={handleAddLead} disabled={addSaving}>
+              {addSaving ? 'Saving…' : 'Save Lead'}
+            </ActionBtn>
+            <ActionBtn tone="default" onClick={() => { setShowAddForm(false); resetAddForm(); }}>
+              Cancel
+            </ActionBtn>
+          </div>
+        </div>
+      )}
 
       {/* ── Lead list ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -606,11 +804,13 @@ export default function LeadsPage() {
               lead={lead}
               agents={agents}
               properties={properties}
-              onConvert={convertLeadToContact}
+              onConvert={handleConvertLead}
               onAssign={assignLeadToAgent}
               onMarkHot={markLeadHot}
-              onAddTask={addLeadFollowUpTask}
+              onAddTask={handleAddTask}
               onUpdateStatus={updateLeadStatus}
+              onUpdateBuyerProfile={updateBuyerProfile}
+              onUpdateSellerProfile={updateSellerProfile}
             />
           ))
         )}

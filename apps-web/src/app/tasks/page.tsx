@@ -1,15 +1,17 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
+import { useTasks } from '@/hooks/useTasks';
 import type { Task, TaskPriority } from '@/features/tasks/types';
 
-// Demo reference date — keeps relative displays coherent with mock data
-const REF_TODAY = '2026-04-07';
-const REF_TOMORROW = '2026-04-08';
+function getTodayKey()    { return new Date().toISOString().slice(0, 10); }
+function getTomorrowKey() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
 
 type GroupKey = 'overdue' | 'today' | 'upcoming' | 'none' | 'completed';
 
@@ -52,22 +54,22 @@ const PRIORITY_TONE = {
   low: 'default',
 } as const;
 
-function classifyTask(task: Task): GroupKey {
+function classifyTask(task: Task, refToday: string): GroupKey {
   if (task.completed) return 'completed';
   if (!task.dueAt) return 'none';
   const day = task.dueAt.slice(0, 10);
-  if (day < REF_TODAY) return 'overdue';
-  if (day === REF_TODAY) return 'today';
+  if (day < refToday) return 'overdue';
+  if (day === refToday) return 'today';
   return 'upcoming';
 }
 
-function formatDue(iso: string): string {
+function formatDue(iso: string, refToday: string, refTomorrow: string): string {
   const day = iso.slice(0, 10);
-  if (day === REF_TODAY) return 'Today';
-  if (day === REF_TOMORROW) return 'Tomorrow';
-  if (day < REF_TODAY) {
+  if (day === refToday)    return 'Today';
+  if (day === refTomorrow) return 'Tomorrow';
+  if (day < refToday) {
     const d = new Date(iso);
-    const diffMs = new Date(`${REF_TODAY}T12:00:00.000Z`).getTime() - d.getTime();
+    const diffMs = new Date(`${refToday}T12:00:00.000Z`).getTime() - d.getTime();
     const days = Math.round(diffMs / 86_400_000);
     return `${days}d overdue`;
   }
@@ -77,21 +79,25 @@ function formatDue(iso: string): string {
 type CtxType = 'none' | 'contact' | 'lead' | 'opportunity' | 'property';
 
 export default function TasksPage() {
+  const REF_TODAY    = getTodayKey();
+  const REF_TOMORROW = getTomorrowKey();
+
   const tasks        = useAppStore((s) => s.tasks);
   const contacts     = useAppStore((s) => s.contacts);
   const leads        = useAppStore((s) => s.leads);
   const opportunities = useAppStore((s) => s.opportunities);
   const properties   = useAppStore((s) => s.properties);
-  const toggleTask   = useAppStore((s) => s.toggleTask);
-  const createTask   = useAppStore((s) => s.createTask);
+  const { createTask, toggleTask } = useTasks();
 
   // ── Create form state ──
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTitle,    setNewTitle]   = useState('');
-  const [newPriority, setNewPriority] = useState<TaskPriority>('medium');
-  const [newDue,      setNewDue]     = useState<'today' | 'tomorrow' | 'none'>('today');
-  const [newCtxType,  setNewCtxType] = useState<CtxType>('none');
-  const [newCtxId,    setNewCtxId]   = useState('');
+  const [showCreate,   setShowCreate]   = useState(false);
+  const [newTitle,     setNewTitle]     = useState('');
+  const [newPriority,  setNewPriority]  = useState<TaskPriority>('medium');
+  const [newDueDate,   setNewDueDate]   = useState(getTodayKey());  // YYYY-MM-DD
+  const [newCtxType,   setNewCtxType]   = useState<CtxType>('none');
+  const [newCtxId,     setNewCtxId]     = useState('');
+  const [creating,     setCreating]     = useState(false);
+  const [createError,  setCreateError]  = useState('');
 
   // ── Collapse completed ──
   const [showCompleted, setShowCompleted] = useState(false);
@@ -111,7 +117,7 @@ export default function TasksPage() {
   // ── Grouped ──
   const grouped = useMemo(() => {
     const groups: Record<GroupKey, Task[]> = { overdue: [], today: [], upcoming: [], none: [], completed: [] };
-    for (const t of tasks) groups[classifyTask(t)].push(t);
+    for (const t of tasks) groups[classifyTask(t, REF_TODAY)].push(t);
     // Sort overdue: most overdue first
     groups.overdue.sort((a, b) => (a.dueAt! < b.dueAt! ? -1 : 1));
     // Sort today: high priority first
@@ -146,28 +152,32 @@ export default function TasksPage() {
   }
 
   // ── Create handler ──
-  function handleCreate() {
+  async function handleCreate() {
     if (!newTitle.trim()) return;
-    let dueAt: string | undefined;
-    if (newDue === 'today')    dueAt = `${REF_TODAY}T12:00:00.000Z`;
-    if (newDue === 'tomorrow') dueAt = `${REF_TOMORROW}T12:00:00.000Z`;
-
-    createTask({
-      title: newTitle.trim(),
-      priority: newPriority,
-      dueAt,
-      contactId:     newCtxType === 'contact'     ? newCtxId : undefined,
-      leadId:        newCtxType === 'lead'         ? newCtxId : undefined,
-      opportunityId: newCtxType === 'opportunity'  ? newCtxId : undefined,
-      propertyId:    newCtxType === 'property'     ? newCtxId : undefined,
-    });
-
-    setNewTitle('');
-    setNewPriority('medium');
-    setNewDue('today');
-    setNewCtxType('none');
-    setNewCtxId('');
-    setShowCreate(false);
+    setCreating(true);
+    setCreateError('');
+    try {
+      const dueAt = newDueDate ? `${newDueDate}T12:00:00.000Z` : undefined;
+      await createTask({
+        title: newTitle.trim(),
+        priority: newPriority,
+        dueAt,
+        contactId:     newCtxType === 'contact'     ? newCtxId : undefined,
+        leadId:        newCtxType === 'lead'         ? newCtxId : undefined,
+        opportunityId: newCtxType === 'opportunity'  ? newCtxId : undefined,
+        propertyId:    newCtxType === 'property'     ? newCtxId : undefined,
+      });
+      setNewTitle('');
+      setNewPriority('medium');
+      setNewDueDate(getTodayKey());
+      setNewCtxType('none');
+      setNewCtxId('');
+      setShowCreate(false);
+    } catch (err: any) {
+      setCreateError(err?.message ?? 'Failed to save task — please try again.');
+    } finally {
+      setCreating(false);
+    }
   }
 
   const GROUP_ORDER: GroupKey[] = ['overdue', 'today', 'upcoming', 'none'];
@@ -262,29 +272,62 @@ export default function TasksPage() {
               ))}
             </div>
 
-            {/* Due date */}
-            <div style={{ display: 'flex', gap: 5 }}>
-              {(['today', 'tomorrow', 'none'] as const).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setNewDue(d)}
-                  style={{
-                    padding: '7px 11px',
-                    borderRadius: 7,
-                    border: newDue === d ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.1)',
-                    background: newDue === d ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
-                    color: newDue === d ? '#93c5fd' : 'rgba(255,255,255,0.35)',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {d === 'none' ? 'No date' : d.charAt(0).toUpperCase() + d.slice(1)}
-                </button>
-              ))}
+            {/* Due date — real date input + quick chips */}
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="date"
+                value={newDueDate}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 7,
+                  border: '1px solid rgba(96,165,250,0.35)',
+                  background: 'rgba(59,130,246,0.08)',
+                  color: '#93c5fd',
+                  fontSize: 12,
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              />
+              <button
+                onClick={() => setNewDueDate(REF_TODAY)}
+                style={{
+                  padding: '6px 10px', borderRadius: 7,
+                  border: newDueDate === REF_TODAY ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                  background: newDueDate === REF_TODAY ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
+                  color: newDueDate === REF_TODAY ? '#93c5fd' : 'rgba(255,255,255,0.35)',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                }}
+              >Today</button>
+              <button
+                onClick={() => setNewDueDate(REF_TOMORROW)}
+                style={{
+                  padding: '6px 10px', borderRadius: 7,
+                  border: newDueDate === REF_TOMORROW ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                  background: newDueDate === REF_TOMORROW ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
+                  color: newDueDate === REF_TOMORROW ? '#93c5fd' : 'rgba(255,255,255,0.35)',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                }}
+              >Tomorrow</button>
+              <button
+                onClick={() => setNewDueDate('')}
+                style={{
+                  padding: '6px 10px', borderRadius: 7,
+                  border: !newDueDate ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                  background: !newDueDate ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
+                  color: !newDueDate ? '#93c5fd' : 'rgba(255,255,255,0.35)',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                }}
+              >No date</button>
             </div>
           </div>
+
+          {/* Error */}
+          {createError && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '7px 12px' }}>
+              {createError}
+            </div>
+          )}
 
           {/* Context link row */}
           <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -328,29 +371,29 @@ export default function TasksPage() {
                 <option value="">— select —</option>
                 {newCtxType === 'contact'     && contacts.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
                 {newCtxType === 'lead'         && leads.map((l) => <option key={l.id} value={l.id}>{l.fullName}</option>)}
-                {newCtxType === 'opportunity'  && opportunities.filter((o) => o.stage !== 'won' && o.stage !== 'lost').map((o) => <option key={o.id} value={o.id}>{o.contactName} — {o.propertyAddress ?? 'No property'}</option>)}
+                {newCtxType === 'opportunity'  && opportunities.filter((o) => o.stage !== 'closed' && o.stage !== 'post_close_followup' && o.stage !== 'lost').map((o) => <option key={o.id} value={o.id}>{o.contactName} — {o.propertyAddress ?? 'No property'}</option>)}
                 {newCtxType === 'property'     && properties.map((p) => <option key={p.id} value={p.id}>{p.address}</option>)}
               </select>
             )}
 
             <button
               onClick={handleCreate}
-              disabled={!newTitle.trim()}
+              disabled={!newTitle.trim() || creating}
               style={{
                 padding: '7px 18px',
                 borderRadius: 8,
                 border: '1px solid rgba(96,165,250,0.4)',
-                background: newTitle.trim()
+                background: newTitle.trim() && !creating
                   ? 'linear-gradient(135deg,rgba(59,130,246,0.28),rgba(99,102,241,0.2))'
                   : 'rgba(255,255,255,0.04)',
-                color: newTitle.trim() ? '#93c5fd' : 'rgba(255,255,255,0.25)',
+                color: newTitle.trim() && !creating ? '#93c5fd' : 'rgba(255,255,255,0.25)',
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: newTitle.trim() ? 'pointer' : 'default',
+                cursor: newTitle.trim() && !creating ? 'pointer' : 'default',
                 flexShrink: 0,
               }}
             >
-              Add Task
+              {creating ? 'Saving…' : 'Add Task'}
             </button>
           </div>
         </div>
@@ -398,6 +441,8 @@ export default function TasksPage() {
               tasks={groupTasks}
               getContext={getContext}
               toggleTask={toggleTask}
+              refToday={REF_TODAY}
+              refTomorrow={REF_TOMORROW}
             />
           );
         })}
@@ -439,6 +484,8 @@ export default function TasksPage() {
                 getContext={getContext}
                 toggleTask={toggleTask}
                 hideHeader
+                refToday={REF_TODAY}
+                refTomorrow={REF_TOMORROW}
               />
             )}
           </div>
@@ -474,6 +521,8 @@ function TaskGroup({
   getContext,
   toggleTask,
   hideHeader = false,
+  refToday,
+  refTomorrow,
 }: {
   groupKey: GroupKey;
   meta: GroupMeta;
@@ -481,6 +530,8 @@ function TaskGroup({
   getContext: (t: Task) => { label: string; color: string } | null;
   toggleTask: (id: string) => void;
   hideHeader?: boolean;
+  refToday: string;
+  refTomorrow: string;
 }) {
   return (
     <div>
@@ -524,6 +575,8 @@ function TaskGroup({
             meta={meta}
             ctx={getContext(task)}
             onToggle={() => toggleTask(task.id)}
+            refToday={refToday}
+            refTomorrow={refTomorrow}
           />
         ))}
       </div>
@@ -537,12 +590,16 @@ function TaskRow({
   meta,
   ctx,
   onToggle,
+  refToday,
+  refTomorrow,
 }: {
   task: Task;
   groupKey: GroupKey;
   meta: GroupMeta;
   ctx: { label: string; color: string } | null;
   onToggle: () => void;
+  refToday: string;
+  refTomorrow: string;
 }) {
   const isOverdue = groupKey === 'overdue';
   const isCompleted = task.completed;
@@ -652,7 +709,7 @@ function TaskRow({
             borderRadius: 5,
             padding: isOverdue || groupKey === 'today' ? '2px 7px' : '0',
           }}>
-            {formatDue(task.dueAt)}
+            {formatDue(task.dueAt, refToday, refTomorrow)}
           </span>
         )}
         {isCompleted ? (

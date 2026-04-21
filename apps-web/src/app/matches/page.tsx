@@ -1,11 +1,17 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
+import { useLeads } from '@/hooks/useLeads';
+import { useOpportunities } from '@/hooks/useOpportunities';
+import { useProperties } from '@/hooks/useProperties';
 import type { Contact } from '@/features/contacts/types';
 import type { Lead } from '@/features/opportunities/types';
+import type { BuyerProfile, ContactRole } from '@/features/contacts/types';
 import type { PropertyRecord } from '@/features/properties/types';
 import type { AgentRecord } from '@/data/mockDb';
 
@@ -13,107 +19,191 @@ import type { AgentRecord } from '@/data/mockDb';
 
 type PersonKind = 'contact' | 'lead';
 
+/**
+ * Normalised representation of a buyer candidate.
+ * All array fields are guaranteed non-null — see buildMatchPersons().
+ */
 interface MatchPerson {
-  id: string;
-  kind: PersonKind;
-  fullName: string;
-  tags: string[];
-  notes: { body: string }[];
-  linkedPropertyIds: string[];
-  assignedAgentId?: string;
-  lastActivityAt: string;
-  source?: string;
+  id:                string;
+  kind:              PersonKind;
+  fullName:          string;
+  role?:             ContactRole;
+  tags:              string[];           // guaranteed []
+  notes:             { body: string }[]; // guaranteed []
+  linkedPropertyIds: string[];           // guaranteed []
+  buyerProfile?:     BuyerProfile;
+  assignedAgentId?:  string;
+  lastActivityAt:    string;
+  source?:           string;
 }
 
 interface ComputedMatch {
-  id: string;
-  person: MatchPerson;
-  property: PropertyRecord;
-  score: number;
-  reasons: string[];
+  id:               string;
+  person:           MatchPerson;
+  property:         PropertyRecord;
+  score:            number;
+  reasons:          string[];
   alreadyInPipeline: boolean;
 }
 
 type FilterKey = 'all' | 'high' | 'buyers' | 'investors' | 'unassigned';
 
-// ── Scoring weights ──────────────────────────────────────────────────────────
-// price alignment      → up to +30
-// location / address   → up to +25
-// property type        → up to +20
-// intent tags          → up to +15
-// recency              → up to +10
-
-const REF = new Date('2026-04-09T00:00:00.000Z');
+// ── Score threshold ───────────────────────────────────────────────────────────
+// A match is surfaced only when its score reaches this value.
 const SCORE_THRESHOLD = 25;
 
+// ── Scoring ───────────────────────────────────────────────────────────────────
+// Weights:  price alignment +30 · location +25 · property type +20
+//           intent tags +15     · recency  +10
+//
+// Design principles:
+// • Every field access is null-safe — never throws on incomplete real data.
+// • Structured buyerProfile fields are preferred over notes-parsing (higher
+//   confidence signal).  Notes-parsing is the fallback when profiles are absent.
+// • A scoring dimension is SKIPPED (not forced to 0) when neither the profile
+//   nor notes provide any signal — avoids spurious penalties.
+
+const REF = new Date();
+
 function computeMatchScore(
-  person: MatchPerson,
-  property: PropertyRecord,
+  person:       MatchPerson,
+  property:     PropertyRecord,
   allProperties: PropertyRecord[],
 ): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
-  const notesText = person.notes.map((n) => n.body).join(' ').toLowerCase();
-  const propAddressL = property.address.toLowerCase();
-  const linkedProps = allProperties.filter((p) => person.linkedPropertyIds.includes(p.id));
 
-  // 1. Price alignment (+30) ─────────────────────────────────────────────────
+  // Safe normalised inputs — all string operations happen on these, never on raw fields.
+  const propAddress = (property.address ?? '').toLowerCase();
+  const propType    = (property.type    ?? '').toLowerCase();
+  const propCounty  = (property.county  ?? '').toLowerCase().replace(' county', '');
+  const propCity    = (property.city    ?? '').toLowerCase();
+  const propState   = (property.state   ?? '').toLowerCase();
+  const propPrice   = typeof property.price === 'number' && property.price > 0
+    ? property.price : null; // null means "price unknown / not set"
+
+  // Combined notes text — always a string, never undefined.
+  const notesText = person.notes
+    .map((n) => (n?.body ?? ''))
+    .join(' ')
+    .toLowerCase();
+
+  const linkedProps = allProperties.filter(
+    (p) => person.linkedPropertyIds.includes(p.id)
+  );
+
+  const bp = person.buyerProfile; // may be undefined
+
+  // ── 1. Price alignment (+30) ────────────────────────────────────────────────
   let priceScore = 0;
-  if (linkedProps.length > 0) {
-    const prices = linkedProps.map((p) => p.price);
-    const lo = Math.min(...prices) * 0.55;
-    const hiStrict = Math.max(...prices) * 1.40;
-    const loStrict = Math.min(...prices) * 0.80;
-    if (property.price >= lo && property.price <= hiStrict) {
-      priceScore = property.price >= loStrict ? 30 : 18;
+
+  if (propPrice !== null) {
+    // 1a. Structured buyer profile (highest confidence)
+    if (bp?.priceMin != null || bp?.priceMax != null) {
+      const lo = bp.priceMin ?? 0;
+      const hi = bp.priceMax ?? Infinity;
+      if (propPrice >= lo && propPrice <= hi) {
+        priceScore = 30;
+      } else if (propPrice >= lo * 0.85 && propPrice <= hi * 1.20) {
+        // within 15–20% of stated range → still a signal
+        priceScore = 18;
+      }
+    }
+
+    // 1b. Linked-property price inference (medium confidence)
+    if (priceScore === 0 && linkedProps.length > 0) {
+      const linkedPrices = linkedProps
+        .map((p) => p.price)
+        .filter((v) => typeof v === 'number' && v > 0);
+      if (linkedPrices.length > 0) {
+        const lo      = Math.min(...linkedPrices) * 0.55;
+        const hiStrict = Math.max(...linkedPrices) * 1.40;
+        const loStrict = Math.min(...linkedPrices) * 0.80;
+        if (propPrice >= lo && propPrice <= hiStrict) {
+          priceScore = propPrice >= loStrict ? 30 : 18;
+        }
+      }
+    }
+
+    // 1c. Explicit pre-qualification in notes (text fallback)
+    if (priceScore === 0) {
+      const prequalM = notesText.match(/pre[- ]?qualif(?:ied)?\s+at\s+\$([0-9.]+)m/i);
+      if (prequalM) {
+        const budget = parseFloat(prequalM[1]) * 1_000_000;
+        const diff   = Math.abs(budget - propPrice) / propPrice;
+        priceScore = diff <= 0.25 ? 30 : diff <= 0.50 ? 18 : 0;
+      }
     }
   }
-  // Explicit pre-qualification in notes
-  const prequalM = notesText.match(/pre[- ]?qualif(?:ied)?\s+at\s+\$([0-9.]+)m/i);
-  if (prequalM) {
-    const budget = parseFloat(prequalM[1]) * 1_000_000;
-    const diff = Math.abs(budget - property.price) / property.price;
-    priceScore = Math.max(priceScore, diff <= 0.25 ? 30 : diff <= 0.50 ? 18 : 0);
-  }
+
   if (priceScore >= 30) { score += 30; reasons.push('Price range aligns with qualification'); }
   else if (priceScore >= 18) { score += 18; reasons.push('Price range within reach'); }
 
-  // 2. Location / address match (+25) ────────────────────────────────────────
-  if (notesText.includes(propAddressL)) {
+  // ── 2. Location / address match (+25) ──────────────────────────────────────
+  if (propAddress && notesText.includes(propAddress)) {
     score += 25;
     reasons.push(`Previously inquired about ${property.address}`);
   } else {
-    const county = (property.county ?? '').toLowerCase().replace(' county', '');
-    const city = (property.city ?? '').toLowerCase();
-    if (county && notesText.includes(county)) {
+    // 2a. Buyer profile targetArea (structured)
+    const targetArea = (bp?.targetArea ?? '').toLowerCase();
+    if (targetArea && propAddress && propAddress.includes(targetArea)) {
+      score += 22;
+      reasons.push(`Target area matches listing location`);
+    } else if (targetArea && propCounty && propCounty.includes(targetArea)) {
+      score += 22;
+      reasons.push(`Target area matches listing county`);
+    } else if (targetArea && propCity && propCity.includes(targetArea)) {
+      score += 18;
+      reasons.push(`Target area matches listing city`);
+    }
+    // 2b. Notes-based location (fallback)
+    else if (propCounty && notesText.includes(propCounty)) {
       score += 22;
       reasons.push(`Interest in ${property.county} market`);
-    } else if (city && notesText.includes(city)) {
+    } else if (propCity && notesText.includes(propCity)) {
       score += 18;
       reasons.push(`Familiar with ${property.city} area`);
-    } else if (linkedProps.some((p) => p.county === property.county)) {
+    } else if (linkedProps.some((p) => p.county && p.county === property.county)) {
       score += 12;
-      reasons.push(`Active in ${property.county} market`);
-    } else if (notesText.includes('hill country') && property.state === 'TX') {
+      reasons.push(`Active in ${property.county ?? 'same'} market`);
+    } else if (notesText.includes('hill country') && propState === 'tx') {
       score += 10;
       reasons.push('Expressed interest in Texas Hill Country');
     }
   }
 
-  // 3. Property type match (+20) ─────────────────────────────────────────────
-  const typeL = property.type.toLowerCase();
-  if (notesText.includes(typeL)) {
-    score += 20;
-    reasons.push(`Explicitly seeking ${property.type.toLowerCase()} property`);
-  } else if (linkedProps.some((p) => p.type === property.type)) {
-    score += 14;
-    reasons.push(`Previously viewed ${property.type.toLowerCase()} properties`);
-  } else if (person.tags.some((t) => ['buyer', 'investor'].includes(t))) {
-    score += 6;
+  // ── 3. Property type match (+20) ────────────────────────────────────────────
+  if (propType) {
+    // 3a. Structured buyer profile
+    const bpType = (bp?.propertyType ?? '').toLowerCase();
+    if (bpType && bpType === propType) {
+      score += 20;
+      reasons.push(`Buyer profile targets ${property.type || 'this'} property type`);
+    }
+    // 3b. Notes-based
+    else if (notesText.includes(propType)) {
+      score += 20;
+      reasons.push(`Explicitly seeking ${property.type} property`);
+    } else if (linkedProps.some((p) => (p.type ?? '').toLowerCase() === propType)) {
+      score += 14;
+      reasons.push(`Previously viewed ${property.type} properties`);
+    } else if (person.tags.some((t) => ['buyer', 'investor'].includes(t))) {
+      score += 6;
+    }
   }
 
-  // 4. Intent tags (+15) ────────────────────────────────────────────────────
-  const hotTags = person.tags.filter((t) => ['hot', 'conversion-ready'].includes(t));
+  // ── 4. Beds match (+8 bonus, no penalty) ───────────────────────────────────
+  // Only scored when both buyer profile and property supply the data.
+  if (bp?.bedsMin != null && property.beds != null) {
+    const propBeds = Number(property.beds);
+    if (!isNaN(propBeds) && propBeds >= bp.bedsMin) {
+      score += 8;
+      reasons.push(`Meets minimum ${bp.bedsMin}+ bed requirement`);
+    }
+  }
+
+  // ── 5. Intent tags (+15) ────────────────────────────────────────────────────
+  const hotTags   = person.tags.filter((t) => ['hot', 'conversion-ready'].includes(t));
   const buyerTags = person.tags.filter((t) => ['investor', 'buyer'].includes(t));
   if (hotTags.length > 0) {
     score += 15;
@@ -123,10 +213,13 @@ function computeMatchScore(
     reasons.push(`Confirmed ${buyerTags[0]} profile`);
   }
 
-  // 5. Recency (+10) ────────────────────────────────────────────────────────
-  const daysAgo = (REF.getTime() - new Date(person.lastActivityAt).getTime()) / 86_400_000;
-  if (daysAgo <= 3) { score += 10; reasons.push('Active in last 72 hours'); }
-  else if (daysAgo <= 7) { score += 7; reasons.push('Active this week'); }
+  // ── 6. Recency (+10) ────────────────────────────────────────────────────────
+  const lastActive = new Date(person.lastActivityAt);
+  const daysAgo    = isNaN(lastActive.getTime())
+    ? Infinity
+    : (REF.getTime() - lastActive.getTime()) / 86_400_000;
+  if      (daysAgo <= 3)  { score += 10; reasons.push('Active in last 72 hours'); }
+  else if (daysAgo <= 7)  { score += 7;  reasons.push('Active this week'); }
   else if (daysAgo <= 14) { score += 4; }
 
   return { score: Math.min(Math.round(score), 100), reasons: reasons.slice(0, 4) };
@@ -134,25 +227,26 @@ function computeMatchScore(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtPrice(n: number) {
+function fmtPrice(n: number | null | undefined): string {
+  if (!n || n <= 0) return 'Price TBD';
   return n >= 1_000_000
     ? `$${(n / 1_000_000).toFixed(2)}M`
     : `$${(n / 1_000).toFixed(0)}K`;
 }
 
 function confidenceOf(score: number): { label: string; color: string; bg: string; border: string } {
-  if (score >= 80) return { label: 'Strong',     color: 'var(--r-success)',  bg: 'var(--r-success-bg)',              border: 'var(--r-success-border)' };
-  if (score >= 60) return { label: 'Medium',     color: 'var(--r-gold)',     bg: 'var(--r-gold-faint)',              border: 'var(--r-border)' };
-  return              { label: 'Developing', color: '#7ca4cc',           bg: 'rgba(124,164,204,0.08)',           border: 'rgba(124,164,204,0.25)' };
+  if (score >= 80) return { label: 'Strong',     color: 'var(--r-success)', bg: 'var(--r-success-bg)',       border: 'var(--r-success-border)' };
+  if (score >= 60) return { label: 'Medium',     color: 'var(--r-gold)',    bg: 'var(--r-gold-faint)',       border: 'var(--r-border)' };
+  return              { label: 'Developing', color: '#7ca4cc',          bg: 'rgba(124,164,204,0.08)',    border: 'rgba(124,164,204,0.25)' };
 }
 
 const TAG_COLORS: Record<string, { color: string; bg: string; border: string }> = {
-  hot:               { color: 'var(--r-danger)',   bg: 'var(--r-danger-bg)',             border: 'var(--r-danger-border)' },
-  'conversion-ready':{ color: 'var(--r-success)',  bg: 'var(--r-success-bg)',            border: 'var(--r-success-border)' },
-  investor:          { color: '#9b8ab4',            bg: 'rgba(155,138,180,0.08)',         border: 'rgba(155,138,180,0.25)' },
-  buyer:             { color: '#7ca4cc',            bg: 'rgba(124,164,204,0.08)',         border: 'rgba(124,164,204,0.22)' },
-  seller:            { color: 'var(--r-gold)',      bg: 'var(--r-gold-faint)',            border: 'var(--r-border)' },
-  warm:              { color: 'var(--r-warning)',   bg: 'var(--r-warning-bg)',            border: 'var(--r-warning-border)' },
+  hot:               { color: 'var(--r-danger)',  bg: 'var(--r-danger-bg)',        border: 'var(--r-danger-border)' },
+  'conversion-ready':{ color: 'var(--r-success)', bg: 'var(--r-success-bg)',       border: 'var(--r-success-border)' },
+  investor:          { color: '#9b8ab4',           bg: 'rgba(155,138,180,0.08)',    border: 'rgba(155,138,180,0.25)' },
+  buyer:             { color: '#7ca4cc',           bg: 'rgba(124,164,204,0.08)',    border: 'rgba(124,164,204,0.22)' },
+  seller:            { color: 'var(--r-gold)',     bg: 'var(--r-gold-faint)',       border: 'var(--r-border)' },
+  warm:              { color: 'var(--r-warning)',  bg: 'var(--r-warning-bg)',       border: 'var(--r-warning-border)' },
 };
 
 function TagChip({ tag }: { tag: string }) {
@@ -164,14 +258,15 @@ function TagChip({ tag }: { tag: string }) {
   );
 }
 
-function PropertyStatusPill({ status }: { status: PropertyRecord['status'] }) {
-  const map = {
-    active:   { label: 'Active',   color: 'var(--r-success)', bg: 'var(--r-success-bg)',   border: 'var(--r-success-border)' },
-    pending:  { label: 'Pending',  color: 'var(--r-warning)', bg: 'var(--r-warning-bg)',   border: 'var(--r-warning-border)' },
-    prospect: { label: 'Prospect', color: '#7ca4cc',          bg: 'rgba(124,164,204,0.08)', border: 'rgba(124,164,204,0.22)' },
-    sold:     { label: 'Sold',     color: 'var(--r-text-3)',  bg: 'var(--r-grad-card)',     border: 'var(--r-border)' },
-  };
-  const s = map[status];
+const STATUS_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  active:   { label: 'Active',   color: 'var(--r-success)', bg: 'var(--r-success-bg)',     border: 'var(--r-success-border)' },
+  pending:  { label: 'Pending',  color: 'var(--r-warning)', bg: 'var(--r-warning-bg)',     border: 'var(--r-warning-border)' },
+  prospect: { label: 'Prospect', color: '#7ca4cc',          bg: 'rgba(124,164,204,0.08)',  border: 'rgba(124,164,204,0.22)' },
+  sold:     { label: 'Sold',     color: 'var(--r-text-3)',  bg: 'var(--r-grad-card)',      border: 'var(--r-border)' },
+};
+
+function PropertyStatusPill({ status }: { status: string }) {
+  const s = STATUS_META[status] ?? { label: status ?? 'Unknown', color: 'var(--r-text-3)', bg: 'var(--r-grad-card)', border: 'var(--r-border)' };
   return (
     <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: s.color, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 4, padding: '2px 7px' }}>
       {s.label}
@@ -185,17 +280,21 @@ function MatchCard({
   match, agents, actedOn,
   onCreateOpp, onAssignAgent,
 }: {
-  match: ComputedMatch;
-  agents: AgentRecord[];
-  actedOn: boolean;
-  onCreateOpp: () => void;
+  match:         ComputedMatch;
+  agents:        AgentRecord[];
+  actedOn:       boolean;
+  onCreateOpp:   () => void;
   onAssignAgent: (agentId: string | undefined) => void;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const { person, property, score, reasons, alreadyInPipeline } = match;
-  const conf = confidenceOf(score);
+  const conf          = confidenceOf(score);
   const assignedAgent = agents.find((a) => a.id === person.assignedAgentId);
-  const inPipeline = alreadyInPipeline || actedOn;
+  const inPipeline    = alreadyInPipeline || actedOn;
+
+  // Safe display values
+  const displayAddress = property.address || 'No address';
+  const displayType    = property.type    || 'Unknown type';
 
   const btnBase: React.CSSProperties = {
     padding: '7px 14px', borderRadius: 8,
@@ -222,9 +321,13 @@ function MatchCard({
           </div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
             {person.tags.slice(0, 4).map((t) => <TagChip key={t} tag={t} />)}
+            {person.buyerProfile && (
+              <TagChip tag="buyer profile" />
+            )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>
             {person.kind === 'lead' ? 'Lead' : 'Contact'}
+            {person.role ? ` · ${person.role}` : ''}
             {person.source ? ` · ${person.source}` : ''}
           </div>
           {assignedAgent && (
@@ -286,12 +389,16 @@ function MatchCard({
         background: 'rgba(0,0,0,0.08)',
         display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
       }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{property.address}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-gold-bright)' }}>{fmtPrice(property.price)}</span>
-        {property.acreage && (
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{displayAddress}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: property.price > 0 ? 'var(--r-gold-bright)' : 'var(--r-text-3)' }}>
+          {fmtPrice(property.price)}
+        </span>
+        {property.acreage != null && property.acreage > 0 && (
           <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.acreage.toLocaleString()} ac</span>
         )}
-        <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.type}</span>
+        {displayType && (
+          <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{displayType}</span>
+        )}
         {property.county && (
           <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.county}</span>
         )}
@@ -315,11 +422,11 @@ function MatchCard({
           className={inPipeline ? '' : 'r-btn-gold'}
           style={{
             ...btnBase,
-            border: inPipeline ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
-            background: inPipeline ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
-            color: inPipeline ? 'var(--r-success)' : 'var(--r-gold-bright)',
-            cursor: inPipeline ? 'default' : 'pointer',
-            fontWeight: 700,
+            border:      inPipeline ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
+            background:  inPipeline ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+            color:       inPipeline ? 'var(--r-success)' : 'var(--r-gold-bright)',
+            cursor:      inPipeline ? 'default' : 'pointer',
+            fontWeight:  700,
           }}
         >
           {inPipeline ? '✓ In Pipeline' : '+ Create Opportunity'}
@@ -332,7 +439,7 @@ function MatchCard({
             style={{
               ...btnBase,
               border: assignedAgent ? '1px solid rgba(155,138,180,0.35)' : btnBase.border,
-              color: assignedAgent ? '#9b8ab4' : btnBase.color as string,
+              color:  assignedAgent ? '#9b8ab4' : btnBase.color as string,
             }}
           >
             {assignedAgent ? `✓ ${assignedAgent.name}` : 'Assign Agent ▾'}
@@ -387,12 +494,16 @@ const FILTER_LABELS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function MatchesPage() {
+  // Hydrate store on direct page visit
+  useLeads();
+  useProperties();
+  const { createOpportunity } = useOpportunities();
+
   const contacts   = useAppStore((s) => s.contacts);
   const leads      = useAppStore((s) => s.leads);
   const properties = useAppStore((s) => s.properties);
   const agents     = useAppStore((s) => s.agents);
   const opportunities = useAppStore((s) => s.opportunities);
-  const createOpportunityFromMatch = useAppStore((s) => s.createOpportunityFromMatch);
   const assignContactToAgent = useAppStore((s) => s.assignContactToAgent);
   const assignLeadToAgent    = useAppStore((s) => s.assignLeadToAgent);
 
@@ -401,55 +512,97 @@ export default function MatchesPage() {
   const [actedOn, setActedOn] = useState<Set<string>>(new Set());
 
   // ── Build person pool ─────────────────────────────────────────────────────
+  // Only buyer-capable persons (role !== 'seller') enter the matching pool.
+  // All arrays are normalised to [] to ensure scoring never encounters null.
   const persons = useMemo<MatchPerson[]>(() => {
     const fromContacts: MatchPerson[] = contacts
-      .filter((c) => c.status !== 'closed')
+      .filter((c) => c.status !== 'closed' && c.role !== 'seller')
       .map((c: Contact) => ({
-        id: c.id, kind: 'contact' as const,
-        fullName: c.fullName, tags: c.tags,
-        notes: c.notes, linkedPropertyIds: c.linkedPropertyIds,
-        assignedAgentId: c.assignedAgentId,
-        lastActivityAt: c.lastActivityAt,
-        source: c.source,
+        id:                c.id,
+        kind:              'contact' as const,
+        fullName:          c.fullName || 'Unnamed Contact',
+        role:              c.role,
+        tags:              Array.isArray(c.tags)              ? c.tags              : [],
+        notes:             Array.isArray(c.notes)             ? c.notes             : [],
+        linkedPropertyIds: Array.isArray(c.linkedPropertyIds) ? c.linkedPropertyIds : [],
+        buyerProfile:      c.buyerProfile,
+        assignedAgentId:   c.assignedAgentId,
+        lastActivityAt:    c.lastActivityAt ?? c.updatedAt ?? new Date().toISOString(),
+        source:            c.source,
       }));
 
     const fromLeads: MatchPerson[] = leads
-      .filter((l) => l.status !== 'lost')
+      .filter((l) => l.status !== 'lost' && l.role !== 'seller')
       .map((l: Lead) => ({
-        id: l.id, kind: 'lead' as const,
-        fullName: l.fullName, tags: l.tags,
-        notes: l.notes, linkedPropertyIds: l.linkedPropertyIds,
-        assignedAgentId: l.assignedAgentId,
-        lastActivityAt: l.updatedAt,
-        source: l.source,
+        id:                l.id,
+        kind:              'lead' as const,
+        fullName:          l.fullName || 'Unnamed Lead',
+        role:              l.role,
+        tags:              Array.isArray(l.tags)              ? l.tags              : [],
+        notes:             Array.isArray(l.notes)             ? l.notes             : [],
+        linkedPropertyIds: Array.isArray(l.linkedPropertyIds) ? l.linkedPropertyIds : [],
+        buyerProfile:      l.buyerProfile,
+        assignedAgentId:   l.assignedAgentId,
+        lastActivityAt:    l.updatedAt ?? new Date().toISOString(),
+        source:            l.source,
       }));
 
-    return [...fromContacts, ...fromLeads];
+    // Deduplicate by canonical `${kind}:${id}` — prevents a converted lead that
+    // temporarily exists in both the contacts and leads stores from appearing twice.
+    const seen = new Map<string, MatchPerson>();
+    for (const p of [...fromContacts, ...fromLeads]) {
+      const key = `${p.kind}:${p.id}`;
+      if (!seen.has(key)) seen.set(key, p);
+    }
+    return Array.from(seen.values());
   }, [contacts, leads]);
 
   // ── Compute matches ────────────────────────────────────────────────────────
   const allMatches = useMemo<ComputedMatch[]>(() => {
-    const matchableProps = properties.filter((p) => p.status !== 'sold');
+    // Only consider unsold properties that have at least an id (skip malformed rows).
+    const matchableProps = properties.filter(
+      (p) => p.status !== 'sold' && p.id
+    );
     const results: ComputedMatch[] = [];
+    const seenIds = new Set<string>();
 
     for (const person of persons) {
       for (const property of matchableProps) {
         const { score, reasons } = computeMatchScore(person, property, properties);
         if (score < SCORE_THRESHOLD) continue;
 
+        // Canonical match ID: namespaced by entity type so a contact and a lead
+        // with the same UUID (e.g. during lead-conversion) never collide.
+        const matchId = `${person.kind}:${person.id}:${property.id}`;
+        if (seenIds.has(matchId)) continue;
+        seenIds.add(matchId);
+
+        const personNameL = person.fullName.toLowerCase();
         const alreadyInPipeline = opportunities.some(
           (o) => o.propertyId === property.id &&
-            o.contactName.toLowerCase() === person.fullName.toLowerCase()
+            (o.contactName ?? '').toLowerCase() === personNameL
         );
 
         results.push({
-          id: `${person.id}:${property.id}`,
+          id: matchId,
           person, property, score, reasons, alreadyInPipeline,
         });
       }
     }
 
-    return results.sort((a, b) => b.score - a.score);
+    // Secondary dedup: same real person (same name, different kind/UUID) matched to
+    // the same property generates two cards. Keep only the highest-scored one.
+    const namePropertySeen = new Map<string, number>(); // key → index in results
+    const deduped: ComputedMatch[] = [];
+    for (const match of results.sort((a, b) => b.score - a.score)) {
+      const nameKey = `${match.person.fullName.toLowerCase()}::${match.property.id}`;
+      if (!namePropertySeen.has(nameKey)) {
+        namePropertySeen.set(nameKey, deduped.length);
+        deduped.push(match);
+      }
+      // else: lower-scored duplicate — silently dropped
+    }
+    return deduped;
   }, [persons, properties, opportunities]);
 
   // ── Filter ────────────────────────────────────────────────────────────────
@@ -463,11 +616,10 @@ export default function MatchesPage() {
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        (m) =>
-          m.person.fullName.toLowerCase().includes(q) ||
-          m.property.address.toLowerCase().includes(q) ||
-          m.person.tags.some((t) => t.includes(q))
+      list = list.filter((m) =>
+        (m.person.fullName   ?? '').toLowerCase().includes(q) ||
+        (m.property.address  ?? '').toLowerCase().includes(q) ||
+        m.person.tags.some((t) => (t ?? '').includes(q))
       );
     }
 
@@ -477,14 +629,42 @@ export default function MatchesPage() {
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const highCount    = allMatches.filter((m) => m.score >= 80).length;
   const newThisWeek  = allMatches.filter((m) => {
-    const daysAgo = (REF.getTime() - new Date(m.person.lastActivityAt).getTime()) / 86_400_000;
-    return daysAgo <= 7;
+    const t = new Date(m.person.lastActivityAt).getTime();
+    return !isNaN(t) && (REF.getTime() - t) / 86_400_000 <= 7;
   }).length;
   const actedOnCount = allMatches.filter((m) => m.alreadyInPipeline || actedOn.has(m.id)).length;
 
-  function handleCreateOpp(match: ComputedMatch) {
-    createOpportunityFromMatch({ personId: match.person.id, personKind: match.person.kind, propertyId: match.property.id });
-    setActedOn((prev) => new Set(prev).add(match.id));
+  // ── Data-state description for empty panel ────────────────────────────────
+  const emptyReason = useMemo(() => {
+    if (search || filter !== 'all') return 'Try adjusting your filters or search query.';
+    if (properties.filter((p) => p.status !== 'sold').length === 0)
+      return 'No active inventory yet — add properties to begin generating matches.';
+    if (persons.length === 0)
+      return 'No buyer-capable leads or contacts yet — add leads with buyer profiles to surface matches.';
+    return 'No strong matches yet — as your network grows, Hoard will surface deal opportunities automatically.';
+  }, [search, filter, properties, persons]);
+
+  async function handleCreateOpp(match: ComputedMatch) {
+    const { person, property } = match;
+    try {
+      await createOpportunity({
+        contactName:     person.fullName,
+        propertyAddress: property.address || undefined,
+        propertyId:      property.id,
+        assignedAgentId: person.assignedAgentId,
+        stage:           'lead_received',
+        value:           property.price > 0 ? property.price : 0,
+        probability:     20,
+        priority:        person.tags.includes('hot') ? 'high' : 'medium',
+        nextStep:        'Initial qualification — review profile and schedule intro call.',
+        notes:           person.notes.length > 0
+                           ? [person.notes[person.notes.length - 1].body]
+                           : [],
+      });
+      setActedOn((prev) => new Set(prev).add(match.id));
+    } catch (err) {
+      console.error('[handleCreateOpp]', err);
+    }
   }
 
   function handleAssignAgent(match: ComputedMatch, agentId: string | undefined) {
@@ -533,9 +713,9 @@ export default function MatchesPage() {
               className="r-tab"
               style={{
                 padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                border: active ? '1px solid var(--r-border)' : '1px solid var(--r-border)',
-                background: active ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
-                color: active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+                border:      '1px solid var(--r-border)',
+                background:  active ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
+                color:       active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
               }}
             >
               {label}
@@ -571,9 +751,7 @@ export default function MatchesPage() {
               No matches found
             </div>
             <div style={{ fontSize: 13, color: 'var(--r-text-3)', maxWidth: 440, margin: '0 auto', lineHeight: 1.6 }}>
-              {search || filter !== 'all'
-                ? 'Try adjusting your filters or search query.'
-                : 'No strong matches yet — as your network grows, Hoard will surface deal opportunities automatically.'}
+              {emptyReason}
             </div>
           </div>
         ) : (
@@ -605,7 +783,7 @@ export default function MatchesPage() {
             </div>
           ))}
           <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--r-text-3)' }}>
-            Weights: price alignment +30 · location +25 · property type +20 · intent tags +15 · recency +10
+            Weights: price +30 · location +25 · type +20 · beds +8 · intent +15 · recency +10
           </div>
         </div>
       )}

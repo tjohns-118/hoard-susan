@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+export const dynamic = 'force-dynamic';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { useAgents } from '@/hooks/useAgents';
+import { useProperties } from '@/hooks/useProperties';
 import type { AgentRecord } from '@/data/mockDb';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -12,22 +15,6 @@ import type { AgentRecord } from '@/data/mockDb';
 type Theme = 'ranch' | 'sunrise';
 type AgentRole = 'Broker' | 'Agent' | 'Admin';
 
-// ── Mock billing data ─────────────────────────────────────────────────────────
-
-const BILLING = {
-  plan: 'Pro Broker',
-  cost: '$149',
-  period: 'per month',
-  nextBillingDate: 'May 10, 2026',
-  paymentMethod: 'Visa ending in 4242',
-  status: 'Active',
-};
-
-const INVOICES = [
-  { id: 'INV-0041', date: 'Apr 10, 2026', amount: '$149.00', status: 'Paid' },
-  { id: 'INV-0040', date: 'Mar 10, 2026', amount: '$149.00', status: 'Paid' },
-  { id: 'INV-0039', date: 'Feb 10, 2026', amount: '$149.00', status: 'Paid' },
-];
 
 // ── Integration data ──────────────────────────────────────────────────────────
 
@@ -233,11 +220,124 @@ function ThemeCard({ theme, active, onSelect }: { theme: Theme; active: boolean;
   );
 }
 
+// ── CSV parsing helpers ───────────────────────────────────────────────────────
+
+function parseCSV(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(Boolean);
+  if (lines.length === 0) return { headers: [], rows: [] };
+  const splitLine = (line: string) => {
+    const cols: string[] = [];
+    let cur = '';
+    let inQ  = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+  const headers = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/[\s_-]+/g, '_'));
+  const rows    = lines.slice(1).map(splitLine);
+  return { headers, rows };
+}
+
+type CsvPropertyRow = {
+  addressLine1: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  price?: number;
+  beds?: number;
+  baths?: number;
+  sqft?: number;
+  mlsNumber?: string;
+  listingUrl?: string;
+};
+
+const CSV_COL_MAP: Record<string, keyof CsvPropertyRow> = {
+  address: 'addressLine1', address_line_1: 'addressLine1', address_line1: 'addressLine1',
+  street: 'addressLine1', street_address: 'addressLine1', property_address: 'addressLine1',
+  city: 'city', state: 'state', zip: 'zip', zip_code: 'zip', postal_code: 'zip',
+  price: 'price', list_price: 'price', listing_price: 'price', asking_price: 'price',
+  beds: 'beds', bedrooms: 'beds', bed: 'beds',
+  baths: 'baths', bathrooms: 'baths', bath: 'baths',
+  sqft: 'sqft', sq_ft: 'sqft', square_feet: 'sqft', square_footage: 'sqft',
+  mls: 'mlsNumber', mls_number: 'mlsNumber', mls_id: 'mlsNumber', listing_id: 'mlsNumber',
+  url: 'listingUrl', listing_url: 'listingUrl', link: 'listingUrl',
+};
+
+function normalizeCsvRows(headers: string[], rows: string[][]): CsvPropertyRow[] {
+  const mapped = headers.map((h) => CSV_COL_MAP[h] ?? null);
+  return rows.map((cols) => {
+    const obj: Partial<CsvPropertyRow> = {};
+    cols.forEach((val, i) => {
+      const key = mapped[i];
+      if (!key || !val) return;
+      if (key === 'addressLine1' || key === 'city' || key === 'state' || key === 'zip' || key === 'mlsNumber' || key === 'listingUrl') {
+        (obj as any)[key] = val;
+      } else {
+        const n = parseFloat(val.replace(/[$,]/g, ''));
+        if (!isNaN(n)) (obj as any)[key] = n;
+      }
+    });
+    return obj as CsvPropertyRow;
+  }).filter((r) => r.addressLine1?.trim());
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const router = useRouter();
   const { agents, updateAgentRole, removeAgent } = useAgents();
+  const { reload: reloadProperties } = useProperties();
+
+  // ── CSV Import ────────────────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [csvHeaders,  setCsvHeaders]  = useState<string[]>([]);
+  const [csvPreview,  setCsvPreview]  = useState<string[][]>([]);
+  const [csvRows,     setCsvRows]     = useState<CsvPropertyRow[]>([]);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [csvLoading,  setCsvLoading]  = useState(false);
+  const [csvResult,   setCsvResult]   = useState<{ inserted: number; updated: number; skipped: number } | null>(null);
+  const [csvError,    setCsvError]    = useState<string | null>(null);
+
+  const handleCsvFile = useCallback((file: File) => {
+    setCsvResult(null);
+    setCsvError(null);
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const { headers, rows } = parseCSV(text);
+      setCsvHeaders(headers);
+      setCsvPreview(rows.slice(0, 5));
+      setCsvRows(normalizeCsvRows(headers, rows));
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const ingestCsv = useCallback(async () => {
+    if (csvRows.length === 0) return;
+    setCsvLoading(true);
+    setCsvError(null);
+    setCsvResult(null);
+    try {
+      const res = await fetch('/api/properties', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(csvRows),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Ingest failed');
+      setCsvResult({ inserted: json.inserted, updated: json.updated, skipped: json.skipped });
+      await reloadProperties();
+    } catch (err: any) {
+      setCsvError(err.message ?? 'Unknown error');
+    } finally {
+      setCsvLoading(false);
+    }
+  }, [csvRows, reloadProperties]);
 
   // ── Theme ─────────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState<Theme>('ranch');
@@ -275,7 +375,6 @@ export default function SettingsPage() {
   const [roles, setRoles] = useState<Record<string, AgentRole>>({});
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removedIds,    setRemovedIds]    = useState<Set<string>>(new Set());
-  const [showInvoices,  setShowInvoices]  = useState(false);
 
   // Re-sync role display whenever the agents list is updated from Supabase
   useEffect(() => {
@@ -322,77 +421,15 @@ export default function SettingsPage() {
           <SectionCard
             title="Account & Billing"
             description="Subscription plan and payment details"
-            rightSlot={
-              <span style={{
-                fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
-                color: 'var(--r-success)', background: 'var(--r-success-bg)',
-                border: '1px solid var(--r-success-border)', borderRadius: 5, padding: '3px 9px',
-              }}>
-                {BILLING.status}
-              </span>
-            }
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 18 }}>
-              <FieldRow label="Plan" accent value={BILLING.plan} />
-              <FieldRow
-                label="Monthly cost"
-                value={
-                  <span>
-                    {BILLING.cost}
-                    <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--r-text-3)', marginLeft: 4 }}>
-                      {BILLING.period}
-                    </span>
-                  </span>
-                }
-              />
-              <FieldRow label="Next billing date" value={BILLING.nextBillingDate} />
-              <FieldRow label="Payment method"    value={BILLING.paymentMethod} />
+            <div style={{ padding: '14px 0', fontSize: 13, color: 'var(--r-text-3)', lineHeight: 1.6 }}>
+              Billing and subscription management is handled through the customer portal. Contact your account administrator or Hoard support to update payment details, review invoices, or manage your plan.
             </div>
-
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <ActionBtn tone="gold">Update Payment Method</ActionBtn>
-              <ActionBtn onClick={() => setShowInvoices((v) => !v)}>
-                {showInvoices ? 'Hide Invoices' : 'View Invoices'}
-              </ActionBtn>
-              <div style={{ marginLeft: 'auto' }}>
-                <ActionBtn tone="danger" disabled>Cancel Subscription</ActionBtn>
-              </div>
+              <ActionBtn tone="gold" disabled>Open Billing Portal</ActionBtn>
+              <ActionBtn tone="danger" disabled>Cancel Subscription</ActionBtn>
+              <span style={{ fontSize: 11, color: 'var(--r-text-3)', fontStyle: 'italic' }}>Coming soon</span>
             </div>
-
-            {showInvoices && (
-              <div style={{ marginTop: 18, borderTop: '1px solid var(--r-border-soft)', paddingTop: 16 }}>
-                <SettingsLabel>Invoice History</SettingsLabel>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {INVOICES.map((inv) => (
-                    <div
-                      key={inv.id}
-                      className="r-row"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '9px 13px', borderRadius: 9,
-                        background: 'var(--r-grad-card)', border: '1px solid var(--r-border)',
-                      }}
-                    >
-                      <span style={{
-                        fontSize: 12, fontWeight: 700, color: 'var(--r-text-2)',
-                        fontFamily: 'var(--r-font-mono)', letterSpacing: '0.04em',
-                      }}>
-                        {inv.id}
-                      </span>
-                      <span style={{ fontSize: 11, color: 'var(--r-text-3)', flex: 1 }}>{inv.date}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)' }}>{inv.amount}</span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 800, color: 'var(--r-success)',
-                        background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)',
-                        borderRadius: 4, padding: '2px 7px',
-                      }}>
-                        {inv.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </SectionCard>
 
           {/* SECTION B — Team Management */}
@@ -519,6 +556,119 @@ export default function SettingsPage() {
             }}>
               Agents can manage their own assigned records. Only Brokers can access billing, settings, and full system oversight.
             </div>
+          </SectionCard>
+
+          {/* SECTION C — CSV Ingestion */}
+          <SectionCard
+            title="Import Properties (CSV)"
+            description="Upload a CSV to bulk-import or update property listings"
+          >
+            {/* Drop zone / file picker */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files[0];
+                if (f) handleCsvFile(f);
+              }}
+              style={{
+                border: '2px dashed var(--r-border)', borderRadius: 12, padding: '24px 20px',
+                textAlign: 'center', cursor: 'pointer', marginBottom: 14,
+                background: 'rgba(200,164,92,0.03)',
+                transition: 'border-color 0.15s',
+              }}
+            >
+              <div style={{ fontSize: 13, color: 'var(--r-text-3)', lineHeight: 1.6 }}>
+                {csvFileName
+                  ? <><strong style={{ color: 'var(--r-text)' }}>{csvFileName}</strong> — {csvRows.length} valid rows detected</>
+                  : <>Click or drag a <strong style={{ color: 'var(--r-gold-bright)' }}>.csv</strong> file here</>
+                }
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); }}
+              />
+            </div>
+
+            {/* Column preview */}
+            {csvHeaders.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--r-text-3)', marginBottom: 8 }}>
+                  Detected Columns
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {csvHeaders.map((h) => (
+                    <span key={h} style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
+                      border: `1px solid ${CSV_COL_MAP[h] ? 'var(--r-border)' : 'var(--r-danger-border)'}`,
+                      background: CSV_COL_MAP[h] ? 'var(--r-gold-faint)' : 'var(--r-danger-bg)',
+                      color: CSV_COL_MAP[h] ? 'var(--r-gold-bright)' : 'var(--r-danger)',
+                    }}>
+                      {h}{CSV_COL_MAP[h] ? ` → ${CSV_COL_MAP[h]}` : ' (ignored)'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Row preview table */}
+            {csvPreview.length > 0 && (
+              <div style={{ marginBottom: 14, overflowX: 'auto' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--r-text-3)', marginBottom: 8 }}>
+                  Preview (first {csvPreview.length} rows)
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      {csvHeaders.slice(0, 6).map((h) => (
+                        <th key={h} style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--r-text-3)', fontWeight: 700, borderBottom: '1px solid var(--r-border)', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {csvPreview.map((row, ri) => (
+                      <tr key={ri}>
+                        {row.slice(0, 6).map((cell, ci) => (
+                          <td key={ci} style={{ padding: '4px 8px', color: 'var(--r-text-2)', borderBottom: '1px solid var(--r-border)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <ActionBtn
+                tone="gold"
+                onClick={ingestCsv}
+                disabled={csvRows.length === 0 || csvLoading}
+              >
+                {csvLoading ? 'Importing…' : `Import ${csvRows.length > 0 ? `${csvRows.length} rows` : 'CSV'}`}
+              </ActionBtn>
+              {csvRows.length > 0 && !csvLoading && (
+                <ActionBtn onClick={() => { setCsvFileName(null); setCsvHeaders([]); setCsvPreview([]); setCsvRows([]); setCsvResult(null); setCsvError(null); }}>
+                  Clear
+                </ActionBtn>
+              )}
+            </div>
+
+            {/* Result feedback */}
+            {csvResult && (
+              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 9, background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)', fontSize: 12, color: 'var(--r-success)', fontWeight: 600 }}>
+                Import complete — {csvResult.inserted} inserted · {csvResult.updated} updated · {csvResult.skipped} skipped
+              </div>
+            )}
+            {csvError && (
+              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 9, background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', fontSize: 12, color: 'var(--r-danger)', fontWeight: 600 }}>
+                Error: {csvError}
+              </div>
+            )}
           </SectionCard>
 
           {/* SECTION D — Notifications */}
@@ -671,22 +821,22 @@ export default function SettingsPage() {
                   border: '2px solid var(--r-border-strong)',
                   boxShadow: 'var(--r-shadow-gold)',
                 }}>
-                  S
+                  —
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--r-text)', fontFamily: 'var(--r-font-serif)' }}>
-                    Susan Yoder
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--r-text-3)', fontFamily: 'var(--r-font-serif)' }}>
+                    Broker profile not configured
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
-                    Principal Broker · Ranch Properties
+                    Principal Broker
                   </div>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <FieldRow label="License" value="TX-BR-088142" />
-                <FieldRow label="Region"  value="Texas Hill Country" />
+                <FieldRow label="License" value="—" />
+                <FieldRow label="Region"  value="—" />
               </div>
-              <ActionBtn>Edit Profile</ActionBtn>
+              <ActionBtn disabled>Edit Profile</ActionBtn>
             </div>
           </SectionCard>
 
@@ -718,7 +868,7 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {([
                 ['Version',  'Hoard v1.0.0 Ranch Edition'],
-                ['Build',    '2026.04.10'],
+                ['Build',    new Date().toISOString().slice(0, 10).replace(/-/g, '.')],
                 ['Region',   'US-Central'],
                 ['Status',   'All systems operational'],
               ] as [string, string][]).map(([label, value]) => (

@@ -1,5 +1,9 @@
 'use client';
 
+// Prevent Next.js from statically pre-rendering this route.
+// Agent data is live from Supabase — caching the shell causes stale renders.
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
@@ -9,8 +13,9 @@ import { useAgents } from '@/hooks/useAgents';
 import type { Lead, Opportunity } from '@/features/opportunities/types';
 import type { Contact } from '@/features/contacts/types';
 import type { Task } from '@/features/tasks/types';
+import { getStageDefinition } from '@/features/pipeline/definitions';
 
-const REF_TODAY = '2026-04-07';
+const REF_TODAY = new Date().toISOString().slice(0, 10);
 const MAX_SCORE = 32; // calibrated for 2-agent team
 
 type WorkloadLevel = 'overloaded' | 'busy' | 'balanced' | 'light' | 'inactive';
@@ -53,9 +58,11 @@ type AgentStats = {
   weightedPipeline: number;
   score: number;
   workloadLevel: WorkloadLevel;
+  lastActiveAt: string | null;   // ISO string of most recent entity update
+  recentItems: { label: string; sub: string; time: string; color: string }[];
 };
 
-type DetailTab = 'leads' | 'contacts' | 'deals' | 'tasks';
+type DetailTab = 'leads' | 'contacts' | 'deals' | 'tasks' | 'activity';
 
 export default function AgentsPage() {
   // Hydrates the store with real Supabase data on mount.
@@ -82,7 +89,7 @@ export default function AgentsPage() {
       const agentLeads    = leads.filter((l) => l.assignedAgentId === agent.id);
       const agentContacts = contacts.filter((c) => c.assignedAgentId === agent.id);
       const activeOpps    = opportunities.filter(
-        (o) => o.assignedAgentId === agent.id && o.stage !== 'won' && o.stage !== 'lost'
+        (o) => o.assignedAgentId === agent.id && o.stage !== 'closed' && o.stage !== 'post_close_followup' && o.stage !== 'lost'
       );
 
       // Tasks attributed via entity ownership
@@ -97,7 +104,7 @@ export default function AgentsPage() {
 
       const overdueTasks    = openTasks.filter((t) => t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY);
       const hotLeads        = agentLeads.filter((l) => l.tags.includes('hot'));
-      const negotiationOpps = activeOpps.filter((o) => o.stage === 'negotiation');
+      const negotiationOpps = activeOpps.filter((o) => ['negotiating','repair_negotiation','offer_received','offer_submitted'].includes(o.stage));
 
       const pipelineValue    = activeOpps.reduce((s, o) => s + o.value, 0);
       const weightedPipeline = activeOpps.reduce((s, o) => s + (o.value * o.probability) / 100, 0);
@@ -106,6 +113,30 @@ export default function AgentsPage() {
       score += hotLeads.length * 2;
       score += negotiationOpps.length * 3;
       score += overdueTasks.length * 2;
+
+      // Last active: most recent updatedAt across all their entities
+      const allTimestamps = [
+        ...agentLeads.map((l) => l.updatedAt),
+        ...agentContacts.map((c) => c.updatedAt),
+        ...activeOpps.map((o) => o.updatedAt),
+      ].filter(Boolean).sort().reverse();
+      const lastActiveAt = allTimestamps[0] ?? null;
+
+      // Recent items: top 5 most recently updated entities for activity panel
+      const recentItems = [
+        ...agentLeads.map((l) => ({
+          label: l.fullName, sub: `Lead · ${l.status}`,
+          time: l.updatedAt, color: '#fbbf24',
+        })),
+        ...agentContacts.map((c) => ({
+          label: c.fullName, sub: `Contact · ${c.status}`,
+          time: c.updatedAt, color: '#93c5fd',
+        })),
+        ...activeOpps.map((o) => ({
+          label: o.contactName, sub: `Deal · ${o.stage}${o.propertyAddress ? ` · ${o.propertyAddress}` : ''}`,
+          time: o.updatedAt, color: '#a78bfa',
+        })),
+      ].sort((a, b) => b.time.localeCompare(a.time)).slice(0, 6);
 
       return {
         id: agent.id,
@@ -123,6 +154,8 @@ export default function AgentsPage() {
         weightedPipeline,
         score,
         workloadLevel: computeWorkload(score),
+        lastActiveAt,
+        recentItems,
       };
     });
   }, [agents, leads, contacts, opportunities, tasks, properties]);
@@ -173,7 +206,7 @@ export default function AgentsPage() {
               Team Oversight
             </h1>
             <p style={{ margin: '6px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
-              Agent workload, pipeline ownership, and performance — April 7, 2026.
+              Agent workload, pipeline ownership, and performance.
             </p>
           </div>
           <button
@@ -402,7 +435,17 @@ export default function AgentsPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>{selected.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{selected.email} · {selected.role}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                    {selected.email} · {selected.role}
+                    {selected.lastActiveAt && (
+                      <span style={{ marginLeft: 10, color: 'rgba(255,255,255,0.3)' }}>
+                        · Last active {(() => {
+                          const d = Math.round((Date.now() - new Date(selected.lastActiveAt).getTime()) / 86_400_000);
+                          return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d}d ago`;
+                        })()}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -451,6 +494,7 @@ export default function AgentsPage() {
                 { key: 'contacts', label: `Contacts (${selected.contacts.length})` },
                 { key: 'deals',    label: `Deals (${selected.activeOpps.length})` },
                 { key: 'tasks',    label: `Tasks (${selected.openTasks.length})` },
+                { key: 'activity', label: 'Activity' },
               ] as { key: DetailTab; label: string }[]).map(({ key, label }) => {
                 const active = activeTab === key;
                 return (
@@ -537,22 +581,39 @@ export default function AgentsPage() {
                   {selected.activeOpps.length === 0 ? (
                     <EmptyMsg>No active deals.</EmptyMsg>
                   ) : (
-                    selected.activeOpps.map((o) => (
-                      <EntityRow
-                        key={o.id}
-                        accent={o.priority === 'high' ? '#a78bfa' : 'rgba(255,255,255,0.3)'}
-                        title={`${o.contactName}${o.propertyAddress ? ` — ${o.propertyAddress}` : ''}`}
-                        meta={`${o.stage} · ${fmt(o.value)} · ${o.probability}% probability`}
-                        badge={o.stage}
-                        badgeTone={o.stage === 'negotiation' ? 'warning' : o.priority === 'high' ? 'danger' : 'default'}
-                      >
-                        <ReassignSelect
-                          agents={agents.filter((ag) => ag.id !== selected.id)}
-                          onSelect={(agentId) => assignOpportunityToAgent(o.id, agentId)}
-                          label="Reassign"
-                        />
-                      </EntityRow>
-                    ))
+                    selected.activeOpps.map((o) => {
+                      const stageDef = getStageDefinition(o.stage, o.pipelineType);
+                      const stageLabel = stageDef?.label ?? o.stage;
+                      const updatedDaysAgo = o.updatedAt
+                        ? Math.round((Date.now() - new Date(o.updatedAt).getTime()) / 86_400_000)
+                        : null;
+                      const updatedLabel = updatedDaysAgo === null ? null
+                        : updatedDaysAgo === 0 ? 'Updated today'
+                        : updatedDaysAgo === 1 ? 'Updated yesterday'
+                        : `Updated ${updatedDaysAgo}d ago`;
+                      return (
+                        <EntityRow
+                          key={o.id}
+                          accent={o.priority === 'high' ? '#a78bfa' : 'rgba(255,255,255,0.3)'}
+                          title={`${o.contactName}${o.propertyAddress ? ` — ${o.propertyAddress}` : ''}`}
+                          meta={`${stageLabel} · ${fmt(o.value)} · ${o.probability}%${updatedLabel ? ` · ${updatedLabel}` : ''}`}
+                          badge={stageLabel}
+                          badgeTone={['negotiating','repair_negotiation','offer_received','offer_submitted'].includes(o.stage) ? 'warning' : o.priority === 'high' ? 'danger' : 'default'}
+                        >
+                          <a
+                            href="/opportunities"
+                            style={{ fontSize: 11, fontWeight: 600, color: '#c4b5fd', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(99,102,241,0.07)', whiteSpace: 'nowrap' }}
+                          >
+                            View →
+                          </a>
+                          <ReassignSelect
+                            agents={agents.filter((ag) => ag.id !== selected.id)}
+                            onSelect={(agentId) => assignOpportunityToAgent(o.id, agentId)}
+                            label="Reassign"
+                          />
+                        </EntityRow>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -593,7 +654,47 @@ export default function AgentsPage() {
                   )}
                 </div>
               )}
-            </div>
+
+              {/* Activity tab */}
+              {activeTab === 'activity' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selected.recentItems.length === 0 ? (
+                    <EmptyMsg>No recent activity on this agent's clients.</EmptyMsg>
+                  ) : (
+                    selected.recentItems.map((item, i) => {
+                      const daysAgoN = Math.round((Date.now() - new Date(item.time).getTime()) / 86_400_000);
+                      const timeLabel = daysAgoN === 0 ? 'Today' : daysAgoN === 1 ? 'Yesterday' : `${daysAgoN}d ago`;
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '10px 14px',
+                            borderRadius: 10,
+                            border: '1px solid rgba(255,255,255,0.07)',
+                            background: 'rgba(255,255,255,0.025)',
+                            borderLeft: `3px solid ${item.color}`,
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</div>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{item.sub}</div>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap', flexShrink: 0 }}>{timeLabel}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                  {selected.lastActiveAt && (
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', textAlign: 'center', paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4 }}>
+                      Most recent entity update: {new Date(selected.lastActiveAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>{/* end tab content container */}
 
             {/* Broker actions footer */}
             <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>

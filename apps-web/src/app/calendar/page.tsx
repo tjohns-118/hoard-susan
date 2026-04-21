@@ -1,28 +1,13 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
-
-// ── Demo reference ────────────────────────────────────────────────
-const REF_TODAY    = '2026-04-07';
-const REF_TOMORROW = '2026-04-08';
-const REF_ISO      = new Date('2026-04-07T12:00:00.000Z');
-
-// 7-day window starting today
-const WEEK = Array.from({ length: 7 }, (_, i) => {
-  const d = new Date('2026-04-07T00:00:00.000Z');
-  d.setUTCDate(d.getUTCDate() + i);
-  const key = d.toISOString().slice(0, 10);
-  return {
-    key,
-    name: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
-    num:  d.getUTCDate(),
-    month: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
-    isToday: i === 0,
-  };
-});
+import { useEvents } from '@/hooks/useEvents';
+import { useTasks } from '@/hooks/useTasks';
 
 function formatTime(iso: string): string {
   const h = parseInt(iso.slice(11, 13), 10);
@@ -32,8 +17,28 @@ function formatTime(iso: string): string {
   return m === 0 ? `${hour} ${ampm}` : `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function daysUntil(dateStr: string): number {
-  return Math.round((new Date(`${dateStr}T12:00:00.000Z`).getTime() - REF_ISO.getTime()) / 86_400_000);
+function daysUntil(dateStr: string, refIso: Date): number {
+  return Math.round((new Date(`${dateStr}T12:00:00.000Z`).getTime() - refIso.getTime()) / 86_400_000);
+}
+
+function makeTodayKey(): string {
+  const now = new Date();
+  return now.toISOString().slice(0, 10);
+}
+
+function makeWeek(todayKey: string) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${todayKey}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    return {
+      key,
+      name:  d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+      num:   d.getUTCDate(),
+      month: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+      isToday: i === 0,
+    };
+  });
 }
 
 // ── Calendar item type ────────────────────────────────────────────
@@ -77,19 +82,84 @@ const P_TO_U: Record<'high' | 'medium' | 'low', UrgencyLevel> = {
   high: 'high', medium: 'medium', low: 'low',
 };
 
+// ── Create event form types ────────────────────────────────────────
+type CreateEventType = 'showing' | 'closing' | 'call' | 'meeting' | 'deadline' | 'follow-up';
+
+interface CreateEventForm {
+  title:          string;
+  type:           CreateEventType;
+  date:           string;
+  startTime:      string;
+  endTime:        string;
+  notes:          string;
+  contactId:      string;
+  opportunityId:  string;
+}
+
+// ── Page ──────────────────────────────────────────────────────────
+
 export default function CalendarPage() {
-  const events        = useAppStore((s) => s.events);
+  const { events, createEvent } = useEvents();
+  const { toggleTask, scheduleTask } = useTasks();
   const tasks         = useAppStore((s) => s.tasks);
   const leads         = useAppStore((s) => s.leads);
   const contacts      = useAppStore((s) => s.contacts);
   const opportunities = useAppStore((s) => s.opportunities);
   const properties    = useAppStore((s) => s.properties);
   const agents        = useAppStore((s) => s.agents);
-  const toggleTask    = useAppStore((s) => s.toggleTask);
-  const scheduleTask  = useAppStore((s) => s.scheduleTask);
 
   const [view, setView]       = useState<'agenda' | 'week'>('agenda');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // ── Create event state ────────────────────────────────────────────
+  const [showCreate, setShowCreate] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError]   = useState('');
+  const [createForm, setCreateForm]     = useState<CreateEventForm>({
+    title: '', type: 'meeting', date: '', startTime: '09:00', endTime: '10:00',
+    notes: '', contactId: '', opportunityId: '',
+  });
+
+  // ── Create event handler ──────────────────────────────────────────
+  async function handleCreateEvent() {
+    if (!createForm.title.trim() || !createForm.date) {
+      setCreateError('Title and date are required.');
+      return;
+    }
+    setCreateSaving(true);
+    setCreateError('');
+    try {
+      const startsAt = `${createForm.date}T${createForm.startTime}:00.000Z`;
+      const endsAt   = createForm.endTime
+        ? `${createForm.date}T${createForm.endTime}:00.000Z`
+        : undefined;
+      await createEvent({
+        title:          createForm.title.trim(),
+        type:           createForm.type,
+        startsAt,
+        endsAt,
+        notes:          createForm.notes.trim() || undefined,
+        contactId:      createForm.contactId     || undefined,
+        opportunityId:  createForm.opportunityId || undefined,
+      });
+      setShowCreate(false);
+      setCreateForm((f) => ({ ...f, title: '', notes: '', contactId: '', opportunityId: '' }));
+    } catch (err: any) {
+      setCreateError(err?.message ?? 'Failed to create event.');
+    } finally {
+      setCreateSaving(false);
+    }
+  }
+
+  // ── Dynamic date anchors (computed once per render cycle) ─────────
+  const REF_TODAY    = useMemo(() => makeTodayKey(), []);
+  const REF_ISO      = useMemo(() => new Date(`${REF_TODAY}T12:00:00.000Z`), [REF_TODAY]);
+  const REF_TOMORROW = useMemo(() => {
+    const d = new Date(`${REF_TODAY}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, [REF_TODAY]);
+  const WEEK = useMemo(() => makeWeek(REF_TODAY), [REF_TODAY]);
 
   // ── Build unified calendar item list ─────────────────────────────
   const allItems = useMemo((): CalendarItem[] => {
@@ -158,10 +228,10 @@ export default function CalendarPage() {
       events.filter((e) => e.type === 'closing' && e.opportunityId).map((e) => e.opportunityId!)
     );
     for (const o of opportunities) {
-      if (['won', 'lost'].includes(o.stage) || !o.expectedCloseDate) continue;
+      if (['closed', 'post_close_followup', 'lost'].includes(o.stage) || !o.expectedCloseDate) continue;
       if (coveredOppIds.has(o.id)) continue;
       const dateKey  = o.expectedCloseDate;
-      const d        = daysUntil(dateKey);
+      const d        = daysUntil(dateKey, REF_ISO);
       const agentName = o.assignedAgentId ? agents.find((a) => a.id === o.assignedAgentId)?.name : undefined;
       items.push({
         id: `closing-${o.id}`,
@@ -182,13 +252,13 @@ export default function CalendarPage() {
     }
 
     return items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [events, tasks, leads, contacts, opportunities, properties, agents]);
+  }, [events, tasks, leads, contacts, opportunities, properties, agents, REF_TODAY, REF_ISO]);
 
   // ── KPI ──────────────────────────────────────────────────────────
   const todayItems    = allItems.filter((i) => i.dateKey === REF_TODAY);
   const showingsWeek  = allItems.filter((i) => i.type === 'showing' && i.dateKey >= REF_TODAY && i.dateKey <= WEEK[6].key);
   const overdueItems  = allItems.filter((i) => i.isOverdue);
-  const closingsAhead = allItems.filter((i) => i.type === 'closing' && i.dateKey >= REF_TODAY && daysUntil(i.dateKey) <= 14);
+  const closingsAhead = allItems.filter((i) => i.type === 'closing' && i.dateKey >= REF_TODAY && daysUntil(i.dateKey, REF_ISO) <= 14);
   const dueTodayCount = allItems.filter((i) => i.source === 'task' && i.dateKey === REF_TODAY).length;
 
   // ── Needs Scheduling ─────────────────────────────────────────────
@@ -217,13 +287,14 @@ export default function CalendarPage() {
     return Array.from(map.entries()).map(([dateKey, items]) => {
       let label: string;
       const d = new Date(`${dateKey}T12:00:00Z`);
-      if (dateKey < REF_TODAY)         label = `Overdue · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
-      else if (dateKey === REF_TODAY)  label = 'Today · April 7';
-      else if (dateKey === REF_TOMORROW) label = 'Tomorrow · April 8';
+      const dayLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      if (dateKey < REF_TODAY)           label = `Overdue · ${dayLabel}`;
+      else if (dateKey === REF_TODAY)    label = `Today · ${dayLabel}`;
+      else if (dateKey === REF_TOMORROW) label = `Tomorrow · ${dayLabel}`;
       else label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
       return { label, dateKey, items };
     });
-  }, [allItems]);
+  }, [allItems, REF_TODAY, REF_TOMORROW]);
 
   const selectedItem = allItems.find((i) => i.id === selectedId) ?? null;
 
@@ -237,9 +308,27 @@ export default function CalendarPage() {
               Calendar
             </h1>
             <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
-              Showings, deadlines, closings, and follow-ups — week of April 7, 2026.
+              Showings, deadlines, closings, and follow-ups.
             </p>
           </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Create event button */}
+            <button
+              onClick={() => {
+                setCreateForm((f) => ({ ...f, date: REF_TODAY }));
+                setShowCreate((v) => !v);
+                setCreateError('');
+              }}
+              style={{
+                padding: '8px 16px', borderRadius: 9,
+                border: showCreate ? '1px solid var(--r-gold)' : '1px solid var(--r-border)',
+                background: showCreate ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.06)',
+                color: showCreate ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
+                fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              + Event
+            </button>
           {/* View switcher */}
           <div style={{ display: 'flex', gap: 5, background: 'rgba(200,164,92,0.04)', borderRadius: 10, padding: 4, border: '1px solid var(--r-border)' }}>
             {(['agenda', 'week'] as const).map((v) => (
@@ -263,8 +352,128 @@ export default function CalendarPage() {
               </button>
             ))}
           </div>
+          </div> {/* end: button + view switcher flex row */}
         </div>
       </div>
+
+      {/* ── Create Event form ────────────────────────────────────── */}
+      {showCreate && (
+        <div style={{
+          marginBottom: 20, borderRadius: 14, background: 'var(--r-grad-card)',
+          border: '1px solid var(--r-border)', boxShadow: 'var(--r-shadow)', padding: '18px 20px',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--r-text)', marginBottom: 14, fontFamily: 'var(--r-font-serif)' }}>
+            New Event
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Title *</div>
+              <input
+                value={createForm.title}
+                onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. Showing at Twin Oaks Ranch"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Type</div>
+              <select
+                value={createForm.type}
+                onChange={(e) => setCreateForm((f) => ({ ...f, type: e.target.value as CreateEventType }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, cursor: 'pointer' }}
+              >
+                {(['showing','call','meeting','deadline','follow-up','closing'] as CreateEventType[]).map((t) => (
+                  <option key={t} value={t}>{TYPE_META[t].label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Date *</div>
+              <input
+                type="date"
+                value={createForm.date}
+                onChange={(e) => setCreateForm((f) => ({ ...f, date: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Start Time</div>
+              <input
+                type="time"
+                value={createForm.startTime}
+                onChange={(e) => setCreateForm((f) => ({ ...f, startTime: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>End Time</div>
+              <input
+                type="time"
+                value={createForm.endTime}
+                onChange={(e) => setCreateForm((f) => ({ ...f, endTime: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Contact (optional)</div>
+              <select
+                value={createForm.contactId}
+                onChange={(e) => setCreateForm((f) => ({ ...f, contactId: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: createForm.contactId ? 'var(--r-text)' : 'var(--r-text-3)', fontSize: 12, cursor: 'pointer' }}
+              >
+                <option value="">None</option>
+                {contacts.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+                {leads.map((l) => <option key={`lead-${l.id}`} value={l.id}>{l.fullName} (lead)</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Deal (optional)</div>
+              <select
+                value={createForm.opportunityId}
+                onChange={(e) => setCreateForm((f) => ({ ...f, opportunityId: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: createForm.opportunityId ? 'var(--r-text)' : 'var(--r-text-3)', fontSize: 12, cursor: 'pointer' }}
+              >
+                <option value="">None</option>
+                {opportunities.map((o) => <option key={o.id} value={o.id}>{o.contactName}{o.propertyAddress ? ` — ${o.propertyAddress}` : ''}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Notes (optional)</div>
+            <input
+              value={createForm.notes}
+              onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
+              placeholder="Additional notes…"
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          {createError && (
+            <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{createError}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleCreateEvent}
+              disabled={createSaving}
+              style={{
+                padding: '9px 20px', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: createSaving ? 'default' : 'pointer',
+                border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', color: 'var(--r-gold-bright)', opacity: createSaving ? 0.6 : 1,
+              }}
+            >
+              {createSaving ? 'Saving…' : 'Save Event'}
+            </button>
+            <button
+              onClick={() => { setShowCreate(false); setCreateError(''); }}
+              style={{ padding: '9px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 18 }}>
@@ -312,7 +521,7 @@ export default function CalendarPage() {
         {/* ── Calendar view ────────────────────────────────── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {view === 'agenda'
-            ? <AgendaView groups={agendaGroups} selectedId={selectedId} onSelect={setSelectedId} />
+            ? <AgendaView groups={agendaGroups} selectedId={selectedId} onSelect={setSelectedId} todayKey={REF_TODAY} />
             : <WeekView week={WEEK} allItems={allItems} selectedId={selectedId} onSelect={setSelectedId} />
           }
         </div>
@@ -350,7 +559,7 @@ export default function CalendarPage() {
               ) : (
                 <>
                   {overdueTasks.map((t) => {
-                    const d = Math.round((REF_ISO.getTime() - new Date(t.dueAt!).getTime()) / 86_400_000);
+                    const d = Math.round((REF_ISO.getTime() - new Date(t.dueAt!).getTime()) / 86_400_000); // eslint-disable-line
                     return (
                       <div key={t.id} style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid var(--r-danger-border)', background: 'var(--r-danger-bg)' }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text)', lineHeight: 1.3, marginBottom: 3 }}>
@@ -426,10 +635,11 @@ export default function CalendarPage() {
 
 interface DayGroup { label: string; dateKey: string; items: CalendarItem[] }
 
-function AgendaView({ groups, selectedId, onSelect }: {
+function AgendaView({ groups, selectedId, onSelect, todayKey }: {
   groups: DayGroup[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  todayKey: string;
 }) {
   if (groups.length === 0)
     return <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>No calendar items.</div>;
@@ -437,8 +647,8 @@ function AgendaView({ groups, selectedId, onSelect }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       {groups.map(({ label, dateKey, items }) => {
-        const isOverdue = dateKey < REF_TODAY;
-        const isToday   = dateKey === REF_TODAY;
+        const isOverdue = dateKey < todayKey;
+        const isToday   = dateKey === todayKey;
         const hc = isOverdue ? 'var(--r-danger)' : isToday ? 'var(--r-gold)' : 'var(--r-text-3)';
         return (
           <div key={dateKey}>
@@ -552,8 +762,10 @@ function AgendaRow({ item, selected, onSelect }: {
 
 // ── Week view ──────────────────────────────────────────────────────
 
+type WeekDay = { key: string; name: string; num: number; month: string; isToday: boolean };
+
 function WeekView({ week, allItems, selectedId, onSelect }: {
-  week: typeof WEEK;
+  week: WeekDay[];
   allItems: CalendarItem[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;

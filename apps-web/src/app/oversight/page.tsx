@@ -1,9 +1,15 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
+import { useLeads } from '@/hooks/useLeads';
+import { useOpportunities } from '@/hooks/useOpportunities';
+import { useProperties } from '@/hooks/useProperties';
+import { getStageDefinition } from '@/features/pipeline/definitions';
 
 function fmtValue(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -11,17 +17,26 @@ function fmtValue(v: number) {
   return `$${v}`;
 }
 
-const REF = new Date('2026-04-10T00:00:00.000Z');
+const REF = new Date();
 
-const STAGE_ORDER = ['prospect', 'qualified', 'proposal', 'negotiation'] as const;
-const STAGE_LABEL: Record<string, string> = {
-  prospect: 'Prospect', qualified: 'Qualified', proposal: 'Proposal', negotiation: 'Negotiation',
-};
-const STAGE_COLOR: Record<string, string> = {
-  prospect: '#7ca4cc', qualified: '#9b8ab4', proposal: '#e2c47c', negotiation: 'var(--r-warning)',
+// Pipeline phase display for the oversight bar chart
+const PHASE_ORDER = ['Early', 'Agreement', 'Listing', 'Search', 'Marketing', 'Offer', 'Contract'] as const;
+const PHASE_COLOR: Record<string, string> = {
+  Early:     '#7ca4cc',
+  Agreement: '#9b8ab4',
+  Listing:   '#e2c47c',
+  Search:    'var(--r-gold-bright)',
+  Marketing: 'var(--r-warning)',
+  Offer:     '#e09050',
+  Contract:  '#f08080',
 };
 
 export default function OversightPage() {
+  // Hydrate store — these hooks fetch on mount and write into the store
+  useLeads();
+  useOpportunities();
+  useProperties();
+
   const contacts     = useAppStore((s) => s.contacts);
   const leads        = useAppStore((s) => s.leads);
   const opportunities= useAppStore((s) => s.opportunities);
@@ -32,29 +47,42 @@ export default function OversightPage() {
 
   // ── Pipeline stats ───────────────────────────────────────────────────────
   const openOpps = useMemo(() =>
-    opportunities.filter((o) => o.stage !== 'won' && o.stage !== 'lost'),
+    opportunities.filter((o) => o.stage !== 'closed' && o.stage !== 'lost' && o.stage !== 'post_close_followup'),
   [opportunities]);
 
   const pipelineValue = useMemo(() =>
     openOpps.reduce((sum, o) => sum + (o.value ?? 0), 0),
   [openOpps]);
 
-  const wonOpps = useMemo(() =>
-    opportunities.filter((o) => o.stage === 'won'),
+  const closedOpps = useMemo(() =>
+    opportunities.filter((o) => o.stage === 'closed' || o.stage === 'post_close_followup'),
   [opportunities]);
 
-  const wonValue = useMemo(() =>
-    wonOpps.reduce((sum, o) => sum + (o.value ?? 0), 0),
-  [wonOpps]);
+  const closedValue = useMemo(() =>
+    closedOpps.reduce((sum, o) => sum + (o.value ?? 0), 0),
+  [closedOpps]);
 
-  const byStage = useMemo(() =>
-    STAGE_ORDER.map((stage) => {
-      const items = openOpps.filter((o) => o.stage === stage);
-      return { stage, count: items.length, value: items.reduce((s, o) => s + (o.value ?? 0), 0) };
+  // Broker-escalated stages — deals where broker ownership is required
+  const brokerStages = useMemo(() =>
+    openOpps.filter((o) => o.stageOwner === 'broker'),
+  [openOpps]);
+
+  // Group open deals by phase for the pipeline bar chart
+  const byPhase = useMemo(() =>
+    PHASE_ORDER.map((phase) => {
+      const items = openOpps.filter((o) => {
+        const def = getStageDefinition(o.stage, o.pipelineType);
+        return def?.phase === phase;
+      });
+      return { phase, count: items.length, value: items.reduce((s, o) => s + (o.value ?? 0), 0) };
     }),
   [openOpps]);
 
-  const maxStageValue = Math.max(...byStage.map((s) => s.value), 1);
+  const maxPhaseValue = Math.max(...byPhase.map((p) => p.value), 1);
+
+  // Keep backward-compat alias
+  const wonOpps = closedOpps;
+  const wonValue = closedValue;
 
   // ── Lead & contact health ────────────────────────────────────────────────
   const activeLeads   = leads.filter((l) => l.status !== 'lost').length;
@@ -92,7 +120,7 @@ export default function OversightPage() {
   });
 
   // ── Recent wins (last 30 days) ───────────────────────────────────────────
-  const recentWins = wonOpps
+  const recentWins = closedOpps
     .filter((o) => {
       const days = (REF.getTime() - new Date(o.updatedAt).getTime()) / 86_400_000;
       return days <= 30;
@@ -100,7 +128,7 @@ export default function OversightPage() {
     .slice(0, 5);
 
   const conversionRate = opportunities.length > 0
-    ? Math.round((wonOpps.length / opportunities.length) * 100)
+    ? Math.round((closedOpps.length / opportunities.length) * 100)
     : 0;
 
   return (
@@ -118,8 +146,8 @@ export default function OversightPage() {
       {/* ── KPI strip ─────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
         <StatCard label="Pipeline Value"  value={fmtValue(pipelineValue)} subtext={`${openOpps.length} open deals`} accent />
-        <StatCard label="Won (All Time)"  value={fmtValue(wonValue)}      subtext={`${wonOpps.length} closed`} />
-        <StatCard label="Conversion"      value={`${conversionRate}%`}    subtext="won / total" />
+        <StatCard label="Closed"          value={fmtValue(closedValue)}   subtext={`${closedOpps.length} closed`} />
+        <StatCard label="Conversion"      value={`${conversionRate}%`}    subtext="closed / total" />
         <StatCard label="Active Leads"    value={activeLeads}              subtext={hotLeads > 0 ? `${hotLeads} hot` : 'in funnel'} />
         <StatCard label="Inventory"       value={fmtValue(inventoryValue)} subtext={`${activeProps.length} active listings`} />
         <StatCard label="Unassigned"      value={unassigned}               subtext="need agent" />
@@ -131,32 +159,39 @@ export default function OversightPage() {
         {/* Pipeline by stage */}
         <div className="r-card" style={{ padding: '20px 24px', borderRadius: 16, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', boxShadow: 'var(--r-shadow)' }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--r-text-3)', marginBottom: 18 }}>
-            Pipeline by Stage
+            Pipeline by Phase
           </div>
+          {brokerStages.length > 0 && (
+            <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 11, fontWeight: 600, color: '#f87171' }}>
+              {brokerStages.length} deal{brokerStages.length !== 1 ? 's' : ''} in broker-owned stages require attention
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {byStage.map(({ stage, count, value }) => {
-              const pct = maxStageValue > 0 ? (value / maxStageValue) * 100 : 0;
-              const color = STAGE_COLOR[stage];
+            {byPhase.filter((p) => p.count > 0).map(({ phase, count, value }) => {
+              const pct = maxPhaseValue > 0 ? (value / maxPhaseValue) * 100 : 0;
+              const color = PHASE_COLOR[phase] ?? 'var(--r-text-3)';
               return (
-                <div key={stage}>
+                <div key={phase}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)' }}>{STAGE_LABEL[stage]}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)' }}>{phase}</span>
                     <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
                       {count} deal{count !== 1 ? 's' : ''} · {fmtValue(value)}
                     </span>
                   </div>
                   <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
                     <div style={{
-                      height: '100%',
-                      width: `${pct}%`,
-                      borderRadius: 999,
-                      background: color,
-                      transition: 'width 400ms var(--r-ease)',
+                      height: '100%', width: `${pct}%`, borderRadius: 999,
+                      background: color, transition: 'width 400ms var(--r-ease)',
                     }} />
                   </div>
                 </div>
               );
             })}
+            {byPhase.every((p) => p.count === 0) && (
+              <div style={{ fontSize: 12, color: 'var(--r-text-3)', padding: '8px 0' }}>
+                No active deals in pipeline
+              </div>
+            )}
           </div>
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--r-border-soft)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>

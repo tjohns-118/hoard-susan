@@ -1,10 +1,12 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useMemo, useState, useCallback } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
-import { useAppStore } from '@/app/store/useAppStore';
+import { useTemplates } from '@/hooks/useTemplates';
 import type { TemplateCategory } from '@/data/mockDb';
 
 // ── Category metadata ─────────────────────────────────────────────
@@ -43,6 +45,27 @@ const USE_CASES = [
   { label: 'Closing congrats',       templateName: 'Post-Close Congratulations' },
   { label: '7-day re-engage',        templateName: '7-Day No Response Follow-Up' },
 ];
+
+// ── Plain-text token mapping ──────────────────────────────────────
+const TOKEN_TO_PLAIN: Record<string, string> = {
+  '{{client_name}}':      '[Client Name]',
+  '{{property_name}}':    '[Property Address]',
+  '{{appointment_time}}': '[Appointment Time]',
+  '{{agent_name}}':       '[Agent Name]',
+  '{{broker_name}}':      '[Broker / Brokerage]',
+  '{{price}}':            '[Listed Price]',
+  '{{offer_amount}}':     '[Offer Amount]',
+  '{{close_date}}':       '[Closing Date]',
+  '{{days_on_market}}':   '[Days on Market]',
+  '{{county}}':           '[County]',
+};
+
+function toPlainText(body: string): string {
+  return body.replace(/{{([^}]+)}}/g, (match) =>
+    TOKEN_TO_PLAIN[match] ??
+    `[${match.slice(2, -2).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}]`
+  );
+}
 
 // Render body with highlighted {{tokens}}
 function BodyWithTokens({ body }: { body: string }) {
@@ -88,11 +111,7 @@ type Mode = 'view' | 'edit' | 'create';
 const EMPTY_FORM = { name: '', category: 'buyer' as TemplateCategory, body: '', notes: '', tags: '' };
 
 export default function TemplatesPage() {
-  const templates         = useAppStore((s) => s.templates);
-  const createTemplate    = useAppStore((s) => s.createTemplate);
-  const updateTemplate    = useAppStore((s) => s.updateTemplate);
-  const deleteTemplate    = useAppStore((s) => s.deleteTemplate);
-  const duplicateTemplate = useAppStore((s) => s.duplicateTemplate);
+  const { templates, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate } = useTemplates();
 
   // ── UI state ─────────────────────────────────────────────────────
   const [selectedId,  setSelectedId]  = useState<string | null>(templates[0]?.id ?? null);
@@ -102,6 +121,9 @@ export default function TemplatesPage() {
   const [sort,        setSort]        = useState<'recent' | 'name'>('name');
   const [copied,      setCopied]      = useState(false);
   const [confirmDel,  setConfirmDel]  = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [saveError,   setSaveError]   = useState('');
+  const [toast,       setToast]       = useState<string | null>(null);
 
   // ── Edit form ────────────────────────────────────────────────────
   const [form, setForm] = useState(EMPTY_FORM);
@@ -123,18 +145,29 @@ export default function TemplatesPage() {
     setMode('create');
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.body.trim()) return;
-    const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean);
-    if (mode === 'create') {
-      createTemplate({ name: form.name.trim(), category: form.category, body: form.body, tags, notes: form.notes || undefined });
-    } else if (mode === 'edit' && selectedId) {
-      updateTemplate(selectedId, { name: form.name.trim(), category: form.category, body: form.body, tags, notes: form.notes || undefined });
+    setSaving(true);
+    setSaveError('');
+    try {
+      const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean);
+      if (mode === 'create') {
+        await createTemplate({ name: form.name.trim(), category: form.category, body: form.body, tags, notes: form.notes || undefined });
+      } else if (mode === 'edit' && selectedId) {
+        await updateTemplate(selectedId, { name: form.name.trim(), category: form.category, body: form.body, tags, notes: form.notes || undefined });
+      }
+      const msg = mode === 'create' ? 'Template created' : 'Template saved';
+      setToast(msg);
+      setTimeout(() => setToast(null), 3000);
+      setMode('view');
+    } catch (err: any) {
+      setSaveError(err?.message ?? 'Save failed — please try again.');
+    } finally {
+      setSaving(false);
     }
-    setMode('view');
   }
 
-  function handleCancel() { setMode('view'); setForm(EMPTY_FORM); }
+  function handleCancel() { setMode('view'); setForm(EMPTY_FORM); setSaveError(''); }
 
   function handleDelete(id: string) {
     if (!confirmDel) { setConfirmDel(true); return; }
@@ -174,10 +207,23 @@ export default function TemplatesPage() {
 
   // ── KPI ──────────────────────────────────────────────────────────
   const byCategory = (cat: TemplateCategory) => templates.filter((t) => t.category === cat).length;
-  const recentCount = templates.filter((t) => new Date(t.updatedAt) >= new Date('2026-04-01T00:00:00.000Z')).length;
+  const thirtyDaysAgo = useMemo(() => new Date(Date.now() - 30 * 86_400_000), []);
+  const recentCount = templates.filter((t) => new Date(t.updatedAt) >= thirtyDaysAgo).length;
 
   return (
     <AppShell>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          padding: '10px 18px', borderRadius: 12,
+          background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)',
+          color: 'var(--r-success)', fontSize: 13, fontWeight: 600,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)', pointerEvents: 'none',
+        }}>
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ marginBottom: 22 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -347,7 +393,7 @@ export default function TemplatesPage() {
               tokens={tokens}
               copied={copied}
               confirmDel={confirmDel}
-              onCopy={() => handleCopy(selected.body)}
+              onCopy={(text) => handleCopy(text)}
               onEdit={() => openEdit(selected.id)}
               onDuplicate={() => { duplicateTemplate(selected.id); }}
               onCreateFrom={() => openCreate(selected.id)}
@@ -365,6 +411,8 @@ export default function TemplatesPage() {
               onChange={(f) => setForm((prev) => ({ ...prev, ...f }))}
               onSave={handleSave}
               onCancel={handleCancel}
+              saving={saving}
+              saveError={saveError}
             />
           )}
         </div>
@@ -377,6 +425,8 @@ export default function TemplatesPage() {
 
 import type { TemplateRecord } from '@/data/mockDb';
 
+type ViewMode = 'automation' | 'plain';
+
 function ViewPanel({
   template, tokens, copied, confirmDel,
   onCopy, onEdit, onDuplicate, onCreateFrom, onDelete, onCancelDel,
@@ -385,15 +435,18 @@ function ViewPanel({
   tokens: string[];
   copied: boolean;
   confirmDel: boolean;
-  onCopy: () => void;
+  onCopy: (text: string) => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onCreateFrom: () => void;
   onDelete: () => void;
   onCancelDel: () => void;
 }) {
+  const [viewMode, setViewMode] = useState<ViewMode>('automation');
   const cm = CAT_META[template.category];
   const audience = template.category === 'internal' ? 'Internal only' : template.category === 'buyer' ? 'Buyer-facing' : template.category === 'seller' ? 'Seller-facing' : 'General';
+  const displayBody = viewMode === 'plain' ? toPlainText(template.body) : template.body;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Header card */}
@@ -428,46 +481,60 @@ function ViewPanel({
       </div>
 
       {/* Action bar */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button
-          onClick={onCopy}
+          onClick={() => onCopy(displayBody)}
           className="r-btn-gold"
           style={{
-            padding: '8px 18px',
-            borderRadius: 9,
+            padding: '8px 18px', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: 'pointer',
             border: copied ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
             background: copied ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
             color: copied ? 'var(--r-success)' : 'var(--r-gold-bright)',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
           }}
         >
-          {copied ? '✓ Copied!' : '⎘ Copy'}
+          {copied ? '✓ Copied!' : viewMode === 'plain' ? '⎘ Copy Plain Text' : '⎘ Copy'}
         </button>
         <button onClick={onEdit} style={actionBtn}>Edit</button>
         <button onClick={onDuplicate} style={actionBtn}>Duplicate</button>
         <button onClick={onCreateFrom} style={actionBtn}>New from this</button>
-        <div style={{ marginLeft: 'auto' }}>
-          {confirmDel ? (
-            <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: 'var(--r-danger)' }}>Are you sure?</span>
-              <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', borderColor: 'var(--r-danger-border)', background: 'var(--r-danger-bg)' }}>Yes, delete</button>
-              <button onClick={onCancelDel} style={actionBtn}>Cancel</button>
-            </div>
-          ) : (
-            <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', opacity: 0.7 }}>Delete</button>
-          )}
+
+        {/* View mode toggle */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 0, background: 'rgba(200,164,92,0.04)', borderRadius: 8, padding: 3, border: '1px solid var(--r-border)' }}>
+          {(['automation', 'plain'] as ViewMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              style={{
+                padding: '5px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                border: viewMode === m ? '1px solid var(--r-border)' : '1px solid transparent',
+                background: viewMode === m ? 'var(--r-gold-faint)' : 'transparent',
+                color: viewMode === m ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+              }}
+            >
+              {m === 'automation' ? '{{tokens}}' : '[Plain text]'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ padding: '20px 22px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', fontSize: 13, lineHeight: 1.75, color: 'var(--r-text-2)', fontFamily: 'inherit' }}>
-        <BodyWithTokens body={template.body} />
+      {/* View mode hint */}
+      <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: -8, paddingBottom: 2 }}>
+        {viewMode === 'automation'
+          ? 'Automation view — tokens are substituted by the system. Copy for workflow integrations.'
+          : 'Copy/paste view — tokens replaced with readable placeholders. Copy and edit before sending.'}
       </div>
 
-      {/* Placeholder legend */}
-      {tokens.length > 0 && (
+      {/* Body */}
+      <div style={{ padding: '20px 22px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', fontSize: 13, lineHeight: 1.75, color: 'var(--r-text-2)', fontFamily: 'inherit', whiteSpace: 'pre-wrap' }}>
+        {viewMode === 'plain'
+          ? <span>{displayBody}</span>
+          : <BodyWithTokens body={template.body} />
+        }
+      </div>
+
+      {/* Placeholder legend — only in automation mode */}
+      {viewMode === 'automation' && tokens.length > 0 && (
         <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)' }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--r-gold)', marginBottom: 12 }}>
             Placeholder guide — {tokens.length} token{tokens.length !== 1 ? 's' : ''} in this template
@@ -491,12 +558,23 @@ function ViewPanel({
         </div>
       )}
 
-      {/* Meta footer */}
-      <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--r-text-3)', paddingTop: 4 }}>
-        <span>Created {fmtDate(template.createdAt)}</span>
-        <span>Updated {fmtDate(template.updatedAt)}</span>
-        <span>{template.body.split(/\s+/).length} words</span>
-        <span>{tokens.length} placeholder{tokens.length !== 1 ? 's' : ''}</span>
+      {/* Delete controls + meta footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
+        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--r-text-3)' }}>
+          <span>Created {fmtDate(template.createdAt)}</span>
+          <span>Updated {fmtDate(template.updatedAt)}</span>
+          <span>{template.body.split(/\s+/).length} words</span>
+          <span>{tokens.length} placeholder{tokens.length !== 1 ? 's' : ''}</span>
+        </div>
+        {confirmDel ? (
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--r-danger)' }}>Are you sure?</span>
+            <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', borderColor: 'var(--r-danger-border)', background: 'var(--r-danger-bg)' }}>Yes, delete</button>
+            <button onClick={onCancelDel} style={actionBtn}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={onDelete} style={{ ...actionBtn, color: 'var(--r-danger)', opacity: 0.7 }}>Delete</button>
+        )}
       </div>
     </div>
   );
@@ -516,13 +594,15 @@ const actionBtn: React.CSSProperties = {
 // ── Edit / Create panel ────────────────────────────────────────────
 
 function EditPanel({
-  mode, form, onChange, onSave, onCancel,
+  mode, form, onChange, onSave, onCancel, saving, saveError,
 }: {
   mode: Mode;
   form: { name: string; category: TemplateCategory; body: string; notes: string; tags: string };
   onChange: (f: Partial<typeof form>) => void;
   onSave: () => void;
   onCancel: () => void;
+  saving?: boolean;
+  saveError?: string;
 }) {
   const isValid = form.name.trim().length > 0 && form.body.trim().length > 0;
   const previewTokens = extractTokens(form.body);
@@ -620,26 +700,33 @@ function EditPanel({
       />
 
       {/* Save / Cancel */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={onSave}
-          disabled={!isValid}
-          className={isValid ? 'r-btn-gold' : ''}
-          style={{
-            padding: '10px 24px',
-            borderRadius: 9,
-            border: isValid ? '1px solid var(--r-border)' : '1px solid var(--r-border)',
-            background: isValid ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
-            color: isValid ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: isValid ? 'pointer' : 'default',
-            opacity: isValid ? 1 : 0.5,
-          }}
-        >
-          {mode === 'create' ? 'Create Template' : 'Save Changes'}
-        </button>
-        <button onClick={onCancel} style={actionBtn}>Cancel</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {saveError && (
+          <div style={{ fontSize: 12, color: 'var(--r-danger)', background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', borderRadius: 8, padding: '8px 12px' }}>
+            {saveError}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onSave}
+            disabled={!isValid || saving}
+            className={isValid && !saving ? 'r-btn-gold' : ''}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 9,
+              border: '1px solid var(--r-border)',
+              background: isValid && !saving ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
+              color: isValid && !saving ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: isValid && !saving ? 'pointer' : 'default',
+              opacity: isValid && !saving ? 1 : 0.5,
+            }}
+          >
+            {saving ? 'Saving…' : mode === 'create' ? 'Create Template' : 'Save Changes'}
+          </button>
+          <button onClick={onCancel} disabled={saving} style={actionBtn}>Cancel</button>
+        </div>
       </div>
     </div>
   );

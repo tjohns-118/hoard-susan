@@ -1,15 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+import { useMemo, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
+import { useProperties } from '@/hooks/useProperties';
+import { useTasks } from '@/hooks/useTasks';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const REF = new Date('2026-04-07T12:00:00.000Z');
+const REF = new Date();
 
 type FilterKey = 'all' | 'active' | 'pending' | 'sold' | 'prospect';
 
@@ -188,17 +193,28 @@ function PropertyRow({
         <HealthChip health={health} />
       </div>
 
-      {/* Row 2: Type · County · Acres */}
+      {/* Row 2: Type · County · State */}
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.48)', marginBottom: 7 }}>
-        {property.type}
-        {property.county ? ` · ${property.county}` : ''}
-        {property.state ? `, ${property.state}` : ''}
-        {property.acreage ? ` · ${property.acreage.toLocaleString()} ac` : ''}
+        {[
+          property.type || null,
+          property.county ? property.county : null,
+          property.state  ? property.state  : null,
+          property.acreage ? `${property.acreage.toLocaleString()} ac` : null,
+        ].filter(Boolean).join(' · ') || 'No details'}
       </div>
 
-      {/* Row 3: Price */}
-      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', color: '#fff', marginBottom: 8 }}>
-        {fmtPrice(property.price)}
+      {/* Row 3: Price + specs */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', color: '#fff' }}>
+          {property.price > 0 ? fmtPrice(property.price) : 'Price TBD'}
+        </div>
+        {(property.beds || property.baths || property.sqft) && (
+          <div style={{ display: 'flex', gap: 8, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>
+            {property.beds  && <span>{property.beds} bd</span>}
+            {property.baths && <span>{property.baths} ba</span>}
+            {property.sqft  && <span>{property.sqft.toLocaleString()} sqft</span>}
+          </div>
+        )}
       </div>
 
       {/* Row 4: Contacts + Agent */}
@@ -291,7 +307,7 @@ function DetailPanel({
     prospect: 'Schedule site visit and prepare preliminary valuation before formalizing listing.',
   };
 
-  const NEXT_STATUSES: Partial<Record<PropertyStatus, { label: string; next: PropertyStatus; tone: ActionBtn['tone'] }>> = {
+  const NEXT_STATUSES: Partial<Record<PropertyStatus, { label: string; next: PropertyStatus; tone: 'default' | 'primary' | 'success' | 'danger' | 'warning' }>> = {
     prospect: { label: 'List as Active', next: 'active', tone: 'success' },
     active: { label: 'Mark Under Contract', next: 'pending', tone: 'warning' },
     pending: { label: 'Mark Sold', next: 'sold', tone: 'primary' },
@@ -313,6 +329,11 @@ function DetailPanel({
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: '#fff', lineHeight: 1.1 }}>
             {property.address}
+            {property.addressLine2 && (
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
+                {property.addressLine2}
+              </div>
+            )}
           </h2>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
             <HealthChip health={health} />
@@ -348,7 +369,7 @@ function DetailPanel({
             { label: 'Price', value: fmtPrice(property.price) },
             { label: 'Acreage', value: property.acreage ? `${property.acreage.toLocaleString()} acres` : 'TBD' },
             { label: 'County', value: property.county ?? '—' },
-            { label: 'City / State', value: property.city && property.state ? `${property.city}, ${property.state}` : '—' },
+            { label: 'City / State', value: [property.city, property.state, property.zip].filter(Boolean).join(', ') || '—' },
             { label: 'Listing Agent', value: agent?.name ?? 'Unassigned' },
             { label: 'Type', value: property.type },
           ].map(({ label, value }) => (
@@ -494,27 +515,69 @@ function DetailPanel({
   );
 }
 
-// helper for ActionBtn tone type
-declare const _: { tone: 'default' | 'primary' | 'success' | 'danger' | 'warning' };
-type ActionBtnTone = typeof _.tone;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface ActionBtn { tone: ActionBtnTone }
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PropertiesPage() {
-  const properties = useAppStore((s) => s.properties);
+  const router = useRouter();
   const contacts = useAppStore((s) => s.contacts);
   const agents = useAppStore((s) => s.agents);
   const opportunities = useAppStore((s) => s.opportunities);
   const tasks = useAppStore((s) => s.tasks);
-  const addPropertyNote = useAppStore((s) => s.addPropertyNote);
-  const addPropertyFollowUpTask = useAppStore((s) => s.addPropertyFollowUpTask);
-  const updatePropertyStatus = useAppStore((s) => s.updatePropertyStatus);
+  const { properties, addNote: addPropertyNote, updateStatus: updatePropertyStatus } = useProperties();
+  const { createTask } = useTasks();
+
+  async function handleAddPropertyTask(propertyId: string) {
+    const p = properties.find((x) => x.id === propertyId);
+    if (!p) return;
+    try {
+      await createTask({
+        title:      `Follow up on ${p.address}`,
+        priority:   p.status === 'pending' ? 'high' : 'medium',
+        propertyId,
+      });
+    } catch (err) {
+      console.error('[handleAddPropertyTask]', err);
+    }
+  }
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
+
+  // ── Sync state ──
+  const [syncing, setSyncing]   = useState(false);
+  const [toast, setToast]       = useState<{ msg: string; ok: boolean } | null>(null);
+  const { reload: reloadProps } = useProperties();
+
+  const showToast = useCallback((msg: string, ok: boolean) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 4500);
+  }, []);
+
+  const handleSync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res  = await fetch('/api/scrape/properties', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 503 = Redfin blocked — route provides a clean detail message
+        if (res.status === 503 && json.fallback === 'csv_import') {
+          showToast('Direct sync unavailable in this environment — use Import Listings in Settings', false);
+        } else {
+          showToast(`Sync failed: ${json.error ?? `HTTP ${res.status}`}`, false);
+        }
+        return;
+      }
+      await reloadProps();
+      showToast(`Synced ${json.total} listings (${json.inserted} new, ${json.updated} updated)`, true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Sync failed: ${msg}`, false);
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, reloadProps, showToast]);
 
   // ── KPI ──
   const active = useMemo(() => properties.filter((p) => p.status === 'active'), [properties]);
@@ -574,14 +637,98 @@ export default function PropertiesPage() {
 
   return (
     <AppShell>
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          padding: '11px 18px', borderRadius: 12,
+          background: toast.ok ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+          border: `1px solid ${toast.ok ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}`,
+          color: toast.ok ? '#bbf7d0' : '#fca5a5',
+          fontSize: 13, fontWeight: 600,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          pointerEvents: 'none',
+        }}>
+          {toast.msg}
+        </div>
+      )}
+
       {/* ── Header ── */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1.05 }}>
-          Properties
-        </h1>
-        <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
-          Ranch inventory — listing momentum, deal context, and connected relationships.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1.05 }}>
+            Properties
+          </h1>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
+            Ranch inventory — listing momentum, deal context, and connected relationships.
+          </p>
+        </div>
+        {/* Import is the primary/reliable path; direct sync is optional and environment-dependent */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <button
+            onClick={() => router.push('/settings')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '9px 16px', borderRadius: 10,
+              border: '1px solid rgba(200,164,92,0.45)',
+              background: 'rgba(200,164,92,0.14)',
+              color: 'var(--r-gold-bright)',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              transition: 'all 120ms ease', whiteSpace: 'nowrap',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 1v14M1 8h14" />
+            </svg>
+            Import Listings
+          </button>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            title="Attempts a live Redfin sync — may be blocked in some server environments"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 14px', borderRadius: 10,
+              border: '1px solid rgba(110,168,254,0.25)',
+              background: syncing ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.09)',
+              color: syncing ? 'rgba(147,197,253,0.45)' : 'rgba(147,197,253,0.7)',
+              fontSize: 12, fontWeight: 600, cursor: syncing ? 'default' : 'pointer',
+              transition: 'all 120ms ease', whiteSpace: 'nowrap',
+            }}
+          >
+            {syncing ? (
+              <>
+                <span style={{
+                  width: 11, height: 11, borderRadius: '50%',
+                  border: '2px solid rgba(147,197,253,0.2)',
+                  borderTopColor: 'rgba(147,197,253,0.6)',
+                  display: 'inline-block',
+                  animation: 'spin 0.75s linear infinite',
+                }} />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 4.5A7 7 0 0 1 14.5 8" />
+                  <path d="M15 11.5A7 7 0 0 1 1.5 8" />
+                  <polyline points="1 1 1 4.5 4.5 4.5" />
+                  <polyline points="15 15 15 11.5 11.5 11.5" />
+                </svg>
+                Try Direct Sync
+                <span style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                  color: 'rgba(147,197,253,0.55)',
+                  background: 'rgba(59,130,246,0.18)',
+                  border: '1px solid rgba(110,168,254,0.2)',
+                  borderRadius: 4, padding: '1px 5px', lineHeight: 1.5,
+                }}>
+                  BETA
+                </span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ── A. KPI Strip ── */}
@@ -622,7 +769,9 @@ export default function PropertiesPage() {
         <div style={{ flex: '0 0 390px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {sorted.length === 0 ? (
             <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)', color: 'rgba(255,255,255,0.32)', fontSize: 13 }}>
-              No properties match this filter.
+              {properties.length === 0
+                ? <>No listings yet.<br /><span style={{ fontSize: 12 }}>Use <strong style={{ color: 'var(--r-gold-bright)', cursor: 'pointer' }} onClick={() => router.push('/settings')}>Import Listings</strong> to upload a CSV, or try direct sync.</span></>
+                : 'No properties match this filter.'}
             </div>
           ) : (
             sorted.map((p) => (
@@ -633,7 +782,7 @@ export default function PropertiesPage() {
                 agents={agents}
                 selected={selectedId === p.id}
                 onClick={() => setSelectedId((prev) => (prev === p.id ? null : p.id))}
-                onAddTask={addPropertyFollowUpTask}
+                onAddTask={handleAddPropertyTask}
               />
             ))
           )}
@@ -649,7 +798,7 @@ export default function PropertiesPage() {
               opportunities={opportunities}
               tasks={tasks}
               onAddNote={addPropertyNote}
-              onAddTask={addPropertyFollowUpTask}
+              onAddTask={handleAddPropertyTask}
               onUpdateStatus={updatePropertyStatus}
               onClose={() => setSelectedId(null)}
             />
