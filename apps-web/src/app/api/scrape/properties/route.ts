@@ -18,13 +18,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import { scrapeRedfin, RedfinBlockedError, type RedfinListing } from '@/lib/scrapers/redfin';
 
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
-
-const DEFAULT_LOCATION =
-  process.env.SCRAPE_DEFAULT_LOCATION ?? 'Austin, TX';
+const DEFAULT_LOCATION = process.env.SCRAPE_DEFAULT_LOCATION ?? 'Austin, TX';
 
 // ── Status normalisation ──────────────────────────────────────────────────────
 
@@ -53,13 +50,13 @@ function toPropertyType(raw: string): string {
 
 // ── Duplicate detection ───────────────────────────────────────────────────────
 
-async function findExistingId(listing: RedfinListing): Promise<string | null> {
+async function findExistingId(listing: RedfinListing, brokerageId: string): Promise<string | null> {
   // 1. Prefer listing_url match (most reliable dedup key)
   if (listing.listingUrl) {
     const { data } = await supabaseAdmin
       .from('properties')
       .select('id')
-      .eq('brokerage_id', BROKERAGE_ID)
+      .eq('brokerage_id', brokerageId)
       .eq('listing_url', listing.listingUrl)
       .maybeSingle();
     if (data?.id) return data.id as string;
@@ -70,7 +67,7 @@ async function findExistingId(listing: RedfinListing): Promise<string | null> {
     const { data } = await supabaseAdmin
       .from('properties')
       .select('id')
-      .eq('brokerage_id', BROKERAGE_ID)
+      .eq('brokerage_id', brokerageId)
       .eq('address_line_1', listing.address)
       .maybeSingle();
     if (data?.id) return data.id as string;
@@ -81,10 +78,10 @@ async function findExistingId(listing: RedfinListing): Promise<string | null> {
 
 // ── Row builder ───────────────────────────────────────────────────────────────
 
-function buildRow(listing: RedfinListing) {
+function buildRow(listing: RedfinListing, brokerageId: string) {
   const now = new Date().toISOString();
   return {
-    brokerage_id:       BROKERAGE_ID,
+    brokerage_id:       brokerageId,
     // Both split-address AND legacy `address` column set so NOT NULL constraint is satisfied
     address:            listing.address,
     address_line_1:     listing.address,
@@ -114,8 +111,9 @@ function buildRow(listing: RedfinListing) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json().catch(() => ({})) as { location?: string };
   const location = (body.location ?? DEFAULT_LOCATION).trim();
@@ -156,8 +154,8 @@ export async function POST(req: NextRequest) {
 
   for (const listing of listings) {
     try {
-      const existingId = await findExistingId(listing);
-      const row = buildRow(listing);
+      const existingId = await findExistingId(listing, BROKERAGE_ID);
+      const row = buildRow(listing, BROKERAGE_ID);
 
       if (existingId) {
         // UPDATE — refresh price, status, sqft, beds, baths; preserve notes/contacts

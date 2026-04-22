@@ -27,7 +27,10 @@
       "Bash(grep -n \"export const dynamic\" /c/Users/trist/Documents/hoard/apps-web/src/app/**/*.tsx)",
       "Bash(grep -L \"export const dynamic\" /c/Users/trist/Documents/hoard/apps-web/src/app/*/page.tsx /c/Users/trist/Documents/hoard/apps-web/src/app/*/*/page.tsx)",
       "Bash(grep -n \"console\\\\.\\\\|throw\\\\|error\\\\|\\\\.id\\\\|raw ID\\\\|developer\" src/app/*.tsx)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(xargs grep *)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(npm install *)"
     ]
   }
 }

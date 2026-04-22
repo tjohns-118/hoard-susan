@@ -11,10 +11,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type { TemplateRecord, TemplateCategory } from '@/data/mockDb';
-
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
 
 const VALID_CATEGORIES: TemplateCategory[] = ['buyer', 'seller', 'follow-up', 'deal', 'internal', 'custom'];
 
@@ -262,8 +260,9 @@ Looking forward to hearing from you,
 // ── GET /api/templates ────────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/templates GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/templates GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -316,8 +315,9 @@ export async function GET() {
 // ── POST /api/templates ───────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     name:      string;
@@ -353,6 +353,7 @@ export async function POST(req: NextRequest) {
 // ── PATCH /api/templates ──────────────────────────────────────────────────────
 
 export async function PATCH(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   const body = await req.json() as {
     id:        string;
     name:      string;
@@ -376,7 +377,7 @@ export async function PATCH(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', body.id)
-    .eq('brokerage_id', BROKERAGE_ID);
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
@@ -385,6 +386,7 @@ export async function PATCH(req: NextRequest) {
 // ── DELETE /api/templates ─────────────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   const { id } = await req.json() as { id: string };
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
@@ -392,7 +394,7 @@ export async function DELETE(req: NextRequest) {
     .from('templates')
     .delete()
     .eq('id', id)
-    .eq('brokerage_id', BROKERAGE_ID);
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

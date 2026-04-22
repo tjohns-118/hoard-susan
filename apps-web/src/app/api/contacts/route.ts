@@ -30,20 +30,19 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type {
   Contact, ContactNote, ContactRole,
   BuyerProfile, SellerProfile,
   BuyerTag, SellerTag, PropertyType, SellerCondition,
 } from '@/features/contacts/types';
 
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
-
 // ── GET /api/contacts ─────────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/contacts GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/contacts GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -88,9 +87,9 @@ export async function GET() {
 // ── POST /api/contacts ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  if (!BROKERAGE_ID) {
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
-  }
+  const BROKERAGE_ID = await getBrokerageId();
+  if (!BROKERAGE_ID)
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     fullName:      string;
@@ -142,7 +141,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const body = await req.json() as {
     action: 'markHot' | 'assignAgent' | 'addNote'
-          | 'updateBuyerProfile' | 'updateSellerProfile';
+          | 'updateBuyerProfile' | 'updateSellerProfile'
+          | 'updateContact' | 'archiveContact' | 'unarchiveContact';
     contactId: string;
     // markHot — no extra field (server toggles)
     // assignAgent
@@ -152,6 +152,11 @@ export async function PATCH(req: NextRequest) {
     // updateBuyerProfile / updateSellerProfile
     profile?: BuyerProfile | SellerProfile | null;
     role?: ContactRole;  // desired resulting role after profile update
+    // updateContact
+    fullName?: string;
+    email?: string | null;
+    phone?: string | null;
+    source?: string | null;
   };
 
   const { action, contactId } = body;
@@ -260,7 +265,91 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── updateContact ─────────────────────────────────────────────────────────
+
+  if (action === 'updateContact') {
+    if (!body.fullName?.trim())
+      return NextResponse.json({ error: 'fullName required' }, { status: 400 });
+
+    const { error } = await supabaseAdmin
+      .from('contacts')
+      .update({
+        full_name:    body.fullName.trim(),
+        email:        body.email?.trim() || null,
+        phone:        body.phone?.trim() || null,
+        source:       body.source?.trim() || null,
+        contact_type: body.role ?? null,
+        updated_at:   new Date().toISOString(),
+      })
+      .eq('id', contactId);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── archiveContact ────────────────────────────────────────────────────────
+
+  if (action === 'archiveContact') {
+    const { error } = await supabaseAdmin
+      .from('contacts')
+      .update({ stage: 'closed', updated_at: new Date().toISOString() })
+      .eq('id', contactId);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── unarchiveContact ──────────────────────────────────────────────────────
+
+  if (action === 'unarchiveContact') {
+    const { error } = await supabaseAdmin
+      .from('contacts')
+      .update({ stage: 'active', updated_at: new Date().toISOString() })
+      .eq('id', contactId);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+}
+
+// ── DELETE /api/contacts ──────────────────────────────────────────────────────
+// Permanently removes a contact and its notes from Supabase.
+// Tasks referencing this contact have their contact_id/lead_id set to NULL
+// automatically by the DB constraint (ON DELETE SET NULL) — no orphans.
+// Notes do NOT have a guaranteed cascade in all environments, so we delete
+// them explicitly first to be safe.
+
+export async function DELETE(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
+  const { contactId } = await req.json() as { contactId: string };
+  if (!contactId) return NextResponse.json({ error: 'contactId required' }, { status: 400 });
+
+  // 1. Delete child notes first (safe even if CASCADE is already configured).
+  const { error: notesErr } = await supabaseAdmin
+    .from('contact_notes')
+    .delete()
+    .eq('contact_id', contactId);
+
+  if (notesErr) {
+    console.error('[DELETE /api/contacts] notes cleanup error:', notesErr.message);
+    return NextResponse.json({ error: notesErr.message }, { status: 500 });
+  }
+
+  // 2. Delete the contact row — scoped to brokerage for safety.
+  const { error } = await supabaseAdmin
+    .from('contacts')
+    .delete()
+    .eq('id', contactId)
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
+
+  if (error) {
+    console.error('[DELETE /api/contacts]', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 // ── Schema mapper ─────────────────────────────────────────────────────────────

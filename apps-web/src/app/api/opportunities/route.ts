@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type { Opportunity, OpportunityPriority } from '@/features/opportunities/types';
 import type { PipelineType, PipelineStage, PipelineDocument, StageHistoryEntry } from '@/features/pipeline/types';
 import {
@@ -26,9 +27,6 @@ import {
   BUYER_STAGES,
   SELLER_STAGES,
 } from '@/features/pipeline/definitions';
-
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
 
 // All valid pipeline stage values — used to validate stage transitions.
 const VALID_STAGES = new Set<string>([
@@ -40,8 +38,9 @@ const VALID_STAGES = new Set<string>([
 // ── GET /api/opportunities ────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/opportunities GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/opportunities GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -62,8 +61,9 @@ export async function GET() {
 // ── POST /api/opportunities ───────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     contactName:         string;

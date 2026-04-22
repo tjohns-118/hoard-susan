@@ -9,18 +9,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type { EventRecord } from '@/data/mockDb';
-
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
 
 const VALID_TYPES = ['showing', 'closing', 'call', 'meeting', 'deadline', 'follow-up'] as const;
 
 // ── GET /api/events ───────────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/events GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/events GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -41,8 +40,9 @@ export async function GET() {
 // ── POST /api/events ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     title:          string;
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
 // ── DELETE /api/events ────────────────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   const { id } = await req.json() as { id: string };
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
@@ -95,7 +96,7 @@ export async function DELETE(req: NextRequest) {
     .from('events')
     .delete()
     .eq('id', id)
-    .eq('brokerage_id', BROKERAGE_ID);
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

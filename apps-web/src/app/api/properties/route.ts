@@ -13,16 +13,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
-
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
 
 // ── GET /api/properties ───────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/properties GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/properties GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -43,8 +42,9 @@ export async function GET() {
 // ── POST /api/properties ──────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     // Split-address fields (preferred, matches real DB schema)
@@ -121,8 +121,9 @@ export async function POST(req: NextRequest) {
 // updates existing records or inserts new ones, and returns a result summary.
 
 export async function PUT(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const rows: {
     addressLine1: string;

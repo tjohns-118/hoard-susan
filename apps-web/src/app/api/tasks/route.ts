@@ -14,16 +14,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
+import { getBrokerageId } from '@/lib/getBrokerageId';
 import type { Task, TaskPriority } from '@/features/tasks/types';
-
-const BROKERAGE_ID =
-  process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID ?? '';
 
 // ── GET /api/tasks ────────────────────────────────────────────────────────────
 
 export async function GET() {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/tasks GET] ACTIVE_BROKERAGE_ID not set');
+    console.error('[/api/tasks GET] Brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -44,8 +43,9 @@ export async function GET() {
 // ── POST /api/tasks ───────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'ACTIVE_BROKERAGE_ID not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
   const body = await req.json() as {
     title:          string;
@@ -130,6 +130,7 @@ export async function PATCH(req: NextRequest) {
 // ── DELETE /api/tasks ─────────────────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
   const { taskId } = await req.json() as { taskId: string };
   if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 });
 
@@ -137,7 +138,7 @@ export async function DELETE(req: NextRequest) {
     .from('tasks')
     .delete()
     .eq('id', taskId)
-    .eq('brokerage_id', BROKERAGE_ID);
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

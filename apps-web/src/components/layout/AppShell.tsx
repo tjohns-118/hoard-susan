@@ -3,8 +3,10 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { AppTopbar } from './AppTopbar';
+import { useAuth } from '@/hooks/useAuth';
 
 export function AppShell({ children }: { children: ReactNode }) {
+  useAuth();
   return (
     <div
       style={{

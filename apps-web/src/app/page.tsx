@@ -53,6 +53,16 @@ export default function HomePage() {
   useAgents();
   const { events } = useEvents();
 
+  if (currentRole === null) {
+    return (
+      <AppShell>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: 'var(--r-text-3)', fontSize: 13 }}>
+          Loading…
+        </div>
+      </AppShell>
+    );
+  }
+
   if (currentRole === 'agent') {
     return <AgentDashboardPage />;
   }

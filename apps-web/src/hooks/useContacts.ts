@@ -21,7 +21,7 @@
 import { useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/app/store/useAppStore';
-import type { BuyerProfile, SellerProfile, ContactRole } from '@/features/contacts/types';
+import type { BuyerProfile, SellerProfile, ContactRole, Contact } from '@/features/contacts/types';
 
 async function fetchContacts() {
   try {
@@ -122,6 +122,47 @@ export function useContacts() {
     await patchApi({ action: 'updateSellerProfile', contactId, profile, role });
   }
 
+  // ── Edit core fields ──────────────────────────────────────────────────────────
+
+  async function updateContact(
+    contactId: string,
+    fields: Pick<Contact, 'fullName' | 'role'> & { email?: string; phone?: string; source?: string },
+  ) {
+    await patchApi({
+      action:    'updateContact',
+      contactId,
+      fullName:  fields.fullName,
+      email:     fields.email  ?? null,
+      phone:     fields.phone  ?? null,
+      source:    fields.source ?? null,
+      role:      fields.role,
+    });
+  }
+
+  // ── Archive / Unarchive ───────────────────────────────────────────────────────
+
+  async function archiveContact(contactId: string) {
+    await patchApi({ action: 'archiveContact', contactId });
+  }
+
+  async function unarchiveContact(contactId: string) {
+    await patchApi({ action: 'unarchiveContact', contactId });
+  }
+
+  // ── Permanent delete ──────────────────────────────────────────────────────────
+
+  async function deleteContact(contactId: string) {
+    const res = await fetch('/api/contacts', {
+      method:  'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ contactId }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? 'Delete contact failed');
+    router.refresh();
+    await reload();
+  }
+
   return {
     contacts,
     reload,
@@ -129,6 +170,10 @@ export function useContacts() {
     addContactNote,
     assignContactToAgent,
     createContact,
+    updateContact,
+    archiveContact,
+    unarchiveContact,
+    deleteContact,
     updateBuyerProfile,
     updateSellerProfile,
   };

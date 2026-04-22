@@ -13,22 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
-
-const BROKERAGE_SLUG =
-  process.env.ACTIVE_BROKERAGE_SLUG ?? 'ranch-properties';
-
-async function getBrokerageId(): Promise<string | null> {
-  const envId = process.env.ACTIVE_BROKERAGE_ID ?? process.env.NEXT_PUBLIC_ACTIVE_BROKERAGE_ID;
-  if (envId) return envId;
-
-  const { data } = await supabaseAdmin
-    .from('brokerages')
-    .select('id')
-    .eq('slug', BROKERAGE_SLUG)
-    .maybeSingle();
-
-  return (data?.id as string) ?? null;
-}
+import { getBrokerageId } from '@/lib/getBrokerageId';
 
 // ── GET /api/agents — fetch all active agents ────────────────────────────────
 // Must run server-side: the anon key is blocked by RLS on these tables.

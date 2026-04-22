@@ -143,6 +143,8 @@ function LeadCard({
   onUpdateStatus,
   onUpdateBuyerProfile,
   onUpdateSellerProfile,
+  onUpdateLead,
+  onDeleteLead,
 }: {
   lead: Lead;
   agents: { id: string; name: string; email: string }[];
@@ -154,6 +156,8 @@ function LeadCard({
   onUpdateStatus: (id: string, status: LeadStatus) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile  | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
+  onUpdateLead: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole }) => Promise<void>;
+  onDeleteLead: (id: string) => Promise<void>;
 }) {
   const isHot = lead.tags.includes('hot');
   const meta = STATUS_META[lead.status];
@@ -161,6 +165,62 @@ function LeadCard({
   const linkedProps = properties.filter((p) => lead.linkedPropertyIds.includes(p.id));
   const nextAction = NEXT_ACTION[lead.status];
   const [showProfile, setShowProfile] = useState(false);
+
+  // ── Edit state ──────────────────────────────────────────────────────────────
+  const [showEdit,   setShowEdit]   = useState(false);
+  const [editName,   setEditName]   = useState(lead.fullName);
+  const [editEmail,  setEditEmail]  = useState(lead.email  ?? '');
+  const [editPhone,  setEditPhone]  = useState(lead.phone  ?? '');
+  const [editSource, setEditSource] = useState(lead.source ?? '');
+  const [editRole,   setEditRole]   = useState<ContactRole>(lead.role ?? 'buyer');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError,  setEditError]  = useState('');
+
+  function openEdit() {
+    setEditName(lead.fullName);
+    setEditEmail(lead.email  ?? '');
+    setEditPhone(lead.phone  ?? '');
+    setEditSource(lead.source ?? '');
+    setEditRole(lead.role ?? 'buyer');
+    setEditError('');
+    setShowEdit(true);
+    setShowProfile(false);
+  }
+
+  async function handleSaveEdit() {
+    if (!editName.trim()) { setEditError('Name is required.'); return; }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await onUpdateLead(lead.id, {
+        fullName: editName,
+        email:    editEmail  || undefined,
+        phone:    editPhone  || undefined,
+        source:   editSource || undefined,
+        role:     editRole,
+      });
+      setShowEdit(false);
+    } catch (e: any) {
+      setEditError(e?.message ?? 'Failed to save.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  // ── Delete confirm state ────────────────────────────────────────────────────
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await onDeleteLead(lead.id);
+    } catch (e) {
+      console.error('[handleDelete lead]', e);
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   const timeAgo = (() => {
     const ms = Date.now() - new Date(lead.updatedAt).getTime();
@@ -425,20 +485,92 @@ function LeadCard({
             </ActionBtn>
           )}
 
-          <ActionBtn
-            tone="danger"
-            onClick={() => onUpdateStatus(lead.id, 'lost')}
-            disabled={lead.status === 'lost'}
-          >
-            Archive
-          </ActionBtn>
+          {lead.status === 'lost' ? (
+            <ActionBtn
+              tone="success"
+              onClick={() => onUpdateStatus(lead.id, 'new')}
+            >
+              Restore
+            </ActionBtn>
+          ) : (
+            <ActionBtn
+              tone="danger"
+              onClick={() => onUpdateStatus(lead.id, 'lost')}
+            >
+              Archive
+            </ActionBtn>
+          )}
 
-          <ActionBtn tone="default" onClick={() => setShowProfile((v) => !v)}>
+          <ActionBtn tone="default" onClick={() => { setShowProfile((v) => !v); setShowEdit(false); }}>
             {showProfile ? 'Close Profile' : 'Profile'}
+          </ActionBtn>
+          <ActionBtn tone="primary" onClick={openEdit}>Edit</ActionBtn>
+          <ActionBtn tone="danger" onClick={() => { setConfirmDelete(true); setShowEdit(false); setShowProfile(false); }} disabled={confirmDelete}>
+            Delete
           </ActionBtn>
         </div>
 
-        {/* Row 5: Expandable profile panel */}
+        {/* Delete confirmation */}
+        {confirmDelete && (
+          <div style={{ borderTop: '1px solid var(--r-danger-border)', paddingTop: 12, marginTop: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-danger)', marginBottom: 6 }}>
+              Permanently delete {lead.fullName}?
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--r-text-2)', marginBottom: 10, lineHeight: 1.5 }}>
+              This removes the lead and all associated notes. Tasks linked to this lead will have their link cleared. This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn tone="danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Yes, Delete Permanently'}
+              </ActionBtn>
+              <ActionBtn onClick={() => setConfirmDelete(false)}>Cancel</ActionBtn>
+            </div>
+          </div>
+        )}
+
+        {/* Expandable edit form */}
+        {showEdit && (
+          <div style={{ borderTop: '1px solid var(--r-border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+              Edit Lead
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div>
+                <FieldLabel>Full Name *</FieldLabel>
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <FieldLabel>Email</FieldLabel>
+                <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" style={inputStyle} />
+              </div>
+              <div>
+                <FieldLabel>Phone</FieldLabel>
+                <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} type="tel" style={inputStyle} />
+              </div>
+              <div>
+                <FieldLabel>Source</FieldLabel>
+                <input value={editSource} onChange={(e) => setEditSource(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <FieldLabel>Role</FieldLabel>
+                <select value={editRole} onChange={(e) => setEditRole(e.target.value as ContactRole)} style={selectStyle}>
+                  <option value="buyer">Buyer</option>
+                  <option value="seller">Seller</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+            </div>
+            {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>
+                {editSaving ? 'Saving…' : 'Save Changes'}
+              </ActionBtn>
+              <ActionBtn onClick={() => setShowEdit(false)}>Cancel</ActionBtn>
+            </div>
+          </div>
+        )}
+
+        {/* Expandable profile panel */}
         {showProfile && (
           <div style={{ borderTop: '1px solid var(--r-border)', paddingTop: 12 }}>
             <ProfilePanel
@@ -458,7 +590,8 @@ function LeadCard({
 export default function LeadsPage() {
   // Hydrate leads from Supabase on mount (contacts with stage='lead').
   const {
-    leads, createLead, updateBuyerProfile, updateSellerProfile, convertLead,
+    leads, createLead, updateLead, deleteLead,
+    updateBuyerProfile, updateSellerProfile, convertLead,
     reload: reloadLeads, assignLeadToAgent, markLeadHot, updateLeadStatus,
   } = useLeads();
   const { createTask } = useTasks();
@@ -811,6 +944,8 @@ export default function LeadsPage() {
               onUpdateStatus={updateLeadStatus}
               onUpdateBuyerProfile={updateBuyerProfile}
               onUpdateSellerProfile={updateSellerProfile}
+              onUpdateLead={updateLead}
+              onDeleteLead={deleteLead}
             />
           ))
         )}

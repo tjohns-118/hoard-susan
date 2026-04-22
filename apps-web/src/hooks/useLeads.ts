@@ -131,17 +131,51 @@ export function useLeads() {
   }
 
   // ── Convert ───────────────────────────────────────────────────────────────────
-  // Promotes the contact row from stage='lead' to stage='active' in Supabase.
-  // Call reload() (and useContacts().reload() if available) after this.
 
   async function convertLead(leadId: string) {
     await patchApi({ action: 'convert', leadId });
+  }
+
+  // ── Edit core fields ──────────────────────────────────────────────────────────
+
+  async function updateLead(leadId: string, fields: {
+    fullName: string;
+    email?:   string;
+    phone?:   string;
+    source?:  string;
+    role?:    ContactRole;
+  }) {
+    await patchApi({
+      action:   'updateLead',
+      leadId,
+      fullName: fields.fullName,
+      email:    fields.email  ?? null,
+      phone:    fields.phone  ?? null,
+      source:   fields.source ?? null,
+      role:     fields.role,
+    });
+  }
+
+  // ── Permanent delete ──────────────────────────────────────────────────────────
+
+  async function deleteLead(leadId: string) {
+    const res = await fetch('/api/leads', {
+      method:  'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ leadId }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? 'Delete lead failed');
+    router.refresh();
+    await reload();
   }
 
   return {
     leads,
     reload,
     createLead,
+    updateLead,
+    deleteLead,
     updateBuyerProfile,
     updateSellerProfile,
     assignLeadToAgent,

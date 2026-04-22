@@ -20,9 +20,11 @@ type AppState = {
   matches:       MatchRecord[];   // pre-computed matches — computed client-side, not stored
   templates:     TemplateRecord[];
 
-  // ── Role (V1: no auth — persisted to localStorage, toggled manually) ──────────
-  currentRole:    'broker' | 'agent';
+  // ── Auth-derived role + membership (null = loading) ───────────────────────────
+  currentRole:    'broker' | 'agent' | null;
   setCurrentRole: (role: 'broker' | 'agent') => void;
+  memberId:       string | null;
+  setMemberId:    (id: string | null) => void;
 
   // ── Setters (called by hooks after Supabase fetch) ────────────────────────────
   setAgents:        (agents:        AgentRecord[])        => void;
@@ -91,13 +93,10 @@ matches:       [],    // computed client-side by the matches page, not stored
 
 templates:     [],
 
-currentRole: (typeof window !== 'undefined'
-  ? (localStorage.getItem('hoard-role') as 'broker' | 'agent') ?? 'broker'
-  : 'broker') as 'broker' | 'agent',
-setCurrentRole: (role) => {
-  try { if (typeof window !== 'undefined') localStorage.setItem('hoard-role', role); } catch (_) {}
-  set({ currentRole: role });
-},
+currentRole: null,
+setCurrentRole: (role) => set({ currentRole: role }),
+memberId: null,
+setMemberId: (id) => set({ memberId: id }),
 
 toggleTask: (taskId) =>
 set((state) => ({

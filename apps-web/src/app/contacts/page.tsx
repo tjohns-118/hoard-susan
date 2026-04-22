@@ -231,6 +231,10 @@ function DetailPanel({
   onPushToOpportunities,
   onUpdateBuyerProfile,
   onUpdateSellerProfile,
+  onUpdateContact,
+  onArchiveContact,
+  onUnarchiveContact,
+  onDeleteContact,
   onClose,
 }: {
   contact: Contact;
@@ -245,9 +249,82 @@ function DetailPanel({
   onPushToOpportunities: (id: string) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
+  onUpdateContact: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole }) => Promise<void>;
+  onArchiveContact: (id: string) => Promise<void>;
+  onUnarchiveContact: (id: string) => Promise<void>;
+  onDeleteContact: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [noteText, setNoteText] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [editName,   setEditName]   = useState(contact.fullName);
+  const [editEmail,  setEditEmail]  = useState(contact.email  ?? '');
+  const [editPhone,  setEditPhone]  = useState(contact.phone  ?? '');
+  const [editSource, setEditSource] = useState(contact.source ?? '');
+  const [editRole,   setEditRole]   = useState<ContactRole>(contact.role ?? 'buyer');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError,  setEditError]  = useState('');
+
+  function openEdit() {
+    setEditName(contact.fullName);
+    setEditEmail(contact.email  ?? '');
+    setEditPhone(contact.phone  ?? '');
+    setEditSource(contact.source ?? '');
+    setEditRole(contact.role ?? 'buyer');
+    setEditError('');
+    setEditMode(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!editName.trim()) { setEditError('Name is required.'); return; }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await onUpdateContact(contact.id, {
+        fullName: editName,
+        email:    editEmail  || undefined,
+        phone:    editPhone  || undefined,
+        source:   editSource || undefined,
+        role:     editRole,
+      });
+      setEditMode(false);
+    } catch (e: any) {
+      setEditError(e?.message ?? 'Failed to save.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleArchive() {
+    try {
+      await onArchiveContact(contact.id);
+      onClose();
+    } catch (e) {
+      console.error('[handleArchive]', e);
+    }
+  }
+
+  async function handleUnarchive() {
+    try {
+      await onUnarchiveContact(contact.id);
+    } catch (e) {
+      console.error('[handleUnarchive]', e);
+    }
+  }
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await onDeleteContact(contact.id);
+      onClose();
+    } catch (e) {
+      console.error('[handleDelete]', e);
+      setDeleting(false);
+    }
+  }
 
   const health = getHealth(contact);
   const isHot = contact.tags.includes('hot');
@@ -307,7 +384,70 @@ function DetailPanel({
         >
           {hasOpportunity ? '✓ In Pipeline' : '→ Push to Pipeline'}
         </ActionBtn>
+        <ActionBtn tone="primary" onClick={openEdit}>Edit</ActionBtn>
+        {contact.status === 'closed' ? (
+          <ActionBtn tone="success" onClick={handleUnarchive}>Restore</ActionBtn>
+        ) : (
+          <ActionBtn tone="danger" onClick={handleArchive}>Archive</ActionBtn>
+        )}
+        <ActionBtn tone="danger" onClick={() => setConfirmDelete(true)} disabled={confirmDelete}>Delete Permanently</ActionBtn>
       </div>
+
+      {/* Delete confirmation — only shown after clicking Delete Permanently */}
+      {confirmDelete && (
+        <Panel style={{ border: '1px solid var(--r-danger-border)', background: 'var(--r-danger-bg)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-danger)', marginBottom: 8 }}>
+            Permanently delete {contact.fullName}?
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--r-text-2)', marginBottom: 12, lineHeight: 1.5 }}>
+            This will remove the contact and all associated notes from Supabase. Tasks linked to this contact will have their link cleared but will not be deleted. This action cannot be undone.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn tone="danger" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Yes, Delete Permanently'}
+            </ActionBtn>
+            <ActionBtn onClick={() => setConfirmDelete(false)}>Cancel</ActionBtn>
+          </div>
+        </Panel>
+      )}
+
+      {/* Inline edit form */}
+      {editMode && (
+        <Panel>
+          <SubHeader>Edit Contact</SubHeader>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div>
+              <FieldLabel>Full Name *</FieldLabel>
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Phone</FieldLabel>
+              <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} type="tel" style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Source</FieldLabel>
+              <input value={editSource} onChange={(e) => setEditSource(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} />
+            </div>
+            <div>
+              <FieldLabel>Role</FieldLabel>
+              <select value={editRole} onChange={(e) => setEditRole(e.target.value as ContactRole)} style={{ ...selectStyle, fontSize: 13 }}>
+                <option value="buyer">Buyer</option>
+                <option value="seller">Seller</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+          </div>
+          {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</ActionBtn>
+            <ActionBtn onClick={() => setEditMode(false)}>Cancel</ActionBtn>
+          </div>
+        </Panel>
+      )}
 
       {/* Contact info + agent */}
       <Panel>
@@ -488,6 +628,10 @@ export default function ContactsPage() {
     addContactNote,
     assignContactToAgent,
     createContact,
+    updateContact,
+    archiveContact,
+    unarchiveContact,
+    deleteContact,
     updateBuyerProfile,
     updateSellerProfile,
   } = useContacts();
@@ -787,6 +931,10 @@ export default function ContactsPage() {
               onPushToOpportunities={pushContactToOpportunities}
               onUpdateBuyerProfile={updateBuyerProfile}
               onUpdateSellerProfile={updateSellerProfile}
+              onUpdateContact={updateContact}
+              onArchiveContact={archiveContact}
+              onUnarchiveContact={unarchiveContact}
+              onDeleteContact={deleteContact}
               onClose={() => setSelectedId(null)}
             />
           ) : (
