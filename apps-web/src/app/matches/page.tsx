@@ -3,12 +3,14 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useLeads } from '@/hooks/useLeads';
 import { useOpportunities } from '@/hooks/useOpportunities';
 import { useProperties } from '@/hooks/useProperties';
+import { useEvents } from '@/hooks/useEvents';
 import type { Contact } from '@/features/contacts/types';
 import type { Lead } from '@/features/opportunities/types';
 import type { BuyerProfile, ContactRole } from '@/features/contacts/types';
@@ -19,18 +21,14 @@ import type { AgentRecord } from '@/data/mockDb';
 
 type PersonKind = 'contact' | 'lead';
 
-/**
- * Normalised representation of a buyer candidate.
- * All array fields are guaranteed non-null — see buildMatchPersons().
- */
 interface MatchPerson {
   id:                string;
   kind:              PersonKind;
   fullName:          string;
   role?:             ContactRole;
-  tags:              string[];           // guaranteed []
-  notes:             { body: string }[]; // guaranteed []
-  linkedPropertyIds: string[];           // guaranteed []
+  tags:              string[];
+  notes:             { body: string }[];
+  linkedPropertyIds: string[];
   buyerProfile?:     BuyerProfile;
   assignedAgentId?:  string;
   lastActivityAt:    string;
@@ -46,22 +44,20 @@ interface ComputedMatch {
   alreadyInPipeline: boolean;
 }
 
+interface BuyerGroup {
+  personKey: string;
+  person:    MatchPerson;
+  matches:   ComputedMatch[];
+  bestScore: number;
+}
+
 type FilterKey = 'all' | 'high' | 'buyers' | 'investors' | 'unassigned';
 
 // ── Score threshold ───────────────────────────────────────────────────────────
-// A match is surfaced only when its score reaches this value.
+
 const SCORE_THRESHOLD = 25;
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
-// Weights:  price alignment +30 · location +25 · property type +20
-//           intent tags +15     · recency  +10
-//
-// Design principles:
-// • Every field access is null-safe — never throws on incomplete real data.
-// • Structured buyerProfile fields are preferred over notes-parsing (higher
-//   confidence signal).  Notes-parsing is the fallback when profiles are absent.
-// • A scoring dimension is SKIPPED (not forced to 0) when neither the profile
-//   nor notes provide any signal — avoids spurious penalties.
 
 const REF = new Date();
 
@@ -73,16 +69,14 @@ function computeMatchScore(
   let score = 0;
   const reasons: string[] = [];
 
-  // Safe normalised inputs — all string operations happen on these, never on raw fields.
   const propAddress = (property.address ?? '').toLowerCase();
   const propType    = (property.type    ?? '').toLowerCase();
   const propCounty  = (property.county  ?? '').toLowerCase().replace(' county', '');
   const propCity    = (property.city    ?? '').toLowerCase();
   const propState   = (property.state   ?? '').toLowerCase();
   const propPrice   = typeof property.price === 'number' && property.price > 0
-    ? property.price : null; // null means "price unknown / not set"
+    ? property.price : null;
 
-  // Combined notes text — always a string, never undefined.
   const notesText = person.notes
     .map((n) => (n?.body ?? ''))
     .join(' ')
@@ -92,31 +86,32 @@ function computeMatchScore(
     (p) => person.linkedPropertyIds.includes(p.id)
   );
 
-  const bp = person.buyerProfile; // may be undefined
+  const bp = person.buyerProfile;
 
-  // ── 1. Price alignment (+30) ────────────────────────────────────────────────
+  // ── 1. Price alignment (+30, penalty -10) ──────────────────────────────────
   let priceScore = 0;
 
   if (propPrice !== null) {
-    // 1a. Structured buyer profile (highest confidence)
     if (bp?.priceMin != null || bp?.priceMax != null) {
       const lo = bp.priceMin ?? 0;
       const hi = bp.priceMax ?? Infinity;
       if (propPrice >= lo && propPrice <= hi) {
         priceScore = 30;
       } else if (propPrice >= lo * 0.85 && propPrice <= hi * 1.20) {
-        // within 15–20% of stated range → still a signal
         priceScore = 18;
+      } else if (bp.priceMax != null && propPrice > bp.priceMax * 1.30) {
+        // Over-budget: penalise — price well above buyer's stated ceiling
+        score -= 10;
+        reasons.push('Price exceeds buyer budget ceiling');
       }
     }
 
-    // 1b. Linked-property price inference (medium confidence)
     if (priceScore === 0 && linkedProps.length > 0) {
       const linkedPrices = linkedProps
         .map((p) => p.price)
         .filter((v) => typeof v === 'number' && v > 0);
       if (linkedPrices.length > 0) {
-        const lo      = Math.min(...linkedPrices) * 0.55;
+        const lo       = Math.min(...linkedPrices) * 0.55;
         const hiStrict = Math.max(...linkedPrices) * 1.40;
         const loStrict = Math.min(...linkedPrices) * 0.80;
         if (propPrice >= lo && propPrice <= hiStrict) {
@@ -125,7 +120,6 @@ function computeMatchScore(
       }
     }
 
-    // 1c. Explicit pre-qualification in notes (text fallback)
     if (priceScore === 0) {
       const prequalM = notesText.match(/pre[- ]?qualif(?:ied)?\s+at\s+\$([0-9.]+)m/i);
       if (prequalM) {
@@ -144,7 +138,6 @@ function computeMatchScore(
     score += 25;
     reasons.push(`Previously inquired about ${property.address}`);
   } else {
-    // 2a. Buyer profile targetArea (structured)
     const targetArea = (bp?.targetArea ?? '').toLowerCase();
     if (targetArea && propAddress && propAddress.includes(targetArea)) {
       score += 22;
@@ -155,9 +148,7 @@ function computeMatchScore(
     } else if (targetArea && propCity && propCity.includes(targetArea)) {
       score += 18;
       reasons.push(`Target area matches listing city`);
-    }
-    // 2b. Notes-based location (fallback)
-    else if (propCounty && notesText.includes(propCounty)) {
+    } else if (propCounty && notesText.includes(propCounty)) {
       score += 22;
       reasons.push(`Interest in ${property.county} market`);
     } else if (propCity && notesText.includes(propCity)) {
@@ -174,14 +165,11 @@ function computeMatchScore(
 
   // ── 3. Property type match (+20) ────────────────────────────────────────────
   if (propType) {
-    // 3a. Structured buyer profile
     const bpType = (bp?.propertyType ?? '').toLowerCase();
     if (bpType && bpType === propType) {
       score += 20;
       reasons.push(`Buyer profile targets ${property.type || 'this'} property type`);
-    }
-    // 3b. Notes-based
-    else if (notesText.includes(propType)) {
+    } else if (notesText.includes(propType)) {
       score += 20;
       reasons.push(`Explicitly seeking ${property.type} property`);
     } else if (linkedProps.some((p) => (p.type ?? '').toLowerCase() === propType)) {
@@ -192,8 +180,7 @@ function computeMatchScore(
     }
   }
 
-  // ── 4. Beds match (+8 bonus, no penalty) ───────────────────────────────────
-  // Only scored when both buyer profile and property supply the data.
+  // ── 4. Beds match (+8) ──────────────────────────────────────────────────────
   if (bp?.bedsMin != null && property.beds != null) {
     const propBeds = Number(property.beds);
     if (!isNaN(propBeds) && propBeds >= bp.bedsMin) {
@@ -202,7 +189,36 @@ function computeMatchScore(
     }
   }
 
-  // ── 5. Intent tags (+15) ────────────────────────────────────────────────────
+  // ── 5. Baths match (+5) ─────────────────────────────────────────────────────
+  if (bp?.bathsMin != null && property.baths != null) {
+    const propBaths = Number(property.baths);
+    if (!isNaN(propBaths) && propBaths >= bp.bathsMin) {
+      score += 5;
+      reasons.push(`Meets minimum ${bp.bathsMin}+ bath requirement`);
+    }
+  }
+
+  // ── 6. Sqft match (+6) ──────────────────────────────────────────────────────
+  if (bp?.sqftMin != null && property.sqft != null) {
+    const propSqft = Number(property.sqft);
+    if (!isNaN(propSqft) && propSqft >= bp.sqftMin) {
+      score += 6;
+      reasons.push(`Meets minimum ${bp.sqftMin.toLocaleString()} sqft requirement`);
+    }
+  }
+
+  // ── 7. Profile completeness (+5) ────────────────────────────────────────────
+  if (bp) {
+    const filledFields = [
+      bp.targetArea, bp.priceMin, bp.priceMax, bp.propertyType,
+      bp.bedsMin, bp.bathsMin, bp.sqftMin,
+    ].filter((v) => v != null && v !== '').length;
+    if (filledFields >= 3) {
+      score += 5;
+    }
+  }
+
+  // ── 8. Intent tags (+15) ────────────────────────────────────────────────────
   const hotTags   = person.tags.filter((t) => ['hot', 'conversion-ready'].includes(t));
   const buyerTags = person.tags.filter((t) => ['investor', 'buyer'].includes(t));
   if (hotTags.length > 0) {
@@ -213,7 +229,7 @@ function computeMatchScore(
     reasons.push(`Confirmed ${buyerTags[0]} profile`);
   }
 
-  // ── 6. Recency (+10) ────────────────────────────────────────────────────────
+  // ── 9. Recency (+10) ────────────────────────────────────────────────────────
   const lastActive = new Date(person.lastActivityAt);
   const daysAgo    = isNaN(lastActive.getTime())
     ? Infinity
@@ -274,35 +290,123 @@ function PropertyStatusPill({ status }: { status: string }) {
   );
 }
 
-// ── Match Card ────────────────────────────────────────────────────────────────
+// ── Property match row ────────────────────────────────────────────────────────
 
-function MatchCard({
-  match, agents, actedOn,
-  onCreateOpp, onAssignAgent,
+function PropertyMatchRow({
+  match, actedOn, currentRole,
+  onCreateOpp, onScheduleShowing, onViewProperty,
 }: {
-  match:         ComputedMatch;
-  agents:        AgentRecord[];
-  actedOn:       boolean;
-  onCreateOpp:   () => void;
-  onAssignAgent: (agentId: string | undefined) => void;
+  match:             ComputedMatch;
+  actedOn:           boolean;
+  currentRole:       'broker' | 'agent' | null;
+  onCreateOpp:       () => void;
+  onScheduleShowing: () => void;
+  onViewProperty:    () => void;
 }) {
-  const [agentOpen, setAgentOpen] = useState(false);
-  const { person, property, score, reasons, alreadyInPipeline } = match;
-  const conf          = confidenceOf(score);
-  const assignedAgent = agents.find((a) => a.id === person.assignedAgentId);
-  const inPipeline    = alreadyInPipeline || actedOn;
+  const { property, score, reasons, alreadyInPipeline } = match;
+  const inPipeline = alreadyInPipeline || actedOn;
+  const conf = confidenceOf(score);
 
-  // Safe display values
-  const displayAddress = property.address || 'No address';
-  const displayType    = property.type    || 'Unknown type';
-
-  const btnBase: React.CSSProperties = {
-    padding: '7px 14px', borderRadius: 8,
+  const btnSm: React.CSSProperties = {
+    padding: '5px 11px', borderRadius: 7,
     border: '1px solid var(--r-border)',
     background: 'var(--r-grad-card)',
-    color: 'var(--r-text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    color: 'var(--r-text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
     whiteSpace: 'nowrap',
   };
+
+  return (
+    <div style={{
+      display: 'flex', gap: 14, alignItems: 'flex-start',
+      padding: '12px 16px',
+      borderTop: '1px solid var(--r-border)',
+      background: 'rgba(0,0,0,0.06)',
+    }}>
+      {/* Score badge */}
+      <div style={{
+        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+        border: `2px solid ${conf.color}`, background: conf.bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 900, color: conf.color, fontFamily: 'var(--r-font-serif)' }}>
+          {score}
+        </span>
+      </div>
+
+      {/* Property info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{property.address || 'No address'}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: property.price > 0 ? 'var(--r-gold-bright)' : 'var(--r-text-3)' }}>
+            {fmtPrice(property.price)}
+          </span>
+          {property.beds != null && <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.beds}bd</span>}
+          {property.baths != null && <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.baths}ba</span>}
+          {property.sqft != null && property.sqft > 0 && <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.sqft.toLocaleString()} sqft</span>}
+          {property.acreage != null && property.acreage > 0 && <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.acreage.toLocaleString()} ac</span>}
+          {property.type && <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.type}</span>}
+          <PropertyStatusPill status={property.status} />
+          <span style={{ fontSize: 10, fontWeight: 800, color: conf.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{conf.label}</span>
+        </div>
+        {reasons.length > 0 && (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {reasons.map((r, i) => (
+              <span key={i} style={{ fontSize: 11, color: 'var(--r-text-3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: conf.color, fontSize: 10 }}>•</span>{r}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          onClick={onCreateOpp}
+          disabled={inPipeline}
+          style={{
+            ...btnSm,
+            border:     inPipeline ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
+            background: inPipeline ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+            color:      inPipeline ? 'var(--r-success)' : 'var(--r-gold-bright)',
+            fontWeight: 700,
+            cursor:     inPipeline ? 'default' : 'pointer',
+          }}
+        >
+          {inPipeline ? '✓ In Pipeline' : '+ Opportunity'}
+        </button>
+        <button onClick={onScheduleShowing} style={btnSm}>Schedule Showing</button>
+        <button onClick={onViewProperty} style={{ ...btnSm, color: 'var(--r-text-3)' }}>
+          View Property →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Buyer group card ──────────────────────────────────────────────────────────
+
+function BuyerGroupCard({
+  group, agents, actedOn, currentRole,
+  onCreateOpp, onAssignAgent, onScheduleShowing, onViewPerson, onViewProperty,
+}: {
+  group:             BuyerGroup;
+  agents:            AgentRecord[];
+  actedOn:           Set<string>;
+  currentRole:       'broker' | 'agent' | null;
+  onCreateOpp:       (match: ComputedMatch) => void;
+  onAssignAgent:     (agentId: string | undefined) => void;
+  onScheduleShowing: (match: ComputedMatch) => void;
+  onViewPerson:      () => void;
+  onViewProperty:    (propertyId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+
+  const { person, matches, bestScore } = group;
+  const conf = confidenceOf(bestScore);
+  const assignedAgent = agents.find((a) => a.id === person.assignedAgentId);
+  const anyInPipeline = matches.some((m) => m.alreadyInPipeline || actedOn.has(m.id));
 
   return (
     <div className="r-card" style={{
@@ -310,175 +414,149 @@ function MatchCard({
       border: `1px solid ${conf.border}`,
       background: 'var(--r-grad-card)',
       boxShadow: 'var(--r-shadow)',
+      overflow: 'hidden',
     }}>
-      {/* ── Main row ── */}
-      <div style={{ display: 'flex', gap: 0, padding: '18px 20px', alignItems: 'flex-start' }}>
-
-        {/* LEFT: Person */}
-        <div style={{ width: 186, flexShrink: 0, paddingRight: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--r-text)', lineHeight: 1.25, marginBottom: 7, fontFamily: 'var(--r-font-serif)' }}>
-            {person.fullName}
-          </div>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-            {person.tags.slice(0, 4).map((t) => <TagChip key={t} tag={t} />)}
-            {person.buyerProfile && (
-              <TagChip tag="buyer profile" />
+      {/* ── Buyer header ── */}
+      <div
+        style={{ display: 'flex', gap: 0, padding: '16px 20px', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {/* LEFT: Person info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--r-text)', fontFamily: 'var(--r-font-serif)' }}>
+              {person.fullName}
+            </span>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {person.tags.slice(0, 3).map((t) => <TagChip key={t} tag={t} />)}
+              {person.buyerProfile && <TagChip tag="buyer profile" />}
+            </div>
+            {anyInPipeline && (
+              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--r-success)', background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)', borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                In Pipeline
+              </span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>
-            {person.kind === 'lead' ? 'Lead' : 'Contact'}
-            {person.role ? ` · ${person.role}` : ''}
-            {person.source ? ` · ${person.source}` : ''}
-          </div>
-          {assignedAgent && (
-            <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 3 }}>
-              Agent: {assignedAgent.name}
-            </div>
-          )}
-          {!assignedAgent && (
-            <div style={{ fontSize: 11, color: 'var(--r-warning)', marginTop: 3, fontWeight: 600 }}>
-              ⚠ Unassigned
-            </div>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div style={{ width: 1, background: 'var(--r-border)', alignSelf: 'stretch', marginRight: 20, flexShrink: 0 }} />
-
-        {/* CENTER: Reasons */}
-        <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
-            Why this match
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {reasons.map((r, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                <span style={{ color: conf.color, fontSize: 13, lineHeight: 1, flexShrink: 0 }}>•</span>
-                <span style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.45 }}>{r}</span>
-              </div>
-            ))}
-            {reasons.length === 0 && (
-              <span style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>Signal data limited — low confidence match.</span>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
+              {person.kind === 'lead' ? 'Lead' : 'Contact'}
+              {person.role ? ` · ${person.role}` : ''}
+              {person.source ? ` · ${person.source}` : ''}
+            </span>
+            {assignedAgent ? (
+              <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>Agent: {assignedAgent.name}</span>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--r-warning)', fontWeight: 600 }}>⚠ Unassigned</span>
             )}
-          </div>
-        </div>
-
-        {/* RIGHT: Score ring */}
-        <div style={{ width: 96, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <div style={{
-            width: 76, height: 76, borderRadius: '50%',
-            border: `3px solid ${conf.color}`,
-            background: conf.bg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 24, fontWeight: 900, color: conf.color, lineHeight: 1, fontFamily: 'var(--r-font-serif)' }}>
-              {score}
+            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
+              {matches.length} match{matches.length !== 1 ? 'es' : ''}
             </span>
           </div>
-          <div style={{ fontSize: 10, fontWeight: 800, color: conf.color, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            {conf.label}
+        </div>
+
+        {/* RIGHT: Best score + expand toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: 54, height: 54, borderRadius: '50%',
+              border: `3px solid ${conf.color}`, background: conf.bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: conf.color, fontFamily: 'var(--r-font-serif)' }}>
+                {bestScore}
+              </span>
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: conf.color, letterSpacing: '0.07em', textTransform: 'uppercase', marginTop: 3 }}>
+              {conf.label}
+            </div>
           </div>
+          <span style={{ fontSize: 18, color: 'var(--r-text-3)', userSelect: 'none' }}>
+            {expanded ? '▾' : '▸'}
+          </span>
         </div>
       </div>
 
-      {/* ── Property strip ── */}
+      {/* ── Action bar (always visible) ── */}
       <div style={{
         borderTop: '1px solid var(--r-border)',
-        padding: '10px 20px',
-        background: 'rgba(0,0,0,0.08)',
-        display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{displayAddress}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: property.price > 0 ? 'var(--r-gold-bright)' : 'var(--r-text-3)' }}>
-          {fmtPrice(property.price)}
-        </span>
-        {property.acreage != null && property.acreage > 0 && (
-          <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.acreage.toLocaleString()} ac</span>
-        )}
-        {displayType && (
-          <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{displayType}</span>
-        )}
-        {property.county && (
-          <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{property.county}</span>
-        )}
-        <PropertyStatusPill status={property.status} />
-        {property.assignedAgentId && (
-          <span style={{ fontSize: 11, color: 'var(--r-text-3)', marginLeft: 'auto' }}>
-            Listing agent: {property.assignedAgentId}
-          </span>
-        )}
-      </div>
-
-      {/* ── Action bar ── */}
-      <div style={{
-        borderTop: '1px solid var(--r-border)',
-        padding: '11px 20px',
+        padding: '9px 20px',
         display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-      }}>
+        background: 'rgba(0,0,0,0.04)',
+      }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
-          onClick={onCreateOpp}
-          disabled={inPipeline}
-          className={inPipeline ? '' : 'r-btn-gold'}
+          onClick={onViewPerson}
           style={{
-            ...btnBase,
-            border:      inPipeline ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
-            background:  inPipeline ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
-            color:       inPipeline ? 'var(--r-success)' : 'var(--r-gold-bright)',
-            cursor:      inPipeline ? 'default' : 'pointer',
-            fontWeight:  700,
+            padding: '5px 12px', borderRadius: 7,
+            border: '1px solid var(--r-border)',
+            background: 'var(--r-grad-card)',
+            color: 'var(--r-text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}
         >
-          {inPipeline ? '✓ In Pipeline' : '+ Create Opportunity'}
-        </button>
-
-        {/* Assign Agent dropdown */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setAgentOpen((o) => !o)}
-            style={{
-              ...btnBase,
-              border: assignedAgent ? '1px solid rgba(155,138,180,0.35)' : btnBase.border,
-              color:  assignedAgent ? '#9b8ab4' : btnBase.color as string,
-            }}
-          >
-            {assignedAgent ? `✓ ${assignedAgent.name}` : 'Assign Agent ▾'}
-          </button>
-          {agentOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
-              background: '#141c30', border: '1px solid var(--r-border)',
-              borderRadius: 10, overflow: 'hidden', minWidth: 168, boxShadow: 'var(--r-shadow)',
-            }}>
-              {agents.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => { onAssignAgent(a.id); setAgentOpen(false); }}
-                  style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: person.assignedAgentId === a.id ? 'rgba(155,138,180,0.10)' : 'transparent', border: 'none', color: person.assignedAgentId === a.id ? '#9b8ab4' : 'var(--r-text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                >
-                  {person.assignedAgentId === a.id ? '✓ ' : ''}{a.name}
-                </button>
-              ))}
-              {person.assignedAgentId && (
-                <button
-                  onClick={() => { onAssignAgent(undefined); setAgentOpen(false); }}
-                  style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: 'transparent', border: 'none', borderTop: '1px solid var(--r-border)', color: 'var(--r-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: 0.8 }}
-                >
-                  Remove assignment
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <button style={btnBase}>Schedule Showing</button>
-        <button style={{ ...btnBase, color: 'var(--r-text-3)', fontSize: 11 }}>
           View {person.kind === 'lead' ? 'Lead' : 'Contact'} →
         </button>
-        <button style={{ ...btnBase, color: 'var(--r-text-3)', fontSize: 11 }}>
-          View Property →
-        </button>
+
+        {/* Assign Agent — broker only */}
+        {currentRole === 'broker' && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setAgentOpen((o) => !o)}
+              style={{
+                padding: '5px 12px', borderRadius: 7,
+                border: assignedAgent ? '1px solid rgba(155,138,180,0.35)' : '1px solid var(--r-border)',
+                background: 'var(--r-grad-card)',
+                color:  assignedAgent ? '#9b8ab4' : 'var(--r-text-2)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {assignedAgent ? `✓ ${assignedAgent.name}` : 'Assign Agent ▾'}
+            </button>
+            {agentOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
+                background: '#141c30', border: '1px solid var(--r-border)',
+                borderRadius: 10, overflow: 'hidden', minWidth: 168, boxShadow: 'var(--r-shadow)',
+              }}>
+                {agents.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => { onAssignAgent(a.id); setAgentOpen(false); }}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: person.assignedAgentId === a.id ? 'rgba(155,138,180,0.10)' : 'transparent', border: 'none', color: person.assignedAgentId === a.id ? '#9b8ab4' : 'var(--r-text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {person.assignedAgentId === a.id ? '✓ ' : ''}{a.name}
+                  </button>
+                ))}
+                {person.assignedAgentId && (
+                  <button
+                    onClick={() => { onAssignAgent(undefined); setAgentOpen(false); }}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: 'transparent', border: 'none', borderTop: '1px solid var(--r-border)', color: 'var(--r-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: 0.8 }}
+                  >
+                    Remove assignment
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Expanded property rows ── */}
+      {expanded && (
+        <div>
+          {matches.map((match) => (
+            <PropertyMatchRow
+              key={match.id}
+              match={match}
+              actedOn={actedOn.has(match.id)}
+              currentRole={currentRole}
+              onCreateOpp={() => onCreateOpp(match)}
+              onScheduleShowing={() => onScheduleShowing(match)}
+              onViewProperty={() => onViewProperty(match.property.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -494,16 +572,19 @@ const FILTER_LABELS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function MatchesPage() {
-  // Hydrate store on direct page visit
   useLeads();
   useProperties();
   const { createOpportunity } = useOpportunities();
+  const { createEvent }       = useEvents();
+  const router = useRouter();
 
-  const contacts   = useAppStore((s) => s.contacts);
-  const leads      = useAppStore((s) => s.leads);
-  const properties = useAppStore((s) => s.properties);
-  const agents     = useAppStore((s) => s.agents);
-  const opportunities = useAppStore((s) => s.opportunities);
+  const contacts            = useAppStore((s) => s.contacts);
+  const leads               = useAppStore((s) => s.leads);
+  const properties          = useAppStore((s) => s.properties);
+  const agents              = useAppStore((s) => s.agents);
+  const opportunities       = useAppStore((s) => s.opportunities);
+  const currentRole         = useAppStore((s) => s.currentRole);
+  const memberId            = useAppStore((s) => s.memberId);
   const assignContactToAgent = useAppStore((s) => s.assignContactToAgent);
   const assignLeadToAgent    = useAppStore((s) => s.assignLeadToAgent);
 
@@ -512,11 +593,13 @@ export default function MatchesPage() {
   const [actedOn, setActedOn] = useState<Set<string>>(new Set());
 
   // ── Build person pool ─────────────────────────────────────────────────────
-  // Only buyer-capable persons (role !== 'seller') enter the matching pool.
-  // All arrays are normalised to [] to ensure scoring never encounters null.
   const persons = useMemo<MatchPerson[]>(() => {
     const fromContacts: MatchPerson[] = contacts
-      .filter((c) => c.status !== 'closed' && c.role !== 'seller')
+      .filter((c) => {
+        if (c.status === 'closed' || c.role === 'seller') return false;
+        if (currentRole === 'agent' && memberId && c.assignedAgentId !== memberId) return false;
+        return true;
+      })
       .map((c: Contact) => ({
         id:                c.id,
         kind:              'contact' as const,
@@ -532,7 +615,11 @@ export default function MatchesPage() {
       }));
 
     const fromLeads: MatchPerson[] = leads
-      .filter((l) => l.status !== 'lost' && l.role !== 'seller')
+      .filter((l) => {
+        if (l.status === 'lost' || l.role === 'seller') return false;
+        if (currentRole === 'agent' && memberId && l.assignedAgentId !== memberId) return false;
+        return true;
+      })
       .map((l: Lead) => ({
         id:                l.id,
         kind:              'lead' as const,
@@ -547,22 +634,17 @@ export default function MatchesPage() {
         source:            l.source,
       }));
 
-    // Deduplicate by canonical `${kind}:${id}` — prevents a converted lead that
-    // temporarily exists in both the contacts and leads stores from appearing twice.
     const seen = new Map<string, MatchPerson>();
     for (const p of [...fromContacts, ...fromLeads]) {
       const key = `${p.kind}:${p.id}`;
       if (!seen.has(key)) seen.set(key, p);
     }
     return Array.from(seen.values());
-  }, [contacts, leads]);
+  }, [contacts, leads, currentRole, memberId]);
 
   // ── Compute matches ────────────────────────────────────────────────────────
   const allMatches = useMemo<ComputedMatch[]>(() => {
-    // Only consider unsold properties that have at least an id (skip malformed rows).
-    const matchableProps = properties.filter(
-      (p) => p.status !== 'sold' && p.id
-    );
+    const matchableProps = properties.filter((p) => p.status !== 'sold' && p.id);
     const results: ComputedMatch[] = [];
     const seenIds = new Set<string>();
 
@@ -571,8 +653,6 @@ export default function MatchesPage() {
         const { score, reasons } = computeMatchScore(person, property, properties);
         if (score < SCORE_THRESHOLD) continue;
 
-        // Canonical match ID: namespaced by entity type so a contact and a lead
-        // with the same UUID (e.g. during lead-conversion) never collide.
         const matchId = `${person.kind}:${person.id}:${property.id}`;
         if (seenIds.has(matchId)) continue;
         seenIds.add(matchId);
@@ -583,16 +663,12 @@ export default function MatchesPage() {
             (o.contactName ?? '').toLowerCase() === personNameL
         );
 
-        results.push({
-          id: matchId,
-          person, property, score, reasons, alreadyInPipeline,
-        });
+        results.push({ id: matchId, person, property, score, reasons, alreadyInPipeline });
       }
     }
 
-    // Secondary dedup: same real person (same name, different kind/UUID) matched to
-    // the same property generates two cards. Keep only the highest-scored one.
-    const namePropertySeen = new Map<string, number>(); // key → index in results
+    // Dedup same-name/property collision after lead→contact conversion
+    const namePropertySeen = new Map<string, number>();
     const deduped: ComputedMatch[] = [];
     for (const match of results.sort((a, b) => b.score - a.score)) {
       const nameKey = `${match.person.fullName.toLowerCase()}::${match.property.id}`;
@@ -600,7 +676,6 @@ export default function MatchesPage() {
         namePropertySeen.set(nameKey, deduped.length);
         deduped.push(match);
       }
-      // else: lower-scored duplicate — silently dropped
     }
     return deduped;
   }, [persons, properties, opportunities]);
@@ -626,6 +701,25 @@ export default function MatchesPage() {
     return list;
   }, [allMatches, filter, search]);
 
+  // ── Group by buyer ────────────────────────────────────────────────────────
+  const groups = useMemo<BuyerGroup[]>(() => {
+    const map = new Map<string, BuyerGroup>();
+    for (const m of filtered) {
+      const key = `${m.person.kind}:${m.person.id}`;
+      if (!map.has(key)) {
+        map.set(key, { personKey: key, person: m.person, matches: [], bestScore: 0 });
+      }
+      const g = map.get(key)!;
+      g.matches.push(m);
+      if (m.score > g.bestScore) g.bestScore = m.score;
+    }
+    // Sort matches within each group by score desc
+    for (const g of map.values()) {
+      g.matches.sort((a, b) => b.score - a.score);
+    }
+    return Array.from(map.values()).sort((a, b) => b.bestScore - a.bestScore);
+  }, [filtered]);
+
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const highCount    = allMatches.filter((m) => m.score >= 80).length;
   const newThisWeek  = allMatches.filter((m) => {
@@ -634,7 +728,6 @@ export default function MatchesPage() {
   }).length;
   const actedOnCount = allMatches.filter((m) => m.alreadyInPipeline || actedOn.has(m.id)).length;
 
-  // ── Data-state description for empty panel ────────────────────────────────
   const emptyReason = useMemo(() => {
     if (search || filter !== 'all') return 'Try adjusting your filters or search query.';
     if (properties.filter((p) => p.status !== 'sold').length === 0)
@@ -667,12 +760,39 @@ export default function MatchesPage() {
     }
   }
 
+  async function handleScheduleShowing(match: ComputedMatch) {
+    const { person, property } = match;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    const endsAt = new Date(tomorrow);
+    endsAt.setHours(11, 0, 0, 0);
+    try {
+      await createEvent({
+        title:      `Showing — ${property.address || 'Property'} with ${person.fullName}`,
+        type:       'showing',
+        startsAt:   tomorrow.toISOString(),
+        endsAt:     endsAt.toISOString(),
+        propertyId: property.id,
+        contactId:  person.kind === 'contact' ? person.id : undefined,
+        leadId:     person.kind === 'lead'    ? person.id : undefined,
+      });
+      router.push('/calendar');
+    } catch (err) {
+      console.error('[handleScheduleShowing]', err);
+    }
+  }
+
   function handleAssignAgent(match: ComputedMatch, agentId: string | undefined) {
     if (match.person.kind === 'contact') {
       assignContactToAgent(match.person.id, agentId);
     } else {
       assignLeadToAgent(match.person.id, agentId);
     }
+  }
+
+  function handleViewPerson(person: MatchPerson) {
+    router.push(person.kind === 'lead' ? '/leads' : '/contacts');
   }
 
   return (
@@ -689,7 +809,7 @@ export default function MatchesPage() {
             </p>
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {allMatches.length} matches computed
+            {groups.length} buyer{groups.length !== 1 ? 's' : ''} · {allMatches.length} matches
           </div>
         </div>
       </div>
@@ -739,9 +859,9 @@ export default function MatchesPage() {
         />
       </div>
 
-      {/* Match feed */}
+      {/* Buyer groups */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {filtered.length === 0 ? (
+        {groups.length === 0 ? (
           <div style={{
             padding: '60px 24px', textAlign: 'center',
             borderRadius: 18, border: '1px solid var(--r-border)',
@@ -755,21 +875,25 @@ export default function MatchesPage() {
             </div>
           </div>
         ) : (
-          filtered.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
+          groups.map((group) => (
+            <BuyerGroupCard
+              key={group.personKey}
+              group={group}
               agents={agents}
-              actedOn={actedOn.has(match.id)}
-              onCreateOpp={() => handleCreateOpp(match)}
-              onAssignAgent={(agentId) => handleAssignAgent(match, agentId)}
+              actedOn={actedOn}
+              currentRole={currentRole}
+              onCreateOpp={handleCreateOpp}
+              onAssignAgent={(agentId) => handleAssignAgent(group.matches[0], agentId)}
+              onScheduleShowing={handleScheduleShowing}
+              onViewPerson={() => handleViewPerson(group.person)}
+              onViewProperty={(propertyId) => router.push('/properties')}
             />
           ))
         )}
       </div>
 
       {/* Score legend */}
-      {filtered.length > 0 && (
+      {groups.length > 0 && (
         <div style={{ display: 'flex', gap: 16, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--r-border)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Score legend:</span>
           {[
@@ -783,7 +907,7 @@ export default function MatchesPage() {
             </div>
           ))}
           <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--r-text-3)' }}>
-            Weights: price +30 · location +25 · type +20 · beds +8 · intent +15 · recency +10
+            Weights: price +30 · location +25 · type +20 · beds +8 · baths +5 · sqft +6 · profile +5 · intent +15 · recency +10
           </div>
         </div>
       )}

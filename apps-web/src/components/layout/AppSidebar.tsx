@@ -52,7 +52,8 @@ export function AppSidebar() {
   useAgents();
   const agents      = useAppStore((s) => s.agents);
   const currentRole = useAppStore((s) => s.currentRole);
-  const broker      = agents.find((a) => a.role === 'broker') ?? agents[0];
+  const memberId    = useAppStore((s) => s.memberId);
+  const currentUser = agents.find((a) => a.id === memberId);
 
   async function handleLogout() {
     await getSupabaseBrowser().auth.signOut();
@@ -182,8 +183,11 @@ export function AppSidebar() {
           paddingLeft: 4,
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text-2)', marginBottom: 2 }}>
-          {broker?.name ?? '—'}
+        <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--r-gold)', marginBottom: 2 }}>
+          American Pride Realty
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)', marginBottom: 2 }}>
+          {currentUser?.name ?? '—'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
           <span style={{

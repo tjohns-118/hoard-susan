@@ -274,6 +274,8 @@ type PipelineFilter = 'buyer' | 'seller' | 'all';
 export default function OpportunitiesPage() {
   const agents                = useAppStore((s) => s.agents);
   const moveOpportunityStage  = useAppStore((s) => s.moveOpportunityStage);
+  const currentRole           = useAppStore((s) => s.currentRole);
+  const memberId              = useAppStore((s) => s.memberId);
   const { opportunities, advanceStage, markLost, moveStage, reload } = useOpportunities();
   const { createTask } = useTasks();
 
@@ -341,11 +343,15 @@ export default function OpportunitiesPage() {
   const [pipelineFilter, setPipelineFilter] = useState<PipelineFilter>('all');
 
   // Filtered opportunity list
-  const visible = useMemo(() =>
-    pipelineFilter === 'all'
+  const visible = useMemo(() => {
+    let list = pipelineFilter === 'all'
       ? opportunities
-      : opportunities.filter((o) => o.pipelineType === pipelineFilter),
-  [opportunities, pipelineFilter]);
+      : opportunities.filter((o) => o.pipelineType === pipelineFilter);
+    if (currentRole === 'agent' && memberId) {
+      list = list.filter((o) => o.assignedAgentId === memberId);
+    }
+    return list;
+  }, [opportunities, pipelineFilter, currentRole, memberId]);
 
   const openOpps   = visible.filter((o) => o.stage !== 'closed' && o.stage !== 'lost' && o.stage !== 'post_close_followup');
   const closedOpps = visible.filter((o) => o.stage === 'closed' || o.stage === 'post_close_followup');
@@ -488,6 +494,11 @@ export default function OpportunitiesPage() {
                   }
                   const opp = opportunities.find((o) => o.id === oppId);
                   if (!opp) return;
+                  // Agents can only move their own deals
+                  if (currentRole === 'agent' && memberId && opp.assignedAgentId !== memberId) {
+                    showToast('You can only move deals assigned to you', false);
+                    return;
+                  }
                   // Resolve target stage — null if this phase doesn't exist in opp's pipeline
                   const targetStage = getFirstStageOfPhase(phase, opp.pipelineType);
                   if (!targetStage) return; // cross-pipeline drop: silently skip
@@ -540,7 +551,10 @@ export default function OpportunitiesPage() {
                 </div>
 
                 {/* Cards */}
-                <div style={{ padding: '11px 11px', display: 'flex', flexDirection: 'column', gap: 9, minHeight: 60 }}>
+                <div
+                  style={{ padding: '11px 11px', display: 'flex', flexDirection: 'column', gap: 9, minHeight: 60 }}
+                  onDragOver={(e) => e.preventDefault()}
+                >
                   {deals.length === 0 ? (
                     <div style={{
                       padding: '20px 0', textAlign: 'center', color: isDropTarget ? 'var(--r-gold)' : 'var(--r-text-3)',

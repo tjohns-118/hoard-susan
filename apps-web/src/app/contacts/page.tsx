@@ -639,13 +639,21 @@ export default function ContactsPage() {
   // Hydrate agents from Supabase so agent names resolve correctly in the UI.
   useAgents();
 
-  const agents      = useAppStore((s) => s.agents);
-  const properties  = useAppStore((s) => s.properties);
+  const agents        = useAppStore((s) => s.agents);
+  const properties    = useAppStore((s) => s.properties);
   const opportunities = useAppStore((s) => s.opportunities);
-  const tasks       = useAppStore((s) => s.tasks);
+  const tasks         = useAppStore((s) => s.tasks);
+  const currentRole   = useAppStore((s) => s.currentRole);
+  const memberId      = useAppStore((s) => s.memberId);
 
   const { createTask }         = useTasks();
   const { createOpportunity }  = useOpportunities();
+
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function handleAddContactTask(contactId: string) {
     const c = contacts.find((x) => x.id === contactId);
@@ -656,8 +664,10 @@ export default function ContactsPage() {
         priority:  c.tags.includes('hot') ? 'high' : 'medium',
         contactId,
       });
+      showToast(`Task created for ${c.fullName}`);
     } catch (err) {
       console.error('[handleAddContactTask]', err);
+      showToast('Failed to create task', false);
     }
   }
 
@@ -684,8 +694,10 @@ export default function ContactsPage() {
         nextStep:           'Initial qualification — review profile and schedule intro call.',
         notes:              c.notes.length > 0 ? [c.notes[c.notes.length - 1].body] : [],
       });
+      showToast(`${c.fullName} pushed to pipeline`);
     } catch (err) {
       console.error('[pushContactToOpportunities]', err);
+      showToast('Failed to push to pipeline', false);
     }
   }
 
@@ -745,6 +757,8 @@ export default function ContactsPage() {
 
   const filtered = useMemo(() => {
     return contacts.filter((c) => {
+      if (currentRole === 'agent' && memberId && c.assignedAgentId !== memberId) return false;
+
       const q = query.toLowerCase().trim();
       const matchSearch =
         !q ||
@@ -765,7 +779,7 @@ export default function ContactsPage() {
 
       return matchSearch && matchFilter;
     });
-  }, [contacts, filter, query]);
+  }, [contacts, filter, query, currentRole, memberId]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -791,6 +805,18 @@ export default function ContactsPage() {
 
   return (
     <AppShell>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 999,
+          padding: '12px 20px', borderRadius: 12,
+          background: toast.ok ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
+          border: `1px solid ${toast.ok ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
+          color: toast.ok ? 'var(--r-success)' : 'var(--r-danger)',
+          fontSize: 13, fontWeight: 700, boxShadow: 'var(--r-shadow)',
+        }}>
+          {toast.msg}
+        </div>
+      )}
       {/* ── Header ── */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>

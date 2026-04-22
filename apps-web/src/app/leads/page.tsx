@@ -599,6 +599,14 @@ export default function LeadsPage() {
   const agents = useAppStore((s) => s.agents);
   const properties = useAppStore((s) => s.properties);
   const setContacts = useAppStore((s) => s.setContacts);
+  const currentRole = useAppStore((s) => s.currentRole);
+  const memberId    = useAppStore((s) => s.memberId);
+
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   // Convert lead → active contact via Supabase (stage change in-place).
   // After conversion, reload leads and re-fetch contacts so both lists reflect reality.
@@ -625,8 +633,10 @@ export default function LeadsPage() {
         priority: lead.tags.includes('hot') ? 'high' : 'medium',
         leadId,
       });
+      showToast(`Task created for ${lead.fullName}`);
     } catch (err) {
       console.error('[handleAddTask]', err);
+      showToast('Failed to create task', false);
     }
   }
 
@@ -686,6 +696,8 @@ export default function LeadsPage() {
 
   const filtered = useMemo(() => {
     return leads.filter((lead) => {
+      if (currentRole === 'agent' && memberId && lead.assignedAgentId !== memberId) return false;
+
       const q = query.trim().toLowerCase();
       const matchesSearch =
         !q ||
@@ -703,7 +715,7 @@ export default function LeadsPage() {
 
       return matchesSearch && matchesFilter;
     });
-  }, [leads, query, filter]);
+  }, [leads, query, filter, currentRole, memberId]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -716,6 +728,18 @@ export default function LeadsPage() {
 
   return (
     <AppShell>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 999,
+          padding: '12px 20px', borderRadius: 12,
+          background: toast.ok ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
+          border: `1px solid ${toast.ok ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
+          color: toast.ok ? 'var(--r-success)' : 'var(--r-danger)',
+          fontSize: 13, fontWeight: 700, boxShadow: 'var(--r-shadow)',
+        }}>
+          {toast.msg}
+        </div>
+      )}
       <PageHeader
         title="Leads"
         description="Inbound intake and qualification — move leads through stages, assign agents, and convert to active pipeline."
