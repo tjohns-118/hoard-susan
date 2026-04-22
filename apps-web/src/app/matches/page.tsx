@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useLeads } from '@/hooks/useLeads';
+import { useContacts } from '@/hooks/useContacts';
 import { useOpportunities } from '@/hooks/useOpportunities';
 import { useProperties } from '@/hooks/useProperties';
 import { useEvents } from '@/hooks/useEvents';
@@ -414,7 +415,6 @@ function BuyerGroupCard({
       border: `1px solid ${conf.border}`,
       background: 'var(--r-grad-card)',
       boxShadow: 'var(--r-shadow)',
-      overflow: 'hidden',
     }}>
       {/* ── Buyer header ── */}
       <div
@@ -543,7 +543,7 @@ function BuyerGroupCard({
 
       {/* ── Expanded property rows ── */}
       {expanded && (
-        <div>
+        <div style={{ overflow: 'hidden', borderRadius: '0 0 16px 16px' }}>
           {matches.map((match) => (
             <PropertyMatchRow
               key={match.id}
@@ -572,24 +572,24 @@ const FILTER_LABELS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function MatchesPage() {
-  useLeads();
+  const { assignLeadToAgent }    = useLeads();
+  const { assignContactToAgent } = useContacts();
   useProperties();
   const { createOpportunity } = useOpportunities();
   const { createEvent }       = useEvents();
   const router = useRouter();
 
-  const contacts            = useAppStore((s) => s.contacts);
-  const leads               = useAppStore((s) => s.leads);
-  const properties          = useAppStore((s) => s.properties);
-  const agents              = useAppStore((s) => s.agents);
-  const opportunities       = useAppStore((s) => s.opportunities);
-  const currentRole         = useAppStore((s) => s.currentRole);
-  const memberId            = useAppStore((s) => s.memberId);
-  const assignContactToAgent = useAppStore((s) => s.assignContactToAgent);
-  const assignLeadToAgent    = useAppStore((s) => s.assignLeadToAgent);
+  const contacts      = useAppStore((s) => s.contacts);
+  const leads         = useAppStore((s) => s.leads);
+  const properties    = useAppStore((s) => s.properties);
+  const agents        = useAppStore((s) => s.agents);
+  const opportunities = useAppStore((s) => s.opportunities);
+  const currentRole   = useAppStore((s) => s.currentRole);
+  const memberId      = useAppStore((s) => s.memberId);
 
   const [filter, setFilter]   = useState<FilterKey>('all');
   const [search, setSearch]   = useState('');
+  const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
   const [actedOn, setActedOn] = useState<Set<string>>(new Set());
 
   // ── Build person pool ─────────────────────────────────────────────────────
@@ -783,11 +783,23 @@ export default function MatchesPage() {
     }
   }
 
-  function handleAssignAgent(match: ComputedMatch, agentId: string | undefined) {
-    if (match.person.kind === 'contact') {
-      assignContactToAgent(match.person.id, agentId);
-    } else {
-      assignLeadToAgent(match.person.id, agentId);
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function handleAssignAgent(match: ComputedMatch, agentId: string | undefined) {
+    const agentName = agents.find((a) => a.id === agentId)?.name;
+    try {
+      if (match.person.kind === 'contact') {
+        await assignContactToAgent(match.person.id, agentId);
+      } else {
+        await assignLeadToAgent(match.person.id, agentId);
+      }
+      showToast(agentId ? `Assigned to ${agentName ?? 'agent'}` : 'Assignment removed');
+    } catch (err) {
+      console.error('[handleAssignAgent]', err);
+      showToast('Failed to assign agent', false);
     }
   }
 
@@ -797,6 +809,18 @@ export default function MatchesPage() {
 
   return (
     <AppShell>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          background: toast.ok ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
+          border: `1px solid ${toast.ok ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
+          color: toast.ok ? 'var(--r-success)' : 'var(--r-danger)',
+          borderRadius: 10, padding: '11px 18px', fontSize: 13, fontWeight: 600,
+          boxShadow: 'var(--r-shadow)',
+        }}>
+          {toast.msg}
+        </div>
+      )}
       {/* Header */}
       <div style={{ marginBottom: 22 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>

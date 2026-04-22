@@ -15,6 +15,7 @@ import type { PipelineType, PipelineStage } from '@/features/pipeline/types';
 import {
   getStageDefinition,
   getNextStage,
+  getPrevStage,
   getPipelinePhases,
   getFirstStageOfPhase,
   BUYER_STAGES,
@@ -121,11 +122,12 @@ function PillBtn({
 // ── Opportunity Card ──────────────────────────────────────────────────────────
 
 function OpportunityCard({
-  opp, agents, onAdvance, onMarkLost, onAddTask, isDragging, onDragStart, onDragEnd,
+  opp, agents, onAdvance, onGoBack, onMarkLost, onAddTask, isDragging, onDragStart, onDragEnd,
 }: {
   opp:          Opportunity;
   agents:       { id: string; name: string }[];
   onAdvance:    (id: string) => void;
+  onGoBack:     (id: string) => void;
   onMarkLost:   (id: string) => void;
   onAddTask:    (id: string) => void;
   isDragging?:  boolean;
@@ -135,6 +137,8 @@ function OpportunityCard({
   const agent       = agents.find((a) => a.id === opp.assignedAgentId);
   const nextStage   = getNextStage(opp.stage, opp.pipelineType);
   const nextDef     = nextStage ? getStageDefinition(nextStage, opp.pipelineType) : null;
+  const prevStage   = getPrevStage(opp.stage, opp.pipelineType);
+  const prevDef     = prevStage ? getStageDefinition(prevStage, opp.pipelineType) : null;
   const closeDate   = new Date(opp.expectedCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const daysStuck   = daysInStage(opp.stageUpdatedAt);
   const unsignedBlocking = opp.documents.some(
@@ -255,6 +259,11 @@ function OpportunityCard({
         display: 'flex', gap: 5, flexWrap: 'wrap',
         paddingTop: 6, borderTop: '1px solid var(--r-border)',
       }}>
+        {prevDef && (
+          <PillBtn onClick={() => onGoBack(opp.id)}>
+            ← {prevDef.label}
+          </PillBtn>
+        )}
         {nextDef && (
           <PillBtn tone="accent" onClick={() => onAdvance(opp.id)}>
             → {nextDef.label}
@@ -306,6 +315,26 @@ export default function OpportunitiesPage() {
     try {
       await advanceStage(oppId);
       showToast(`Moved to ${nextDef?.label ?? 'next stage'}`, true);
+    } catch (err: any) {
+      showToast(`Move failed: ${err?.message ?? 'unknown error'}`, false);
+      reload();
+    }
+  }
+
+  async function handleGoBack(oppId: string) {
+    const opp = opportunities.find((o) => o.id === oppId);
+    if (!opp) return;
+    if (!UUID_RE.test(oppId)) {
+      showToast('Cannot move: opportunity not yet saved to database', false);
+      return;
+    }
+    const prevStage = getPrevStage(opp.stage, opp.pipelineType);
+    const prevDef   = prevStage ? getStageDefinition(prevStage, opp.pipelineType) : null;
+    if (!prevStage) return;
+    try {
+      moveOpportunityStage(oppId, prevStage);
+      await moveStage(oppId, prevStage);
+      showToast(`Moved back to ${prevDef?.label ?? 'previous stage'}`, true);
     } catch (err: any) {
       showToast(`Move failed: ${err?.message ?? 'unknown error'}`, false);
       reload();
@@ -501,7 +530,10 @@ export default function OpportunitiesPage() {
                   }
                   // Resolve target stage — null if this phase doesn't exist in opp's pipeline
                   const targetStage = getFirstStageOfPhase(phase, opp.pipelineType);
-                  if (!targetStage) return; // cross-pipeline drop: silently skip
+                  if (!targetStage) {
+                    showToast(`"${phase}" phase doesn't exist in the ${opp.pipelineType} pipeline`, false);
+                    return;
+                  }
                   // Skip if opp is already in the target phase (avoid same-phase backward moves)
                   const currentPhase = getStageDefinition(opp.stage, opp.pipelineType)?.phase;
                   if (currentPhase === phase) return;
@@ -569,6 +601,7 @@ export default function OpportunitiesPage() {
                         opp={opp}
                         agents={agents}
                         onAdvance={handleAdvanceStage}
+                        onGoBack={handleGoBack}
                         onMarkLost={handleMarkLost}
                         onAddTask={handleAddOppTask}
                         isDragging={draggingOppId === opp.id}
