@@ -157,6 +157,7 @@ function PropertyRow({
   contacts,
   agents,
   selected,
+  isOwned,
   onClick,
   onAddTask,
 }: {
@@ -164,6 +165,7 @@ function PropertyRow({
   contacts: { id: string; fullName: string }[];
   agents: { id: string; name: string }[];
   selected: boolean;
+  isOwned: boolean;
   onClick: () => void;
   onAddTask: (id: string) => void;
 }) {
@@ -252,7 +254,7 @@ function PropertyRow({
 
       {/* Row 7: Actions */}
       <div style={{ display: 'flex', gap: 5 }} onClick={(e) => e.stopPropagation()}>
-        <ActionBtn onClick={() => onAddTask(property.id)}>+ Task</ActionBtn>
+        {isOwned && <ActionBtn onClick={() => onAddTask(property.id)}>+ Task</ActionBtn>}
         <ActionBtn tone="primary" onClick={onClick}>
           {selected ? 'Viewing →' : 'Detail →'}
         </ActionBtn>
@@ -269,6 +271,7 @@ function DetailPanel({
   agents,
   opportunities,
   tasks,
+  isOwned,
   onAddNote,
   onAddTask,
   onUpdateStatus,
@@ -279,6 +282,7 @@ function DetailPanel({
   agents: { id: string; name: string }[];
   opportunities: { id: string; contactName: string; stage: string; value: number; propertyId?: string }[];
   tasks: { id: string; title: string; completed: boolean; priority: string; propertyId?: string; opportunityId?: string }[];
+  isOwned: boolean;
   onAddNote: (id: string, body: string) => void;
   onAddTask: (id: string) => void;
   onUpdateStatus: (id: string, status: PropertyStatus) => void;
@@ -348,18 +352,20 @@ function DetailPanel({
         </button>
       </div>
 
-      {/* Action strip */}
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <ActionBtn onClick={() => onAddTask(property.id)}>+ Task</ActionBtn>
-        {nextStatusAction && (
-          <ActionBtn
-            tone={nextStatusAction.tone as 'success' | 'warning' | 'primary'}
-            onClick={() => onUpdateStatus(property.id, nextStatusAction.next)}
-          >
-            {nextStatusAction.label}
-          </ActionBtn>
-        )}
-      </div>
+      {/* Action strip — restricted to agent's deal context */}
+      {isOwned && (
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <ActionBtn onClick={() => onAddTask(property.id)}>+ Task</ActionBtn>
+          {nextStatusAction && (
+            <ActionBtn
+              tone={nextStatusAction.tone as 'success' | 'warning' | 'primary'}
+              onClick={() => onUpdateStatus(property.id, nextStatusAction.next)}
+            >
+              {nextStatusAction.label}
+            </ActionBtn>
+          )}
+        </div>
+      )}
 
       {/* Property facts */}
       <Panel>
@@ -406,8 +412,8 @@ function DetailPanel({
         </div>
       </Panel>
 
-      {/* Linked contacts */}
-      {linkedContacts.length > 0 && (
+      {/* Linked contacts — only for agent's own deal context */}
+      {isOwned && linkedContacts.length > 0 && (
         <Panel>
           <SubHeader href="/contacts">Linked Contacts</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -461,43 +467,47 @@ function DetailPanel({
         </Panel>
       )}
 
-      {/* Notes */}
-      <Panel>
-        <SubHeader>Notes ({property.notes.length})</SubHeader>
-        {property.notes.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-            {[...property.notes].reverse().map((note) => (
-              <div key={note.id} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>{note.body}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>{fmtDate(note.createdAt)}</div>
-              </div>
-            ))}
+      {/* Notes — restricted to agent's deal context */}
+      {isOwned && (
+        <Panel>
+          <SubHeader>Notes ({property.notes.length})</SubHeader>
+          {property.notes.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {[...property.notes].reverse().map((note) => (
+                <div key={note.id} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>{note.body}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>{fmtDate(note.createdAt)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', marginBottom: 10 }}>No notes yet.</div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Add a note about this property..."
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
+            />
+            <ActionBtn tone="primary" onClick={handleAddNote} disabled={!noteText.trim()}>
+              Save Note
+            </ActionBtn>
           </div>
-        ) : (
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', marginBottom: 10 }}>No notes yet.</div>
-        )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="Add a note about this property..."
-            rows={2}
-            style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
-          />
-          <ActionBtn tone="primary" onClick={handleAddNote} disabled={!noteText.trim()}>
-            Save Note
-          </ActionBtn>
-        </div>
-      </Panel>
+        </Panel>
+      )}
 
-      {/* Recommended next action */}
-      <Panel style={{ background: 'rgba(110,168,254,0.06)', border: '1px solid rgba(110,168,254,0.18)' }}>
-        <SubHeader>Recommended Next Action</SubHeader>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55, marginBottom: 10 }}>
-          {NEXT_ACTION[health]}
-        </div>
-        <ActionBtn onClick={() => onAddTask(property.id)}>Create Task</ActionBtn>
-      </Panel>
+      {/* Recommended next action — restricted to agent's deal context */}
+      {isOwned && (
+        <Panel style={{ background: 'rgba(110,168,254,0.06)', border: '1px solid rgba(110,168,254,0.18)' }}>
+          <SubHeader>Recommended Next Action</SubHeader>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55, marginBottom: 10 }}>
+            {NEXT_ACTION[health]}
+          </div>
+          <ActionBtn onClick={() => onAddTask(property.id)}>Create Task</ActionBtn>
+        </Panel>
+      )}
 
       {/* Cross-links */}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -523,8 +533,25 @@ export default function PropertiesPage() {
   const agents = useAppStore((s) => s.agents);
   const opportunities = useAppStore((s) => s.opportunities);
   const tasks = useAppStore((s) => s.tasks);
+  const currentRole = useAppStore((s) => s.currentRole);
+  const memberId    = useAppStore((s) => s.memberId);
   const { properties, addNote: addPropertyNote, updateStatus: updatePropertyStatus } = useProperties();
   const { createTask } = useTasks();
+
+  // Agent context: which properties are tied to this agent's assigned opportunities?
+  const myPropertyIds = useMemo(
+    () => new Set(
+      opportunities
+        .filter((o) => o.assignedAgentId === memberId)
+        .map((o) => o.propertyId)
+        .filter((id): id is string => !!id)
+    ),
+    [opportunities, memberId]
+  );
+
+  function isOwnedProp(propertyId: string): boolean {
+    return currentRole !== 'agent' || myPropertyIds.has(propertyId);
+  }
 
   async function handleAddPropertyTask(propertyId: string) {
     const p = properties.find((x) => x.id === propertyId);
@@ -781,6 +808,7 @@ export default function PropertiesPage() {
                 contacts={contacts}
                 agents={agents}
                 selected={selectedId === p.id}
+                isOwned={isOwnedProp(p.id)}
                 onClick={() => setSelectedId((prev) => (prev === p.id ? null : p.id))}
                 onAddTask={handleAddPropertyTask}
               />
@@ -797,6 +825,7 @@ export default function PropertiesPage() {
               agents={agents}
               opportunities={opportunities}
               tasks={tasks}
+              isOwned={isOwnedProp(selectedProperty.id)}
               onAddNote={addPropertyNote}
               onAddTask={handleAddPropertyTask}
               onUpdateStatus={updatePropertyStatus}

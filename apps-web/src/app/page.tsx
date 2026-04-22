@@ -23,6 +23,13 @@ import AgentDashboardPage from './agent/page';
 
 const REF = new Date();
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 const PHASE_ORDER = ['Early', 'Agreement', 'Listing', 'Search', 'Marketing', 'Offer', 'Contract'] as const;
 
 const PHASE_LABEL: Record<string, string> = {
@@ -250,7 +257,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>
-              Good morning, {firstName}.
+              {getGreeting()}, {firstName}.
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · Broker Command Center

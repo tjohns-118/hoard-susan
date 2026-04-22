@@ -32,6 +32,7 @@ const SHARED_NAV_GROUPS = [
       { href: '/tasks',     label: 'Tasks' },
       { href: '/calendar',  label: 'Calendar' },
       { href: '/templates', label: 'Templates' },
+      { href: '/imports',   label: 'Imports' },
     ],
   },
 ];

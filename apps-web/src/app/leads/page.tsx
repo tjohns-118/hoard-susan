@@ -684,15 +684,20 @@ export default function LeadsPage() {
     }
   }
 
+  const scopedLeads = useMemo(() => {
+    if (currentRole !== 'agent' || !memberId) return leads;
+    return leads.filter((l) => l.assignedAgentId === memberId);
+  }, [leads, currentRole, memberId]);
+
   const stats = useMemo(() => {
-    const active = leads.filter((l) => l.status !== 'lost');
+    const active = scopedLeads.filter((l) => l.status !== 'lost');
     return {
       total: active.length,
-      hot: leads.filter((l) => l.tags.includes('hot') && l.status !== 'lost').length,
+      hot: scopedLeads.filter((l) => l.tags.includes('hot') && l.status !== 'lost').length,
       unassigned: active.filter((l) => !l.assignedAgentId).length,
-      qualified: leads.filter((l) => l.status === 'qualified').length,
+      qualified: scopedLeads.filter((l) => l.status === 'qualified').length,
     };
-  }, [leads]);
+  }, [scopedLeads]);
 
   const filtered = useMemo(() => {
     return leads.filter((lead) => {

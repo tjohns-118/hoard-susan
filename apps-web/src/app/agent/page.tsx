@@ -22,6 +22,13 @@ import {
 
 const REF = new Date();
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 const PHASE_ORDER = ['Early', 'Agreement', 'Listing', 'Search', 'Marketing', 'Offer', 'Contract'] as const;
 const PHASE_COLOR: Record<string, string> = {
   Early: '#7ca4cc', Agreement: '#9b8ab4', Listing: '#e2c47c',
@@ -75,9 +82,17 @@ export default function AgentDashboardPage() {
   );
   const myPipelineValue = useMemo(() => myOpps.reduce((s, o) => s + o.value, 0), [myOpps]);
 
-  const myTasks = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
-  // Tasks don't have assignedAgentId in schema — show all open tasks for now.
-  // TODO V2: filter by agentId once tasks have agent assignment.
+  const myLeadIds    = useMemo(() => new Set(myLeads.map((l) => l.id)), [myLeads]);
+  const myContactIds = useMemo(() => new Set(myContacts.map((c) => c.id)), [myContacts]);
+  const myOppIds     = useMemo(() => new Set(myOpps.map((o) => o.id)), [myOpps]);
+
+  const myTasks = useMemo(() => tasks.filter((t) => {
+    if (t.completed) return false;
+    if (t.leadId)        return myLeadIds.has(t.leadId);
+    if (t.contactId)     return myContactIds.has(t.contactId);
+    if (t.opportunityId) return myOppIds.has(t.opportunityId);
+    return false;
+  }), [tasks, myLeadIds, myContactIds, myOppIds]);
   const myOverdueTasks = useMemo(() => myTasks.filter((t) => t.dueAt && new Date(t.dueAt) < REF), [myTasks]);
   const myUpcomingTasks = useMemo(
     () => myTasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= REF)
@@ -188,7 +203,7 @@ export default function AgentDashboardPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>
-              Good morning, {currentAgent?.name?.split(' ')[0] ?? 'Agent'}.
+              {getGreeting()}, {currentAgent?.name?.split(' ')[0] ?? 'Agent'}.
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · Your execution dashboard

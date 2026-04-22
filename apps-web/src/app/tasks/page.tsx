@@ -87,6 +87,8 @@ export default function TasksPage() {
   const leads        = useAppStore((s) => s.leads);
   const opportunities = useAppStore((s) => s.opportunities);
   const properties   = useAppStore((s) => s.properties);
+  const currentRole  = useAppStore((s) => s.currentRole);
+  const memberId     = useAppStore((s) => s.memberId);
   const { createTask, toggleTask } = useTasks();
 
   // ── Create form state ──
@@ -102,22 +104,37 @@ export default function TasksPage() {
   // ── Collapse completed ──
   const [showCompleted, setShowCompleted] = useState(false);
 
+  // ── Agent task scoping ──
+  const agentLeadIds    = useMemo(() => new Set(leads.filter((l) => l.assignedAgentId === memberId).map((l) => l.id)), [leads, memberId]);
+  const agentContactIds = useMemo(() => new Set(contacts.filter((c) => c.assignedAgentId === memberId).map((c) => c.id)), [contacts, memberId]);
+  const agentOppIds     = useMemo(() => new Set(opportunities.filter((o) => o.assignedAgentId === memberId).map((o) => o.id)), [opportunities, memberId]);
+
+  const visibleTasks = useMemo(() => {
+    if (currentRole !== 'agent' || !memberId) return tasks;
+    return tasks.filter((t) => {
+      if (t.leadId)        return agentLeadIds.has(t.leadId);
+      if (t.contactId)     return agentContactIds.has(t.contactId);
+      if (t.opportunityId) return agentOppIds.has(t.opportunityId);
+      return false;
+    });
+  }, [tasks, currentRole, memberId, agentLeadIds, agentContactIds, agentOppIds]);
+
   // ── Stats ──
-  const openTasks = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
+  const openTasks = useMemo(() => visibleTasks.filter((t) => !t.completed), [visibleTasks]);
   const overdueTasks = useMemo(
-    () => tasks.filter((t) => !t.completed && !!t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY),
-    [tasks]
+    () => visibleTasks.filter((t) => !t.completed && !!t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY),
+    [visibleTasks]
   );
   const todayTasks = useMemo(
-    () => tasks.filter((t) => !t.completed && !!t.dueAt && t.dueAt.slice(0, 10) === REF_TODAY),
-    [tasks]
+    () => visibleTasks.filter((t) => !t.completed && !!t.dueAt && t.dueAt.slice(0, 10) === REF_TODAY),
+    [visibleTasks]
   );
-  const completedTasks = useMemo(() => tasks.filter((t) => t.completed), [tasks]);
+  const completedTasks = useMemo(() => visibleTasks.filter((t) => t.completed), [visibleTasks]);
 
   // ── Grouped ──
   const grouped = useMemo(() => {
     const groups: Record<GroupKey, Task[]> = { overdue: [], today: [], upcoming: [], none: [], completed: [] };
-    for (const t of tasks) groups[classifyTask(t, REF_TODAY)].push(t);
+    for (const t of visibleTasks) groups[classifyTask(t, REF_TODAY)].push(t);
     // Sort overdue: most overdue first
     groups.overdue.sort((a, b) => (a.dueAt! < b.dueAt! ? -1 : 1));
     // Sort today: high priority first

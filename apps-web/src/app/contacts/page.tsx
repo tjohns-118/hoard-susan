@@ -655,6 +655,18 @@ export default function ContactsPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  async function handleMarkHot(contactId: string) {
+    const c = contacts.find((x) => x.id === contactId);
+    const wasHot = c?.tags.includes('hot') ?? false;
+    try {
+      await markContactHot(contactId);
+      showToast(wasHot ? `${c?.fullName ?? 'Contact'} removed from hot` : `${c?.fullName ?? 'Contact'} marked hot`);
+    } catch (err) {
+      console.error('[handleMarkHot]', err);
+      showToast('Failed to update', false);
+    }
+  }
+
   async function handleAddContactTask(contactId: string) {
     const c = contacts.find((x) => x.id === contactId);
     if (!c) return;
@@ -746,13 +758,18 @@ export default function ContactsPage() {
     }
   }
 
-  const active = useMemo(() => contacts.filter((c) => c.status === 'active'), [contacts]);
-  const hot = useMemo(() => contacts.filter((c) => c.tags.includes('hot')), [contacts]);
-  const buyers  = useMemo(() => contacts.filter((c) => c.role === 'buyer'  || c.role === 'both' || c.tags.includes('buyer')),  [contacts]);
-  const sellers = useMemo(() => contacts.filter((c) => c.role === 'seller' || c.role === 'both' || c.tags.includes('seller')), [contacts]);
+  const scopedContacts = useMemo(() => {
+    if (currentRole !== 'agent' || !memberId) return contacts;
+    return contacts.filter((c) => c.assignedAgentId === memberId);
+  }, [contacts, currentRole, memberId]);
+
+  const active = useMemo(() => scopedContacts.filter((c) => c.status === 'active'), [scopedContacts]);
+  const hot = useMemo(() => scopedContacts.filter((c) => c.tags.includes('hot')), [scopedContacts]);
+  const buyers  = useMemo(() => scopedContacts.filter((c) => c.role === 'buyer'  || c.role === 'both' || c.tags.includes('buyer')),  [scopedContacts]);
+  const sellers = useMemo(() => scopedContacts.filter((c) => c.role === 'seller' || c.role === 'both' || c.tags.includes('seller')), [scopedContacts]);
   const recentlyUpdated = useMemo(
-    () => contacts.filter((c) => daysSince(c.lastActivityAt) <= 3),
-    [contacts]
+    () => scopedContacts.filter((c) => daysSince(c.lastActivityAt) <= 3),
+    [scopedContacts]
   );
 
   const filtered = useMemo(() => {
@@ -829,7 +846,7 @@ export default function ContactsPage() {
 
       {/* ── A. KPI Strip ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
-        <StatCard label="Total Contacts" value={contacts.length} subtext={`${active.length} active`} />
+        <StatCard label="Total Contacts" value={scopedContacts.length} subtext={`${active.length} active`} />
         <StatCard label="Active Clients" value={active.length} subtext="Ongoing relationships" />
         <StatCard label="Hot" value={hot.length} subtext="Priority attention" />
         <StatCard label="Buyers / Sellers" value={`${buyers.length} / ${sellers.length}`} subtext="By role tag" />
@@ -934,7 +951,7 @@ export default function ContactsPage() {
                 agents={agents}
                 selected={selectedId === c.id}
                 onClick={() => handleSelect(c.id)}
-                onMarkHot={markContactHot}
+                onMarkHot={handleMarkHot}
                 onAddTask={handleAddContactTask}
               />
             ))
@@ -952,7 +969,7 @@ export default function ContactsPage() {
               tasks={tasks}
               onAddNote={addContactNote}
               onAssignAgent={assignContactToAgent}
-              onMarkHot={markContactHot}
+              onMarkHot={handleMarkHot}
               onAddTask={handleAddContactTask}
               onPushToOpportunities={pushContactToOpportunities}
               onUpdateBuyerProfile={updateBuyerProfile}
