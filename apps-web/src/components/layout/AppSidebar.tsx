@@ -6,12 +6,10 @@ import { useAppStore } from '@/app/store/useAppStore';
 import { useAgents } from '@/hooks/useAgents';
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 
-const NAV_GROUPS = [
+const SHARED_NAV_GROUPS = [
   {
     label: 'Dashboard',
-    items: [
-      { href: '/', label: 'Dashboard' },
-    ],
+    items: [{ href: '/', label: 'Dashboard' }],
   },
   {
     label: 'CRM',
@@ -36,16 +34,17 @@ const NAV_GROUPS = [
       { href: '/templates', label: 'Templates' },
     ],
   },
-  {
-    label: 'System',
-    items: [
-      { href: '/agents',    label: 'Agents' },
-      { href: '/alerts',    label: 'Alerts' },
-      { href: '/oversight', label: 'Oversight' },
-      { href: '/settings',  label: 'Settings' },
-    ],
-  },
 ];
+
+const BROKER_ONLY_GROUP = {
+  label: 'Brokerage',
+  items: [
+    { href: '/agents',    label: 'Agents' },
+    { href: '/alerts',    label: 'Alerts' },
+    { href: '/oversight', label: 'Oversight' },
+    { href: '/settings',  label: 'Settings' },
+  ],
+};
 
 export function AppSidebar() {
   const pathname    = usePathname();
@@ -111,7 +110,7 @@ export function AppSidebar() {
 
       {/* ── Navigation ── */}
       <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {NAV_GROUPS.map((group) => (
+        {[...SHARED_NAV_GROUPS, ...(currentRole === 'broker' ? [BROKER_ONLY_GROUP] : [])].map((group) => (
           <div key={group.label}>
             <div
               style={{

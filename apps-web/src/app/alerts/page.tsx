@@ -7,6 +7,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
 import { getStageDefinition } from '@/features/pipeline/definitions';
+import { useBrokerGuard } from '@/hooks/useBrokerGuard';
 
 function daysAgo(iso: string): number {
   return Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -41,6 +42,7 @@ const SEV_META: Record<AlertSeverity, { label: string; color: string; bg: string
 const SEV_ORDER: AlertSeverity[] = ['critical', 'warning', 'opportunity', 'info'];
 
 export default function AlertsPage() {
+  const role = useBrokerGuard();
   const leads         = useAppStore((s) => s.leads);
   const contacts      = useAppStore((s) => s.contacts);
   const opportunities = useAppStore((s) => s.opportunities);
@@ -529,6 +531,8 @@ export default function AlertsPage() {
   const biggestOpp   = allAlerts.find((a) => a.severity === 'opportunity');
   const drag         = allAlerts.find((a) => a.category === 'Workload' || a.category === 'Lead Risk');
   const focusFirst   = biggestRisk ?? allAlerts.find((a) => a.severity === 'warning');
+
+  if (role !== 'broker') return null;
 
   return (
     <AppShell>

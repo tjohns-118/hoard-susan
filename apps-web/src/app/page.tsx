@@ -77,6 +77,10 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
   const opportunities= useAppStore((s) => s.opportunities);
   const tasks        = useAppStore((s) => s.tasks);
   const agents       = useAppStore((s) => s.agents);
+  const memberId     = useAppStore((s) => s.memberId);
+
+  const currentUser  = agents.find((a) => a.id === memberId);
+  const firstName    = currentUser?.name?.split(' ')[0] ?? 'Broker';
 
   // ── KPIs ─────────────────────────────────────────────────────────────────────
   const activeLeads = useMemo(() => leads.filter((l) => l.status !== 'lost'), [leads]);
@@ -246,7 +250,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>
-              Good morning, Susan.
+              Good morning, {firstName}.
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · Broker Command Center

@@ -17,7 +17,7 @@ const sans = DM_Sans({
 
 export const metadata = {
   title: 'Hoard — Ranch Edition',
-  description: 'Broker Command Center · Susan Yoder',
+  description: 'Brokerage Command Center',
 };
 
 export default function RootLayout({

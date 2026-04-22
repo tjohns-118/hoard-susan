@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { useAgents } from '@/hooks/useAgents';
 import { useProperties } from '@/hooks/useProperties';
+import { useBrokerGuard } from '@/hooks/useBrokerGuard';
 import type { AgentRecord } from '@/data/mockDb';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -288,6 +289,7 @@ function normalizeCsvRows(headers: string[], rows: string[][]): CsvPropertyRow[]
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const role = useBrokerGuard();
   const router = useRouter();
   const { agents, updateAgentRole, removeAgent } = useAgents();
   const { reload: reloadProperties } = useProperties();
@@ -396,6 +398,8 @@ export default function SettingsPage() {
       setConfirmRemove(id);
     }
   }
+
+  if (role !== 'broker') return null;
 
   return (
     <AppShell>

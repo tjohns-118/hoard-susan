@@ -10,6 +10,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { useOpportunities } from '@/hooks/useOpportunities';
 import { useProperties } from '@/hooks/useProperties';
 import { getStageDefinition } from '@/features/pipeline/definitions';
+import { useBrokerGuard } from '@/hooks/useBrokerGuard';
 
 function fmtValue(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -32,7 +33,7 @@ const PHASE_COLOR: Record<string, string> = {
 };
 
 export default function OversightPage() {
-  // Hydrate store — these hooks fetch on mount and write into the store
+  const role = useBrokerGuard();
   useLeads();
   useOpportunities();
   useProperties();
@@ -130,6 +131,8 @@ export default function OversightPage() {
   const conversionRate = opportunities.length > 0
     ? Math.round((closedOpps.length / opportunities.length) * 100)
     : 0;
+
+  if (role !== 'broker') return null;
 
   return (
     <AppShell>

@@ -2,18 +2,6 @@
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Agent Execution Dashboard — /agent
- *
- * Shows only data relevant to the currently active agent.
- * V1 scoping: the "current agent" is determined at runtime by picking the first
- * non-broker agent from the agents store (ordered by DB insert order).
- *
- * This is an explicit V1 assumption — no auth/session is implemented yet.
- * A banner is shown so it is clear whose data is being displayed.
- * Scoping happens in this file in the `useMemo` blocks labelled "SCOPED —".
- */
-
 import { useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
@@ -44,7 +32,6 @@ const PHASE_COLOR: Record<string, string> = {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AgentDashboardPage() {
-  // Hydrate store
   useLeads();
   useOpportunities();
   useTasks();
@@ -56,16 +43,14 @@ export default function AgentDashboardPage() {
   const opportunities= useAppStore((s) => s.opportunities);
   const tasks        = useAppStore((s) => s.tasks);
   const agents       = useAppStore((s) => s.agents);
+  const memberId     = useAppStore((s) => s.memberId);
 
-  // ── V1 SCOPING: identify current agent ───────────────────────────────────────
-  // Pick the first agent whose role is not 'broker'. Fall back to agents[0]
-  // if there are no non-broker agents (single-user brokerage).
-  // Replace this with a real session/auth lookup in V2.
+  // Identity: match authenticated memberId (brokerage_members.id) to the agents store.
   const currentAgent = useMemo(
-    () => agents.find((a) => a.role !== 'broker') ?? agents[0] ?? null,
-    [agents],
+    () => agents.find((a) => a.id === memberId) ?? null,
+    [agents, memberId],
   );
-  const agentId = currentAgent?.id;
+  const agentId = currentAgent?.id ?? memberId ?? undefined;
 
   // ── SCOPED — filter all data to current agent ─────────────────────────────────
   const myLeads = useMemo(
@@ -185,12 +170,12 @@ export default function AgentDashboardPage() {
 
   const actionCount = myHotLeads.length + myNegotiationDeals.length + myOverdueTasks.length;
 
-  if (!currentAgent) {
+  // Still loading agents from Supabase — wait for agents store to hydrate.
+  if (agents.length > 0 && !currentAgent) {
     return (
       <AppShell>
         <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 14 }}>
-          No agent profiles found. Add an agent in the{' '}
-          <a href="/agents" style={{ color: 'var(--r-gold)', textDecoration: 'none' }}>Agents</a> tab.
+          Your agent profile could not be found. Contact your broker to verify your account setup.
         </div>
       </AppShell>
     );
@@ -198,26 +183,12 @@ export default function AgentDashboardPage() {
 
   return (
     <AppShell>
-      {/* ── V1 Mode Banner ── */}
-      <div style={{
-        marginBottom: 20, padding: '8px 14px', borderRadius: 10,
-        background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          V1 Preview Mode
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
-          Viewing as <span style={{ color: 'var(--r-text-2)', fontWeight: 600 }}>{currentAgent.name}</span> — data filtered to assigned records. Agent identity comes from store order until auth is wired up.
-        </span>
-      </div>
-
       {/* ── Header ── */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ margin: 0, fontFamily: 'var(--r-font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.08 }}>
-              Good morning, {currentAgent.name.split(' ')[0]}.
+              Good morning, {currentAgent?.name?.split(' ')[0] ?? 'Agent'}.
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--r-text-2)' }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · Your execution dashboard
@@ -242,7 +213,6 @@ export default function AgentDashboardPage() {
 
       {/* ── Today's Focus ── */}
       <AgentFocusPanel
-        agent={currentAgent}
         myHotLeads={myHotLeads}
         myNewLeads={myNewLeads}
         myNegotiationDeals={myNegotiationDeals}
@@ -469,9 +439,8 @@ export default function AgentDashboardPage() {
 // Scoped entirely to the agent's assigned records.
 
 function AgentFocusPanel({
-  agent, myHotLeads, myNewLeads, myNegotiationDeals, myClosingSoon, myOverdueTasks, myUpcomingTasks,
+  myHotLeads, myNewLeads, myNegotiationDeals, myClosingSoon, myOverdueTasks, myUpcomingTasks,
 }: {
-  agent:               { name: string };
   myHotLeads:          { id: string }[];
   myNewLeads:          { id: string }[];
   myNegotiationDeals:  { id: string; expectedCloseDate: string }[];
@@ -494,7 +463,7 @@ function AgentFocusPanel({
   if (todayTasks.length > 0)
     bullets.push({ text: `${todayTasks.length} task${todayTasks.length > 1 ? 's' : ''} due today — complete before end of day.`, urgent: false });
   if (bullets.length === 0)
-    bullets.push({ text: `Your queue is clear, ${agent.name.split(' ')[0]}. Good time to advance pipeline deals or reach out to warm leads.`, urgent: false });
+    bullets.push({ text: 'Your queue is clear. Good time to advance pipeline deals or reach out to warm leads.', urgent: false });
 
   return (
     <div style={{ marginBottom: 24, padding: '16px 20px', borderRadius: 14, border: '1px solid rgba(99,102,241,0.18)', background: 'linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(255,255,255,0.015) 100%)' }}>
@@ -503,7 +472,7 @@ function AgentFocusPanel({
           Today's Focus
         </div>
         <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: 4, border: '1px solid var(--r-border)', background: 'rgba(255,255,255,0.02)' }}>
-          Rules-based · V1
+          Rules-based · Live data
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

@@ -32,7 +32,7 @@ return (
 </div>
 
 <div className="row">
-<span className="badge info">Susan Yoder Build</span>
+<span className="badge info">Hoard</span>
 <button className="button primary">Quick Add</button>
 </div>
 </header>
