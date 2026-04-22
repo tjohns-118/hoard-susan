@@ -31,6 +31,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
+import { getSessionUser } from '@/lib/getSessionUser';
+import { getMembership } from '@/lib/getMembership';
 import type {
   Contact, ContactNote, ContactRole,
   BuyerProfile, SellerProfile,
@@ -91,6 +93,15 @@ export async function POST(req: NextRequest) {
   if (!BROKERAGE_ID)
     return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
 
+  // Resolve the creating user's membership so we can stamp ownership.
+  // Agent-created contacts are automatically assigned to the creating agent,
+  // making them visible in the agent's scoped view immediately after creation.
+  // Broker-created contacts are left unassigned (broker assigns intentionally).
+  const sessionUser  = await getSessionUser();
+  const membership   = sessionUser ? await getMembership(sessionUser.id, sessionUser.email) : null;
+  const creatorMemberId: string | null =
+    membership?.role === 'agent' ? membership.memberId : null;
+
   const body = await req.json() as {
     fullName:      string;
     email?:        string;
@@ -105,23 +116,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'fullName required' }, { status: 400 });
   }
 
-  const contactType = body.role ?? null;
-
   const { data, error } = await supabaseAdmin
     .from('contacts')
     .insert({
-      brokerage_id:   BROKERAGE_ID,
-      full_name:      body.fullName.trim(),
-      email:          body.email?.trim()  || null,
-      phone:          body.phone?.trim()  || null,
-      source:         body.source?.trim() || null,
-      stage:          'active',
-      contact_type:   contactType,
-      tags:           [],
-      is_hot:         false,
-      buyer_profile:  body.buyerProfile  ?? null,
-      seller_profile: body.sellerProfile ?? null,
-      last_activity_at: new Date().toISOString(),
+      brokerage_id:      BROKERAGE_ID,
+      full_name:         body.fullName.trim(),
+      email:             body.email?.trim()  || null,
+      phone:             body.phone?.trim()  || null,
+      source:            body.source?.trim() || null,
+      stage:             'active',
+      contact_type:      body.role ?? null,
+      tags:              [],
+      is_hot:            false,
+      buyer_profile:     body.buyerProfile  ?? null,
+      seller_profile:    body.sellerProfile ?? null,
+      assigned_member_id: creatorMemberId,
+      last_activity_at:  new Date().toISOString(),
     })
     .select()
     .single();
