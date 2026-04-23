@@ -1,16 +1,22 @@
 /**
  * /api/opportunities — server-side CRUD for the real-estate transaction pipeline.
  *
+ * Confirmed DB schema (post-migration):
+ *   stage             text            — validated against VALID_STAGES
+ *   pipeline_type     text            — 'buyer' | 'seller', defaults to 'buyer'
+ *   stage_history     jsonb           — append-only array of { fromStage, toStage, changedAt }
+ *   stage_owner       uuid, nullable  — UUID of assigned agent when stage owner is 'agent', else null
+ *   stage_updated_at  timestamptz     — set on every stage transition
+ *
  * GET   — fetch all opportunities for the active brokerage
  * POST  — create a new deal (buyer or seller pipeline)
- * PATCH — stage transitions (with trigger execution), agent assignment,
- *          note addition, next-step update, document status updates
+ * PATCH — stage transitions, agent assignment, note addition, next-step update, document status
  *
- * Stage transitions (action: 'moveStage') do the following atomically:
- *   1. Validate the target stage is valid for this pipeline type.
- *   2. Append a history entry closing the current stage.
- *   3. Set stage_owner and stage_updated_at from the stage definition.
- *   4. Create any 'task' triggers as real task rows in the tasks table.
+ * Stage transitions (action: 'moveStage'):
+ *   1. Validate target stage exists in this deal's specific pipeline type.
+ *   2. Single atomic update: stage, stage_updated_at, stage_owner, stage_history, updated_at.
+ *   3. Return updated opportunity row.
+ *   4. Fire 'task' triggers server-side (non-fatal).
  *
  * Uses supabaseAdmin (service role) to bypass RLS.
  */
@@ -28,19 +34,30 @@ import {
   SELLER_STAGES,
 } from '@/features/pipeline/definitions';
 
-// All valid pipeline stage values — used to validate stage transitions.
+// ── Valid stage set ───────────────────────────────────────────────────────────
+// Union of all buyer + seller stage values.  Used for first-pass validation
+// before pipeline-specific checks.
+
 const VALID_STAGES = new Set<string>([
   ...BUYER_STAGES.map((s) => s.stage),
   ...SELLER_STAGES.map((s) => s.stage),
   'lost',
 ]);
 
+// ── UUID validation ───────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUUID(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v);
+}
+
 // ── GET /api/opportunities ────────────────────────────────────────────────────
 
 export async function GET() {
   const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID) {
-    console.error('[/api/opportunities GET] Brokerage context could not be resolved');
+    console.error('[opportunities GET] brokerage context could not be resolved');
     return NextResponse.json([]);
   }
 
@@ -51,7 +68,7 @@ export async function GET() {
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('[/api/opportunities GET]', error.message);
+    console.error('[opportunities GET] DB error:', error.message);
     return NextResponse.json([]);
   }
 
@@ -63,7 +80,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const BROKERAGE_ID = await getBrokerageId();
   if (!BROKERAGE_ID)
-    return NextResponse.json({ error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Brokerage not configured — set ACTIVE_BROKERAGE_ID or ACTIVE_BROKERAGE_SLUG' },
+      { status: 503 },
+    );
 
   const body = await req.json() as {
     contactName:         string;
@@ -83,71 +103,73 @@ export async function POST(req: NextRequest) {
   if (!body.contactName?.trim())
     return NextResponse.json({ error: 'contactName required' }, { status: 400 });
 
-  const pipelineType: PipelineType = body.pipelineType ?? 'buyer';
+  const pipelineType: PipelineType = body.pipelineType === 'seller' ? 'seller' : 'buyer';
   const stage = body.stage ?? 'lead_received';
   const closeDate = body.expectedCloseDate
     ?? new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
   const now = new Date().toISOString();
 
-  // Initialise document list from pipeline template
-  const documents = initDocuments(pipelineType);
+  // Validate initial stage belongs to chosen pipeline
+  const stageDef = getStageDefinition(stage, pipelineType);
+  if (!stageDef && stage !== 'lead_received') {
+    return NextResponse.json(
+      { error: `Stage "${stage}" is not valid for the ${pipelineType} pipeline.` },
+      { status: 400 },
+    );
+  }
 
-  // Initialise stage history — first entry has no fromStage (deal just created)
+  const stageOwnerRole = stageDef?.owner ?? 'agent';
+  // stage_owner column is uuid — write the assigned agent UUID when the stage role is
+  // 'agent', null otherwise (no broker UUID available at this point).
+  const stageOwnerUUID: string | null =
+    stageOwnerRole === 'agent' && isUUID(body.assignedAgentId)
+      ? body.assignedAgentId
+      : null;
+
+  const documents = initDocuments(pipelineType);
   const stageHistory: StageHistoryEntry[] = [{ fromStage: '', toStage: stage, changedAt: now }];
 
-  // Derive initial stage_owner from definition
-  const stageDef = getStageDefinition(stage, pipelineType);
-  const stageOwner = stageDef?.owner ?? 'agent';
+  console.log(`[opportunities POST] creating deal | stage=${stage} pipeline=${pipelineType}`);
 
   const { data, error } = await supabaseAdmin
     .from('opportunities')
     .insert({
       brokerage_id:        BROKERAGE_ID,
       contact_name:        body.contactName.trim(),
-      property_address:    body.propertyAddress ?? null,
-      property_id:         body.propertyId ?? null,
-      assigned_agent_id:   body.assignedAgentId ?? null,
+      property_address:    body.propertyAddress  ?? null,
+      property_id:         body.propertyId        ?? null,
+      assigned_agent_id:   body.assignedAgentId   ?? null,
       pipeline_type:       pipelineType,
       stage,
       stage_updated_at:    now,
-      stage_owner:         stageOwner,
-      documents:           documents,
+      stage_owner:         stageOwnerUUID,
       stage_history:       stageHistory,
-      value:               body.value ?? 0,
-      probability:         body.probability ?? 15,
+      documents,
+      value:               body.value             ?? 0,
+      probability:         body.probability        ?? 15,
       expected_close_date: closeDate,
-      priority:            body.priority ?? 'medium',
-      next_step:           body.nextStep ?? null,
-      notes:               body.notes ?? [],
+      priority:            body.priority           ?? 'medium',
+      next_step:           body.nextStep           ?? null,
+      notes:               body.notes              ?? [],
     })
     .select()
     .single();
 
   if (error) {
-    console.error('[/api/opportunities POST]', error.message);
+    console.error('[opportunities POST] insert error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Fire 'task' triggers for the initial stage
   await fireTriggerTasks(data.id, BROKERAGE_ID, stage, pipelineType, now);
 
   return NextResponse.json({ ok: true, opportunity: mapOpportunity(data) }, { status: 201 });
 }
 
-// ── UUID validation ───────────────────────────────────────────────────────────
-// Postgres UUID columns will throw a cast error if given a non-UUID string.
-// Validate early so we return a clear 400 instead of a confusing 404.
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // ── Fetch helper ──────────────────────────────────────────────────────────────
-// Uses maybeSingle() so "not found" (0 rows) and "query error" produce
-// distinct signals instead of both collapsing into fetchErr.
+// select('*') so a schema change never produces a "column does not exist" error.
+// maybeSingle() distinguishes "not found" (null row, no error) from a real DB error.
 
 async function fetchOpp(oppId: string) {
-  // Use select('*') so a missing pipeline_type column (pre-migration schema) returns
-  // null rather than a PostgREST "column does not exist" error that would crash all
-  // stage transitions. The mapper below handles null with a safe 'buyer' fallback.
   const { data, error } = await supabaseAdmin
     .from('opportunities')
     .select('*')
@@ -160,174 +182,244 @@ async function fetchOpp(oppId: string) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json() as {
-    action:      'moveStage' | 'markLost' | 'assignAgent' | 'addNote' | 'setNextStep' | 'updateDocument';
-    oppId:       string;
-    stage?:      string;
-    agentId?:    string;
-    noteBody?:   string;
-    nextStep?:   string;
-    docKey?:     string;
-    docStatus?:  'not_sent' | 'sent' | 'signed';
+    action:     'moveStage' | 'markLost' | 'assignAgent' | 'addNote' | 'setNextStep' | 'updateDocument';
+    oppId:      string;
+    stage?:     string;
+    agentId?:   string;
+    noteBody?:  string;
+    nextStep?:  string;
+    docKey?:    string;
+    docStatus?: 'not_sent' | 'sent' | 'signed';
   };
 
   const { action, oppId } = body;
-  if (!oppId) return NextResponse.json({ error: 'oppId required' }, { status: 400 });
+  if (!oppId)
+    return NextResponse.json({ error: 'oppId required' }, { status: 400 });
 
-  // Reject non-UUID IDs immediately — Postgres would throw a cast error otherwise,
-  // which would be silently reported as "Opportunity not found".
   if (!UUID_RE.test(oppId))
     return NextResponse.json(
-      { error: `Invalid opportunity ID format: "${oppId}". Opportunities must be persisted to the database before they can be mutated.` },
+      { error: `Invalid opportunity ID "${oppId}" — must be a UUID. Opportunity may not be persisted yet.` },
       { status: 400 },
     );
 
   const now = new Date().toISOString();
 
-  // ── Stage transition ────────────────────────────────────────────────────────
+  // ── moveStage ───────────────────────────────────────────────────────────────
+
   if (action === 'moveStage') {
     const targetStage = body.stage;
     if (!targetStage)
-      return NextResponse.json({ error: 'stage required' }, { status: 400 });
+      return NextResponse.json({ error: 'stage required for moveStage' }, { status: 400 });
+
+    // First-pass: is it a recognised stage at all?
     if (!VALID_STAGES.has(targetStage))
-      return NextResponse.json({ error: `Invalid stage: ${targetStage}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `"${targetStage}" is not a recognised pipeline stage.` },
+        { status: 400 },
+      );
 
     const { row: cur, dbErr: fetchErr } = await fetchOpp(oppId);
     if (fetchErr) {
-      console.error('[PATCH moveStage] select error:', fetchErr.message, '| oppId:', oppId);
-      return NextResponse.json({ error: `Database error: ${fetchErr.message}` }, { status: 500 });
+      console.error('[moveStage] fetch error | oppId:', oppId, '|', fetchErr.message);
+      return NextResponse.json(
+        { error: `Database error fetching opportunity: ${fetchErr.message}` },
+        { status: 500 },
+      );
     }
     if (!cur) {
-      console.warn('[PATCH moveStage] opportunity not found in DB | oppId:', oppId);
-      return NextResponse.json({ error: 'Opportunity not found. It may have been deleted or belong to a different brokerage.' }, { status: 404 });
+      console.warn('[moveStage] not found | oppId:', oppId);
+      return NextResponse.json(
+        { error: 'Opportunity not found — it may have been deleted or belong to a different brokerage.' },
+        { status: 404 },
+      );
     }
 
-    const pipelineType: PipelineType = (cur.pipeline_type as PipelineType) === 'seller' ? 'seller' : 'buyer';
+    // Resolve pipeline type — always from DB, default 'buyer' if missing
+    const pipelineType: PipelineType = cur.pipeline_type === 'seller' ? 'seller' : 'buyer';
 
-    // Validate the target stage belongs to this deal's specific pipeline.
-    // A buyer deal cannot move into seller-only stages and vice versa.
+    console.log(
+      `[moveStage] oppId=${oppId} | from=${cur.stage} → to=${targetStage} | pipeline=${pipelineType}`,
+    );
+
+    // Second-pass: target stage must exist in THIS deal's specific pipeline
     if (targetStage !== 'lost') {
-      const stageDef = getStageDefinition(targetStage, pipelineType);
-      if (!stageDef) {
+      const targetDef = getStageDefinition(targetStage, pipelineType);
+      if (!targetDef) {
         const otherType: PipelineType = pipelineType === 'buyer' ? 'seller' : 'buyer';
         const inOther = getStageDefinition(targetStage, otherType);
-        const hint = inOther ? ` (that stage belongs to the ${otherType} pipeline)` : '';
+        const hint = inOther
+          ? ` ("${targetStage}" belongs to the ${otherType} pipeline, not ${pipelineType})`
+          : '';
+        console.warn(`[moveStage] cross-pipeline move blocked | oppId=${oppId}${hint}`);
         return NextResponse.json(
-          { error: `Stage "${targetStage}" is not valid for the ${pipelineType} pipeline${hint}.` },
+          { error: `Cannot move ${pipelineType} deal to stage "${targetStage}"${hint}.` },
           { status: 400 },
         );
       }
     }
 
-    // Look up new stage definition
-    const stageDef = getStageDefinition(targetStage, pipelineType);
-    const stageOwner = stageDef?.owner ?? 'agent';
+    const targetDef = getStageDefinition(targetStage, pipelineType);
+    const stageOwnerRole = targetDef?.owner ?? 'agent';
 
-    // Adjust probability for terminal stages
+    // stage_owner is uuid — write assigned_agent_id UUID when role is 'agent', else null
+    const stageOwnerUUID: string | null =
+      stageOwnerRole === 'agent' && isUUID(cur.assigned_agent_id)
+        ? cur.assigned_agent_id as string
+        : null;
+
+    // Build history entry
+    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
+    const historyEntry: StageHistoryEntry = {
+      fromStage: String(cur.stage ?? ''),
+      toStage:   targetStage,
+      changedAt: now,
+    };
+
+    // Probability adjustments for terminal stages
     const extra: Record<string, unknown> = {};
     if (targetStage === 'closed') extra.probability = 100;
     if (targetStage === 'lost')   extra.probability = 0;
 
-    // PRIMARY update — only the columns that are guaranteed text/timestamptz.
-    // stage_owner is kept out because the migration declares it as uuid, but our
-    // semantic values ('agent', 'broker') are text — a type mismatch that would
-    // crash the whole transition. It goes in the non-fatal secondary write instead.
-    const { error: updateErr } = await supabaseAdmin
+    // Single atomic update — all workflow columns in one call
+    const { data: updated, error: updateErr } = await supabaseAdmin
       .from('opportunities')
       .update({
         stage:            targetStage,
+        pipeline_type:    pipelineType,   // confirm/persist resolved value
         stage_updated_at: now,
+        stage_owner:      stageOwnerUUID,
+        stage_history:    [...existingHistory, historyEntry],
         updated_at:       now,
         ...extra,
       })
-      .eq('id', oppId);
+      .eq('id', oppId)
+      .select()
+      .single();
+
     if (updateErr) {
-      console.error('[PATCH moveStage] update error:', updateErr.message, '| oppId:', oppId);
-      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      console.error('[moveStage] update error | oppId:', oppId, '|', updateErr.message);
+      return NextResponse.json(
+        { error: `Stage update failed: ${updateErr.message}` },
+        { status: 500 },
+      );
     }
 
-    // SECONDARY update — non-fatal. Appends history entry and sets stage_owner.
-    // If either column doesn't exist or has a type mismatch, the transition above
-    // already succeeded; these writes fail silently.
-    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
-    const newEntry: StageHistoryEntry = { fromStage: String(cur.stage ?? ''), toStage: targetStage, changedAt: now };
-    const { error: histErr } = await supabaseAdmin
-      .from('opportunities')
-      .update({
-        stage_history: [...existingHistory, newEntry],
-        stage_owner:   stageOwner,
-      })
-      .eq('id', oppId);
-    if (histErr) {
-      console.warn('[PATCH moveStage] secondary update failed (non-fatal):', histErr.message);
-    }
+    console.log(`[moveStage] success | oppId=${oppId} | now at stage=${targetStage}`);
 
-    // Fire 'task' triggers for the new stage
+    // Non-fatal trigger task creation
     await fireTriggerTasks(oppId, cur.brokerage_id as string, targetStage, pipelineType, now);
 
-  // ── Mark lost (terminal stage) ──────────────────────────────────────────────
-  } else if (action === 'markLost') {
+    return NextResponse.json({ ok: true, opportunity: mapOpportunity(updated) });
+  }
+
+  // ── markLost ────────────────────────────────────────────────────────────────
+
+  if (action === 'markLost') {
     const { row: cur, dbErr: fetchErr } = await fetchOpp(oppId);
     if (fetchErr) {
-      console.error('[PATCH markLost] select error:', fetchErr.message, '| oppId:', oppId);
-      return NextResponse.json({ error: `Database error: ${fetchErr.message}` }, { status: 500 });
+      console.error('[markLost] fetch error | oppId:', oppId, '|', fetchErr.message);
+      return NextResponse.json(
+        { error: `Database error: ${fetchErr.message}` },
+        { status: 500 },
+      );
     }
     if (!cur) {
-      console.warn('[PATCH markLost] opportunity not found | oppId:', oppId);
+      console.warn('[markLost] not found | oppId:', oppId);
       return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 });
     }
 
-    // PRIMARY update
-    const { error } = await supabaseAdmin
-      .from('opportunities')
-      .update({ stage: 'lost', probability: 0, stage_updated_at: now, updated_at: now })
-      .eq('id', oppId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const pipelineType: PipelineType = cur.pipeline_type === 'seller' ? 'seller' : 'buyer';
 
-    // SECONDARY — non-fatal history append
-    const existing: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
-    const { error: histErr } = await supabaseAdmin
+    console.log(`[markLost] oppId=${oppId} | from=${cur.stage} → lost | pipeline=${pipelineType}`);
+
+    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
+    const historyEntry: StageHistoryEntry = {
+      fromStage: String(cur.stage ?? ''),
+      toStage:   'lost',
+      changedAt: now,
+    };
+
+    const { data: updated, error: updateErr } = await supabaseAdmin
       .from('opportunities')
-      .update({ stage_history: [...existing, { fromStage: String(cur.stage ?? ''), toStage: 'lost', changedAt: now }] })
-      .eq('id', oppId);
-    if (histErr) {
-      console.warn('[PATCH markLost] stage_history append failed (non-fatal):', histErr.message);
+      .update({
+        stage:            'lost',
+        pipeline_type:    pipelineType,
+        stage_updated_at: now,
+        stage_owner:      null,
+        stage_history:    [...existingHistory, historyEntry],
+        probability:      0,
+        updated_at:       now,
+      })
+      .eq('id', oppId)
+      .select()
+      .single();
+
+    if (updateErr) {
+      console.error('[markLost] update error | oppId:', oppId, '|', updateErr.message);
+      return NextResponse.json(
+        { error: `Mark lost failed: ${updateErr.message}` },
+        { status: 500 },
+      );
     }
 
-  // ── Assign agent ────────────────────────────────────────────────────────────
-  } else if (action === 'assignAgent') {
+    console.log(`[markLost] success | oppId=${oppId}`);
+    return NextResponse.json({ ok: true, opportunity: mapOpportunity(updated) });
+  }
+
+  // ── assignAgent ──────────────────────────────────────────────────────────────
+
+  if (action === 'assignAgent') {
     const { error } = await supabaseAdmin
       .from('opportunities')
       .update({ assigned_agent_id: body.agentId ?? null, updated_at: now })
       .eq('id', oppId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[assignAgent] error | oppId:', oppId, '|', error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
 
-  // ── Add note ────────────────────────────────────────────────────────────────
-  } else if (action === 'addNote') {
+  // ── addNote ──────────────────────────────────────────────────────────────────
+
+  if (action === 'addNote') {
     if (!body.noteBody)
       return NextResponse.json({ error: 'noteBody required' }, { status: 400 });
     const { data: cur } = await supabaseAdmin
-      .from('opportunities').select('notes').eq('id', oppId).maybeSingle();
+      .from('opportunities')
+      .select('notes')
+      .eq('id', oppId)
+      .maybeSingle();
     const existing = Array.isArray(cur?.notes) ? (cur.notes as string[]) : [];
     const { error } = await supabaseAdmin
       .from('opportunities')
       .update({ notes: [body.noteBody, ...existing], updated_at: now })
       .eq('id', oppId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
-  // ── Set next step ───────────────────────────────────────────────────────────
-  } else if (action === 'setNextStep') {
+  // ── setNextStep ───────────────────────────────────────────────────────────────
+
+  if (action === 'setNextStep') {
     const { error } = await supabaseAdmin
       .from('opportunities')
       .update({ next_step: body.nextStep ?? null, updated_at: now })
       .eq('id', oppId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
-  // ── Update document status ──────────────────────────────────────────────────
-  } else if (action === 'updateDocument') {
+  // ── updateDocument ────────────────────────────────────────────────────────────
+
+  if (action === 'updateDocument') {
     if (!body.docKey || !body.docStatus)
       return NextResponse.json({ error: 'docKey and docStatus required' }, { status: 400 });
     const { data: cur } = await supabaseAdmin
-      .from('opportunities').select('documents').eq('id', oppId).maybeSingle();
+      .from('opportunities')
+      .select('documents')
+      .eq('id', oppId)
+      .maybeSingle();
     const docs: PipelineDocument[] = Array.isArray(cur?.documents) ? cur.documents : [];
     const updatedDocs = docs.map((d) => {
       if (d.key !== body.docKey) return d;
@@ -343,18 +435,15 @@ export async function PATCH(req: NextRequest) {
       .update({ documents: updatedDocs, updated_at: now })
       .eq('id', oppId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  } else {
-    return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+    return NextResponse.json({ ok: true });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ error: `Unknown action: "${action}"` }, { status: 400 });
 }
 
 // ── Trigger execution ─────────────────────────────────────────────────────────
-// Fires 'task' triggers for the given stage by inserting rows into the tasks
-// table.  Other trigger types (alert, escalation, document_request) are handled
-// client-side via the alerts computation — no server action needed.
+// Inserts task rows for 'task' triggers on the entered stage. Non-fatal —
+// a task-insert failure must not roll back a committed stage transition.
 
 async function fireTriggerTasks(
   oppId:        string,
@@ -371,37 +460,46 @@ async function fireTriggerTasks(
 
   const rows = taskTriggers.map((t) => {
     const dueDays = t.taskDueDays ?? 0;
-    const dueAt = dueDays >= 0
-      ? new Date(Date.parse(now) + dueDays * 86_400_000).toISOString()
-      : null;
     return {
       brokerage_id:   brokerageId,
       title:          t.taskTitle!,
       completed:      false,
       priority:       stageDef.owner === 'broker' ? 'high' : 'medium',
-      due_at:         dueAt,
+      due_at:         dueDays >= 0
+        ? new Date(Date.parse(now) + dueDays * 86_400_000).toISOString()
+        : null,
       opportunity_id: oppId,
     };
   });
 
   const { error } = await supabaseAdmin.from('tasks').insert(rows);
   if (error) {
-    // Non-fatal — log but don't fail the stage transition
-    console.error('[fireTriggerTasks] task insert error:', error.message);
+    console.error('[fireTriggerTasks] task insert error (non-fatal):', error.message);
   }
 }
 
 // ── Mapper ────────────────────────────────────────────────────────────────────
+// Converts a raw Supabase row into the frontend Opportunity shape.
+//
+// stage_owner in DB is uuid — we do NOT pass it to the frontend stageOwner field.
+// Instead we derive the semantic owner role ('agent'|'broker'|'system') from the
+// stage definition, which is the authoritative source.
 
 function mapOpportunity(row: any): Opportunity {
   const validPriorities: OpportunityPriority[] = ['high', 'medium', 'low'];
 
-  // Map legacy generic stages to buyer pipeline equivalents
+  // Normalise stage — apply legacy mapping, fall back to lead_received
   let stage = String(row.stage ?? 'lead_received');
   if (LEGACY_STAGE_MAP[stage]) stage = LEGACY_STAGE_MAP[stage];
   if (!VALID_STAGES.has(stage)) stage = 'lead_received';
 
+  // pipeline_type — always 'buyer' or 'seller', never undefined
   const pipelineType: PipelineType = row.pipeline_type === 'seller' ? 'seller' : 'buyer';
+
+  // Derive semantic owner role from stage definition, NOT from the DB uuid column.
+  // The DB uuid is for audit; the role label is what the UI needs.
+  const stageDef = getStageDefinition(stage, pipelineType);
+  const stageOwner = stageDef?.owner ?? 'agent';
 
   const documents: PipelineDocument[] = Array.isArray(row.documents) ? row.documents : [];
   const stageHistory: StageHistoryEntry[] = Array.isArray(row.stage_history) ? row.stage_history : [];
@@ -409,24 +507,24 @@ function mapOpportunity(row: any): Opportunity {
   return {
     id:                String(row.id ?? ''),
     contactName:       String(row.contact_name ?? '').trim() || 'Unnamed',
-    propertyAddress:   row.property_address  ?? undefined,
-    propertyId:        row.property_id        ?? undefined,
-    assignedAgentId:   row.assigned_agent_id  ?? undefined,
+    propertyAddress:   row.property_address   ?? undefined,
+    propertyId:        row.property_id         ?? undefined,
+    assignedAgentId:   row.assigned_agent_id   ?? undefined,
     pipelineType,
     stage:             stage as PipelineStage,
-    stageUpdatedAt:    row.stage_updated_at   ?? undefined,
-    stageOwner:        row.stage_owner        ?? 'agent',
+    stageUpdatedAt:    row.stage_updated_at    ?? undefined,
+    stageOwner,
     documents,
     stageHistory,
-    value:             Number(row.value ?? 0),
-    probability:       Number(row.probability ?? 15),
+    value:             Number(row.value        ?? 0),
+    probability:       Number(row.probability  ?? 15),
     expectedCloseDate: row.expected_close_date
       ? String(row.expected_close_date).slice(0, 10)
       : new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
     priority:          validPriorities.includes(row.priority) ? row.priority : 'medium',
-    nextStep:          row.next_step     ?? undefined,
+    nextStep:          row.next_step           ?? undefined,
     notes:             Array.isArray(row.notes) ? row.notes : [],
-    createdAt:         String(row.created_at ?? new Date().toISOString()),
-    updatedAt:         String(row.updated_at  ?? new Date().toISOString()),
+    createdAt:         String(row.created_at   ?? new Date().toISOString()),
+    updatedAt:         String(row.updated_at   ?? new Date().toISOString()),
   };
 }

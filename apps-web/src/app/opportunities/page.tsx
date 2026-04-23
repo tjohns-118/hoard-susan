@@ -312,6 +312,7 @@ export default function OpportunitiesPage() {
     }
     const nextStage = getNextStage(opp.stage, opp.pipelineType);
     const nextDef   = nextStage ? getStageDefinition(nextStage, opp.pipelineType) : null;
+    console.log(`[pipeline] advance | oppId=${oppId} | from=${opp.stage} → to=${nextStage} | pipeline=${opp.pipelineType}`);
     try {
       await advanceStage(oppId);
       showToast(`Moved to ${nextDef?.label ?? 'next stage'}`, true);
@@ -331,6 +332,7 @@ export default function OpportunitiesPage() {
     const prevStage = getPrevStage(opp.stage, opp.pipelineType);
     const prevDef   = prevStage ? getStageDefinition(prevStage, opp.pipelineType) : null;
     if (!prevStage) return;
+    console.log(`[pipeline] goBack | oppId=${oppId} | from=${opp.stage} → to=${prevStage} | pipeline=${opp.pipelineType}`);
     try {
       moveOpportunityStage(oppId, prevStage);
       await moveStage(oppId, prevStage);
