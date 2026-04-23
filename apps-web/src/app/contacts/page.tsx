@@ -693,13 +693,18 @@ export default function ContactsPage() {
     );
     if (alreadyExists) return;
     const firstProp = properties.find((p) => c.linkedPropertyIds.includes(p.id));
+    // Infer pipeline from contact role: seller-only contacts go into seller pipeline.
+    const pipelineType = (c.role === 'seller' || (c.sellerProfile && !c.buyerProfile))
+      ? 'seller' as const
+      : 'buyer' as const;
     try {
       await createOpportunity({
         contactName:        c.fullName,
         propertyAddress:    firstProp?.address,
         propertyId:         firstProp?.id,
         assignedAgentId:    c.assignedAgentId,
-        stage:              'prospect',
+        pipelineType,
+        stage:              'lead_received',
         value:              0,
         probability:        15,
         priority:           'medium',

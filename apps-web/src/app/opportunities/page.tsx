@@ -384,7 +384,16 @@ export default function OpportunitiesPage() {
     return list;
   }, [opportunities, pipelineFilter, currentRole, memberId]);
 
-  const openOpps   = visible.filter((o) => o.stage !== 'closed' && o.stage !== 'lost' && o.stage !== 'post_close_followup');
+  // Rows whose stage has no definition in their stored pipeline (still-mismatched rows).
+  // These should be rare after the API auto-corrects on read, but we render them explicitly
+  // rather than letting them silently vanish from the board.
+  const unmappedOpps = visible.filter((o) =>
+    o.stage !== 'lost' && !getStageDefinition(o.stage, o.pipelineType)
+  );
+  const openOpps   = visible.filter((o) =>
+    o.stage !== 'closed' && o.stage !== 'lost' && o.stage !== 'post_close_followup' &&
+    getStageDefinition(o.stage, o.pipelineType) !== undefined
+  );
   const closedOpps = visible.filter((o) => o.stage === 'closed' || o.stage === 'post_close_followup');
   const lostOpps   = visible.filter((o) => o.stage === 'lost');
 
@@ -623,6 +632,42 @@ export default function OpportunitiesPage() {
           })}
         </div>
       </div>
+
+      {/* ── Needs Review — stage/pipeline_type mismatch fallback ── */}
+      {unmappedOpps.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 700, color: '#f87171',
+            textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10,
+          }}>
+            Needs Review — {unmappedOpps.length} deal{unmappedOpps.length !== 1 ? 's' : ''} with unmapped stage
+          </div>
+          <div style={{
+            background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.18)',
+            borderRadius: 14, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            {unmappedOpps.map((opp) => (
+              <div key={opp.id} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 10px', background: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.14)', borderRadius: 9,
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-text)' }}>
+                    {opp.contactName}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#f87171', marginTop: 2 }}>
+                    stage: <code style={{ fontFamily: 'monospace' }}>{opp.stage}</code>
+                    {' '}· pipeline: <code style={{ fontFamily: 'monospace' }}>{opp.pipelineType}</code>
+                    {' '}— stage not found in this pipeline
+                  </div>
+                </div>
+                <PillBtn tone="danger" onClick={() => handleMarkLost(opp.id)}>Lost</PillBtn>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Closed & Lost summary ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

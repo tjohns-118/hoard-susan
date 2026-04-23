@@ -29,6 +29,7 @@ import type { PipelineType, PipelineStage, PipelineDocument, StageHistoryEntry }
 import {
   LEGACY_STAGE_MAP,
   getStageDefinition,
+  inferPipelineType,
   initDocuments,
   BUYER_STAGES,
   SELLER_STAGES,
@@ -103,13 +104,31 @@ export async function POST(req: NextRequest) {
   if (!body.contactName?.trim())
     return NextResponse.json({ error: 'contactName required' }, { status: 400 });
 
-  const pipelineType: PipelineType = body.pipelineType === 'seller' ? 'seller' : 'buyer';
-  const stage = body.stage ?? 'lead_received';
+  // Apply legacy mapping before any validation so callers using old stage names still work.
+  let stage = body.stage ?? 'lead_received';
+  if (LEGACY_STAGE_MAP[stage]) stage = LEGACY_STAGE_MAP[stage];
+
   const closeDate = body.expectedCloseDate
     ?? new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
   const now = new Date().toISOString();
 
-  // Validate initial stage belongs to chosen pipeline
+  // Resolve pipeline type. If the caller didn't specify one, infer from the stage.
+  // If the stage is shared/ambiguous, default to 'buyer'.
+  // If the caller did specify one, validate that it matches the stage.
+  let pipelineType: PipelineType = body.pipelineType === 'seller' ? 'seller' : 'buyer';
+  const inferred = inferPipelineType(stage);
+  if (inferred !== null) {
+    if (body.pipelineType && inferred !== pipelineType) {
+      // Caller explicitly provided a pipeline_type that contradicts the stage — reject it.
+      return NextResponse.json(
+        { error: `Stage "${stage}" belongs to the ${inferred} pipeline, not ${pipelineType}.` },
+        { status: 400 },
+      );
+    }
+    pipelineType = inferred;
+  }
+
+  // Validate the resolved stage belongs to the resolved pipeline.
   const stageDef = getStageDefinition(stage, pipelineType);
   if (!stageDef && stage !== 'lead_received') {
     return NextResponse.json(
@@ -493,8 +512,19 @@ function mapOpportunity(row: any): Opportunity {
   if (LEGACY_STAGE_MAP[stage]) stage = LEGACY_STAGE_MAP[stage];
   if (!VALID_STAGES.has(stage)) stage = 'lead_received';
 
-  // pipeline_type — always 'buyer' or 'seller', never undefined
-  const pipelineType: PipelineType = row.pipeline_type === 'seller' ? 'seller' : 'buyer';
+  // pipeline_type — always 'buyer' or 'seller', never undefined.
+  // Auto-correct mismatches: if the stage is unambiguous (exists in only one pipeline)
+  // and contradicts the stored pipeline_type, trust the stage and log a warning.
+  // This prevents valid DB rows from disappearing from the kanban board.
+  let pipelineType: PipelineType = row.pipeline_type === 'seller' ? 'seller' : 'buyer';
+  const stageInferred = inferPipelineType(stage);
+  if (stageInferred !== null && stageInferred !== pipelineType) {
+    console.warn(
+      `[mapOpportunity] MISMATCH — id=${row.id} stage="${stage}" is ${stageInferred}-only ` +
+      `but pipeline_type="${pipelineType}" in DB. Auto-correcting to ${stageInferred}.`,
+    );
+    pipelineType = stageInferred;
+  }
 
   // Derive semantic owner role from stage definition, NOT from the DB uuid column.
   // The DB uuid is for audit; the role label is what the UI needs.

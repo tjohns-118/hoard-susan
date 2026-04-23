@@ -456,6 +456,21 @@ export function initDocuments(pipelineType: PipelineType): PipelineDocument[] {
   return templates.map((t) => ({ ...t, status: 'not_sent' as const }));
 }
 
+/**
+ * Infers the pipeline type from a stage name when the stage exists in only one pipeline.
+ * Returns null for shared stages (lead_received, under_contract, inspections, etc.)
+ * and for unknown stages — the caller must use a fallback in those cases.
+ *
+ * Use this as the single source of truth for detecting stage/pipeline_type mismatches.
+ */
+export function inferPipelineType(stage: string): PipelineType | null {
+  const inBuyer  = _buyerMap.has(stage);
+  const inSeller = _sellerMap.has(stage);
+  if (inBuyer && !inSeller) return 'buyer';
+  if (inSeller && !inBuyer) return 'seller';
+  return null; // shared stage or unknown — cannot infer
+}
+
 // ── Legacy stage migration ─────────────────────────────────────────────────────
 // Maps old generic CRM stages (stored before the pipeline upgrade) to their
 // closest buyer-pipeline equivalent.  Applied in the API mapper.
