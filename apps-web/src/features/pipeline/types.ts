@@ -125,9 +125,11 @@ export interface StageDefinition {
 }
 
 // ── Stage history ──────────────────────────────────────────────────────────────
+// Each stage transition appends one record. Simple append-only log.
+// Old rows (before migration) will have [] and no legacy entries to worry about.
 
 export interface StageHistoryEntry {
-  stage:      string;
-  enteredAt:  string;
-  exitedAt?:  string;
+  fromStage:  string;
+  toStage:    string;
+  changedAt:  string;
 }

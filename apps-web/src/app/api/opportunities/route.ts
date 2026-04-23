@@ -92,8 +92,8 @@ export async function POST(req: NextRequest) {
   // Initialise document list from pipeline template
   const documents = initDocuments(pipelineType);
 
-  // Initialise stage history with entry for initial stage
-  const stageHistory: StageHistoryEntry[] = [{ stage, enteredAt: now }];
+  // Initialise stage history — first entry has no fromStage (deal just created)
+  const stageHistory: StageHistoryEntry[] = [{ fromStage: '', toStage: stage, changedAt: now }];
 
   // Derive initial stage_owner from definition
   const stageDef = getStageDefinition(stage, pipelineType);
@@ -218,19 +218,6 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    // Build updated stage history: close current entry, open new one
-    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history)
-      ? cur.stage_history
-      : [];
-    const updatedHistory: StageHistoryEntry[] = [
-      ...existingHistory.map((h) =>
-        h.stage === cur.stage && !h.exitedAt
-          ? { ...h, exitedAt: now }
-          : h
-      ),
-      { stage: targetStage, enteredAt: now },
-    ];
-
     // Look up new stage definition
     const stageDef = getStageDefinition(targetStage, pipelineType);
     const stageOwner = stageDef?.owner ?? 'agent';
@@ -240,13 +227,13 @@ export async function PATCH(req: NextRequest) {
     if (targetStage === 'closed') extra.probability = 100;
     if (targetStage === 'lost')   extra.probability = 0;
 
+    // PRIMARY update — stage, owner, timestamps. Must succeed for transition to be valid.
     const { error: updateErr } = await supabaseAdmin
       .from('opportunities')
       .update({
         stage:            targetStage,
         stage_updated_at: now,
         stage_owner:      stageOwner,
-        stage_history:    updatedHistory,
         updated_at:       now,
         ...extra,
       })
@@ -254,6 +241,18 @@ export async function PATCH(req: NextRequest) {
     if (updateErr) {
       console.error('[PATCH moveStage] update error:', updateErr.message, '| oppId:', oppId);
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+
+    // SECONDARY update — stage history append. Non-fatal: if the column doesn't
+    // exist yet (e.g. migration still in-flight), the transition still succeeded.
+    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
+    const newEntry: StageHistoryEntry = { fromStage: String(cur.stage ?? ''), toStage: targetStage, changedAt: now };
+    const { error: histErr } = await supabaseAdmin
+      .from('opportunities')
+      .update({ stage_history: [...existingHistory, newEntry] })
+      .eq('id', oppId);
+    if (histErr) {
+      console.warn('[PATCH moveStage] stage_history append failed (non-fatal):', histErr.message);
     }
 
     // Fire 'task' triggers for the new stage
@@ -271,17 +270,22 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 });
     }
 
-    const existing: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
-    const updatedHistory: StageHistoryEntry[] = [
-      ...existing.map((h) => h.stage === cur.stage && !h.exitedAt ? { ...h, exitedAt: now } : h),
-      { stage: 'lost', enteredAt: now },
-    ];
-
+    // PRIMARY update
     const { error } = await supabaseAdmin
       .from('opportunities')
-      .update({ stage: 'lost', probability: 0, stage_updated_at: now, stage_history: updatedHistory, updated_at: now })
+      .update({ stage: 'lost', probability: 0, stage_updated_at: now, updated_at: now })
       .eq('id', oppId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // SECONDARY — non-fatal history append
+    const existing: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
+    const { error: histErr } = await supabaseAdmin
+      .from('opportunities')
+      .update({ stage_history: [...existing, { fromStage: String(cur.stage ?? ''), toStage: 'lost', changedAt: now }] })
+      .eq('id', oppId);
+    if (histErr) {
+      console.warn('[PATCH markLost] stage_history append failed (non-fatal):', histErr.message);
+    }
 
   // ── Assign agent ────────────────────────────────────────────────────────────
   } else if (action === 'assignAgent') {
