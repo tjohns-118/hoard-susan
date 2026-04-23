@@ -227,13 +227,15 @@ export async function PATCH(req: NextRequest) {
     if (targetStage === 'closed') extra.probability = 100;
     if (targetStage === 'lost')   extra.probability = 0;
 
-    // PRIMARY update — stage, owner, timestamps. Must succeed for transition to be valid.
+    // PRIMARY update — only the columns that are guaranteed text/timestamptz.
+    // stage_owner is kept out because the migration declares it as uuid, but our
+    // semantic values ('agent', 'broker') are text — a type mismatch that would
+    // crash the whole transition. It goes in the non-fatal secondary write instead.
     const { error: updateErr } = await supabaseAdmin
       .from('opportunities')
       .update({
         stage:            targetStage,
         stage_updated_at: now,
-        stage_owner:      stageOwner,
         updated_at:       now,
         ...extra,
       })
@@ -243,16 +245,20 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
-    // SECONDARY update — stage history append. Non-fatal: if the column doesn't
-    // exist yet (e.g. migration still in-flight), the transition still succeeded.
+    // SECONDARY update — non-fatal. Appends history entry and sets stage_owner.
+    // If either column doesn't exist or has a type mismatch, the transition above
+    // already succeeded; these writes fail silently.
     const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
     const newEntry: StageHistoryEntry = { fromStage: String(cur.stage ?? ''), toStage: targetStage, changedAt: now };
     const { error: histErr } = await supabaseAdmin
       .from('opportunities')
-      .update({ stage_history: [...existingHistory, newEntry] })
+      .update({
+        stage_history: [...existingHistory, newEntry],
+        stage_owner:   stageOwner,
+      })
       .eq('id', oppId);
     if (histErr) {
-      console.warn('[PATCH moveStage] stage_history append failed (non-fatal):', histErr.message);
+      console.warn('[PATCH moveStage] secondary update failed (non-fatal):', histErr.message);
     }
 
     // Fire 'task' triggers for the new stage

@@ -494,7 +494,12 @@ export default function OpportunitiesPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
-          {phases.map((phase) => {
+          {phases
+            // In "all" view, hide phase columns that have no deals. This prevents
+            // seller-only columns (Listing, Marketing) from appearing as ghost targets
+            // when the pipeline only contains buyer deals, and vice versa.
+            .filter((phase) => pipelineFilter !== 'all' || dealsInPhase(phase).length > 0)
+            .map((phase) => {
             const meta      = phaseMeta(phase);
             const deals     = dealsInPhase(phase);
             const val       = phaseValue(phase);
