@@ -145,9 +145,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // distinct signals instead of both collapsing into fetchErr.
 
 async function fetchOpp(oppId: string) {
+  // Use select('*') so a missing pipeline_type column (pre-migration schema) returns
+  // null rather than a PostgREST "column does not exist" error that would crash all
+  // stage transitions. The mapper below handles null with a safe 'buyer' fallback.
   const { data, error } = await supabaseAdmin
     .from('opportunities')
-    .select('stage, pipeline_type, stage_history, brokerage_id')
+    .select('*')
     .eq('id', oppId)
     .maybeSingle();
   return { row: data, dbErr: error };
@@ -198,7 +201,22 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Opportunity not found. It may have been deleted or belong to a different brokerage.' }, { status: 404 });
     }
 
-    const pipelineType: PipelineType = (cur.pipeline_type as PipelineType) ?? 'buyer';
+    const pipelineType: PipelineType = (cur.pipeline_type as PipelineType) === 'seller' ? 'seller' : 'buyer';
+
+    // Validate the target stage belongs to this deal's specific pipeline.
+    // A buyer deal cannot move into seller-only stages and vice versa.
+    if (targetStage !== 'lost') {
+      const stageDef = getStageDefinition(targetStage, pipelineType);
+      if (!stageDef) {
+        const otherType: PipelineType = pipelineType === 'buyer' ? 'seller' : 'buyer';
+        const inOther = getStageDefinition(targetStage, otherType);
+        const hint = inOther ? ` (that stage belongs to the ${otherType} pipeline)` : '';
+        return NextResponse.json(
+          { error: `Stage "${targetStage}" is not valid for the ${pipelineType} pipeline${hint}.` },
+          { status: 400 },
+        );
+      }
+    }
 
     // Build updated stage history: close current entry, open new one
     const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history)

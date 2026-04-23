@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
@@ -403,11 +403,42 @@ function BuyerGroupCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentSearch, setAgentSearch] = useState('');
+  const [dropPos, setDropPos] = useState<{ top: number; left: number } | null>(null);
+  const assignBtnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!agentOpen) return;
+    function onMouseDown(e: MouseEvent) {
+      if (
+        dropRef.current && !dropRef.current.contains(e.target as Node) &&
+        assignBtnRef.current && !assignBtnRef.current.contains(e.target as Node)
+      ) {
+        setAgentOpen(false);
+        setAgentSearch('');
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [agentOpen]);
+
+  function openAgentPicker() {
+    if (!assignBtnRef.current) return;
+    const r = assignBtnRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 4, left: r.left });
+    setAgentSearch('');
+    setAgentOpen((o) => !o);
+  }
 
   const { person, matches, bestScore } = group;
   const conf = confidenceOf(bestScore);
   const assignedAgent = agents.find((a) => a.id === person.assignedAgentId);
   const anyInPipeline = matches.some((m) => m.alreadyInPipeline || actedOn.has(m.id));
+  const filteredAgents = agentSearch.trim()
+    ? agents.filter((a) => a.name.toLowerCase().includes(agentSearch.toLowerCase()))
+    : agents;
 
   return (
     <div className="r-card" style={{
@@ -497,47 +528,98 @@ function BuyerGroupCard({
           View {person.kind === 'lead' ? 'Lead' : 'Contact'} →
         </button>
 
-        {/* Assign Agent — broker only */}
+        {/* Assign Agent — broker only, fixed-position picker that escapes the card */}
         {currentRole === 'broker' && (
-          <div style={{ position: 'relative' }}>
+          <>
             <button
-              onClick={() => setAgentOpen((o) => !o)}
+              ref={assignBtnRef}
+              onClick={openAgentPicker}
               style={{
                 padding: '5px 12px', borderRadius: 7,
                 border: assignedAgent ? '1px solid rgba(155,138,180,0.35)' : '1px solid var(--r-border)',
                 background: 'var(--r-grad-card)',
-                color:  assignedAgent ? '#9b8ab4' : 'var(--r-text-2)',
+                color: assignedAgent ? '#9b8ab4' : 'var(--r-text-2)',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
               }}
             >
               {assignedAgent ? `✓ ${assignedAgent.name}` : 'Assign Agent ▾'}
             </button>
-            {agentOpen && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
-                background: '#141c30', border: '1px solid var(--r-border)',
-                borderRadius: 10, overflow: 'hidden', minWidth: 168, boxShadow: 'var(--r-shadow)',
-              }}>
-                {agents.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => { onAssignAgent(a.id); setAgentOpen(false); }}
-                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: person.assignedAgentId === a.id ? 'rgba(155,138,180,0.10)' : 'transparent', border: 'none', color: person.assignedAgentId === a.id ? '#9b8ab4' : 'var(--r-text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    {person.assignedAgentId === a.id ? '✓ ' : ''}{a.name}
-                  </button>
-                ))}
+
+            {agentOpen && dropPos && (
+              <div
+                ref={dropRef}
+                style={{
+                  position: 'fixed',
+                  top: dropPos.top,
+                  left: dropPos.left,
+                  zIndex: 9999,
+                  background: '#141c30',
+                  border: '1px solid var(--r-border)',
+                  borderRadius: 10,
+                  minWidth: 210,
+                  maxHeight: 320,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Search */}
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--r-border)' }}>
+                  <input
+                    autoFocus
+                    value={agentSearch}
+                    onChange={(e) => setAgentSearch(e.target.value)}
+                    placeholder="Search agents…"
+                    style={{
+                      width: '100%', padding: '5px 8px', borderRadius: 6,
+                      border: '1px solid var(--r-border)', background: 'rgba(255,255,255,0.04)',
+                      color: 'var(--r-text)', fontSize: 12, outline: 'none',
+                    }}
+                  />
+                </div>
+
+                {/* Agent list */}
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {filteredAgents.length === 0 ? (
+                    <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--r-text-3)' }}>
+                      No agents match
+                    </div>
+                  ) : (
+                    filteredAgents.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => { onAssignAgent(a.id); setAgentOpen(false); setAgentSearch(''); }}
+                        style={{
+                          display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+                          background: person.assignedAgentId === a.id ? 'rgba(155,138,180,0.12)' : 'transparent',
+                          border: 'none',
+                          color: person.assignedAgentId === a.id ? '#9b8ab4' : 'var(--r-text-2)',
+                          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        }}
+                      >
+                        {person.assignedAgentId === a.id ? '✓ ' : ''}{a.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Remove */}
                 {person.assignedAgentId && (
                   <button
-                    onClick={() => { onAssignAgent(undefined); setAgentOpen(false); }}
-                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: 'transparent', border: 'none', borderTop: '1px solid var(--r-border)', color: 'var(--r-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: 0.8 }}
+                    onClick={() => { onAssignAgent(undefined); setAgentOpen(false); setAgentSearch(''); }}
+                    style={{
+                      display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+                      background: 'transparent', border: 'none', borderTop: '1px solid var(--r-border)',
+                      color: 'var(--r-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}
                   >
                     Remove assignment
                   </button>
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
