@@ -298,7 +298,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       <div style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
         {/* Action Center */}
         <Panel>
-          <SectionHeader title="Action Center" href="/leads" count={actionCount} countTone="warning" />
+          <SectionHeader title="Action Center" count={actionCount} countTone="warning" />
 
           {hotLeads.length > 0 && (
             <div style={{ marginBottom: 18 }}>
@@ -374,7 +374,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
 
           {staleLeads.length > 0 && (
             <Panel>
-              <SectionHeader title="Stale Leads" href="/leads" count={staleLeads.length} countTone="warning" />
+              <SectionHeader title="Stale Leads" count={staleLeads.length} countTone="warning" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {staleLeads.slice(0, 3).map((l) => (
                   <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)', gap: 10 }}>
@@ -393,7 +393,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
 
           {(atRiskDeals.length > 0 || closingSoon.length > 0) && (
             <Panel>
-              <SectionHeader title="Deals at Risk" href="/opportunities" count={closingSoon.length} countTone="danger" />
+              <SectionHeader title="Deals at Risk" count={closingSoon.length} countTone="danger" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {closingSoon.slice(0, 3).map((o) => {
                   const d = daysUntil(o.expectedCloseDate);
@@ -418,7 +418,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       {/* ── D. Agent Activity Summary ── */}
       {agentWorkload.length > 0 && (
         <Panel style={{ marginBottom: 24 }}>
-          <SectionHeader title="Agent Activity" href="/agents" />
+          <SectionHeader title="Agent Activity" />
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(agentWorkload.length, 4)}, 1fr)`, gap: 12 }}>
             {agentWorkload.map(({ agent, opps, leads: agLeads, value, overdue }) => (
               <div key={agent.id} style={{ padding: '12px 14px', borderRadius: 12, border: overdue > 0 ? '1px solid rgba(239,68,68,0.2)' : '1px solid var(--r-border)', background: overdue > 0 ? 'rgba(239,68,68,0.03)' : 'rgba(200,164,92,0.03)' }}>
@@ -456,7 +456,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
 
       {/* ── E. Pipeline Snapshot ── */}
       <Panel style={{ marginBottom: 24 }}>
-        <SectionHeader title="Pipeline Snapshot" href="/opportunities" />
+        <SectionHeader title="Pipeline Snapshot" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {stageData.map(({ stage, count, value }) => {
             const barPct = maxPipelineValue > 0 ? (value / maxPipelineValue) * 100 : 0;
@@ -503,7 +503,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
         {/* Lead Conversion Funnel */}
         <Panel>
-          <SectionHeader title="Lead Conversion Funnel" href="/leads" />
+          <SectionHeader title="Lead Conversion Funnel" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 16 }}>
             {funnelData.map((step, i) => (
               <div key={step.label} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
@@ -540,7 +540,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
 
         {/* Task Queue */}
         <Panel>
-          <SectionHeader title="Open Task Queue" href="/tasks" count={openTasks.length} />
+          <SectionHeader title="Open Task Queue" count={openTasks.length} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {taskQueue.length === 0
               ? <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>All tasks complete.</div>
@@ -550,11 +550,6 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
                   return <TaskRow key={t.id} title={t.title} priority={t.priority} daysOld={age} overdue={overdue} />;
                 })
             }
-            {openTasks.length > 5 && (
-              <a href="/tasks" style={{ display: 'block', textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--r-gold)', padding: '8px 0 2px', textDecoration: 'none' }}>
-                +{openTasks.length - 5} more →
-              </a>
-            )}
           </div>
         </Panel>
       </div>
@@ -563,7 +558,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 0 }}>
         {/* Upcoming Events */}
         <Panel>
-          <SectionHeader title="Upcoming Events" href="/calendar" count={upcomingEvents.length} />
+          <SectionHeader title="Upcoming Events" count={upcomingEvents.length} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {upcomingEvents.length === 0
               ? <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>No upcoming events scheduled.</div>

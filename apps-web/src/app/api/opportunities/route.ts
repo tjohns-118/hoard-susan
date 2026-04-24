@@ -154,7 +154,6 @@ export async function POST(req: NextRequest) {
     .from('opportunities')
     .insert({
       brokerage_id:        BROKERAGE_ID,
-      contact_name:        body.contactName.trim(),
       property_address:    body.propertyAddress  ?? null,
       property_id:         body.propertyId        ?? null,
       assigned_member_id:  body.assignedAgentId   ?? null,

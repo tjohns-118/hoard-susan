@@ -325,17 +325,12 @@ export default function AgentDashboardPage() {
           </Panel>
 
           <Panel>
-            <SectionHeader title="Upcoming Events" href="/calendar" count={myUpcomingEvents.length} />
+            <SectionHeader title="Upcoming Events" count={myUpcomingEvents.length} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {myUpcomingEvents.length === 0
                 ? <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>No events scheduled.</div>
                 : myUpcomingEvents.map((e) => <EventRow key={e.id} title={e.title} type={e.type} startsAt={e.startsAt} />)
               }
-              {myUpcomingEvents.length > 0 && (
-                <a href="/calendar" style={{ display: 'block', textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--r-gold)', padding: '6px 0 2px', textDecoration: 'none' }}>
-                  Open calendar →
-                </a>
-              )}
             </div>
           </Panel>
         </div>
@@ -344,7 +339,7 @@ export default function AgentDashboardPage() {
       {/* ── My Pipeline Snapshot ── */}
       {myOpps.length > 0 && (
         <Panel style={{ marginBottom: 24 }}>
-          <SectionHeader title="My Pipeline" href="/opportunities" />
+          <SectionHeader title="My Pipeline" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {myStageData.filter((d) => d.count > 0).map(({ phase, count, value }) => {
               const barPct = maxMyPipelineValue > 0 ? (value / maxMyPipelineValue) * 100 : 0;
@@ -384,7 +379,7 @@ export default function AgentDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
         {/* Task Queue */}
         <Panel>
-          <SectionHeader title="My Task Queue" href="/tasks" count={myTasks.length} />
+          <SectionHeader title="My Task Queue" count={myTasks.length} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {myUpcomingTasks.length === 0 && myOverdueTasks.length === 0
               ? <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>All tasks complete.</div>
@@ -396,17 +391,12 @@ export default function AgentDashboardPage() {
                   return <TaskRow key={t.id} title={t.title} priority={t.priority} daysOld={daysOld} overdue={overdue} />;
                 })
             }
-            {myTasks.length > 6 && (
-              <a href="/tasks" style={{ display: 'block', textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--r-gold)', padding: '8px 0 2px', textDecoration: 'none' }}>
-                +{myTasks.length - 6} more →
-              </a>
-            )}
           </div>
         </Panel>
 
         {/* My Leads */}
         <Panel>
-          <SectionHeader title="My Leads" href="/leads" count={myLeads.length} />
+          <SectionHeader title="My Leads" count={myLeads.length} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {myLeads.length === 0
               ? <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>No leads assigned to you yet.</div>
@@ -422,11 +412,6 @@ export default function AgentDashboardPage() {
                   </div>
                 ))
             }
-            {myLeads.length > 6 && (
-              <a href="/leads" style={{ display: 'block', textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--r-gold)', padding: '6px 0 2px', textDecoration: 'none' }}>
-                +{myLeads.length - 6} more →
-              </a>
-            )}
           </div>
         </Panel>
       </div>
