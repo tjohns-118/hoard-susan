@@ -980,43 +980,6 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {/* Cross-links footer */}
-      <div
-        style={{
-          marginTop: 32,
-          paddingTop: 20,
-          borderTop: '1px solid var(--r-border)',
-          display: 'flex',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        {[
-          { href: '/contacts', label: '→ View Contacts', desc: 'Converted leads live here' },
-          { href: '/opportunities', label: '→ View Pipeline', desc: 'Active deal stages' },
-          { href: '/tasks', label: '→ View Tasks', desc: 'Follow-up tasks created from leads' },
-        ].map(({ href, label, desc }) => (
-          <a
-            key={href}
-            href={href}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 3,
-              padding: '12px 16px',
-              borderRadius: 12,
-              border: '1px solid var(--r-border)',
-              background: 'rgba(200,164,92,0.02)',
-              textDecoration: 'none',
-              minWidth: 180,
-              flex: 1,
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-gold)' }}>{label}</span>
-            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{desc}</span>
-          </a>
-        ))}
-      </div>
     </AppShell>
   );
 }

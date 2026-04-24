@@ -597,15 +597,9 @@ export default function CalendarPage() {
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text)', lineHeight: 1.3, marginBottom: 2 }}>
                         {l.fullName}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--r-gold-bright)', marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: 'var(--r-gold-bright)' }}>
                         🔥 Hot lead · no scheduled call
                       </div>
-                      <a
-                        href="/leads"
-                        style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.08)', color: 'var(--r-gold)', textDecoration: 'none', display: 'inline-block' }}
-                      >
-                        View Lead →
-                      </a>
                     </div>
                   ))}
                 </>
@@ -901,21 +895,6 @@ function DetailPanel({ item, onClose, onToggleTask }: {
 
         {/* Actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {item.contactId && (
-            <a href="/contacts" style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none', padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', display: 'block', textAlign: 'center' }}>
-              View Contact →
-            </a>
-          )}
-          {item.opportunityId && (
-            <a href="/opportunities" style={{ fontSize: 11, fontWeight: 700, color: '#9b8ab4', textDecoration: 'none', padding: '6px 0', borderRadius: 7, border: '1px solid rgba(155,138,180,0.22)', background: 'rgba(155,138,180,0.07)', display: 'block', textAlign: 'center' }}>
-              View Pipeline →
-            </a>
-          )}
-          {item.propertyId && (
-            <a href="/properties" style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-success)', textDecoration: 'none', padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-success-border)', background: 'var(--r-success-bg)', display: 'block', textAlign: 'center' }}>
-              View Property →
-            </a>
-          )}
           {item.taskId && (
             <button
               onClick={() => onToggleTask(item.taskId!)}

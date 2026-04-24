@@ -415,15 +415,12 @@ function DetailPanel({
       {/* Linked contacts — only for agent's own deal context */}
       {isOwned && linkedContacts.length > 0 && (
         <Panel>
-          <SubHeader href="/contacts">Linked Contacts</SubHeader>
+          <SubHeader>Linked Contacts</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {linkedContacts.map((c) => (
-              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{c.fullName}</div>
-                  {c.email && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{c.email}</div>}
-                </div>
-                <a href="/contacts" style={{ fontSize: 11, fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>View →</a>
+              <div key={c.id} style={{ padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{c.fullName}</div>
+                {c.email && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{c.email}</div>}
               </div>
             ))}
           </div>
@@ -433,7 +430,7 @@ function DetailPanel({
       {/* Related opportunities */}
       {relatedOpps.length > 0 && (
         <Panel>
-          <SubHeader href="/opportunities">Related Deals</SubHeader>
+          <SubHeader>Related Deals</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {relatedOpps.map((o) => (
               <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -453,7 +450,7 @@ function DetailPanel({
       {/* Open tasks */}
       {relatedTasks.length > 0 && (
         <Panel>
-          <SubHeader href="/tasks">Open Tasks</SubHeader>
+          <SubHeader>Open Tasks</SubHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {relatedTasks.map((t) => (
               <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>

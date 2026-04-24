@@ -224,6 +224,7 @@ function DetailPanel({
   properties,
   opportunities,
   tasks,
+  isPushing,
   onAddNote,
   onAssignAgent,
   onMarkHot,
@@ -242,6 +243,7 @@ function DetailPanel({
   properties: { id: string; address: string }[];
   opportunities: { id: string; contactName: string; stage: string; value: number; propertyAddress?: string }[];
   tasks: { id: string; title: string; completed: boolean; priority: string; contactId?: string }[];
+  isPushing?: boolean;
   onAddNote: (id: string, body: string) => void;
   onAssignAgent: (id: string, agentId?: string) => void;
   onMarkHot: (id: string) => void;
@@ -380,9 +382,9 @@ function DetailPanel({
         <ActionBtn
           tone="success"
           onClick={() => onPushToOpportunities(contact.id)}
-          disabled={hasOpportunity || contact.status === 'closed'}
+          disabled={hasOpportunity || contact.status === 'closed' || isPushing}
         >
-          {hasOpportunity ? '✓ In Pipeline' : '→ Push to Pipeline'}
+          {hasOpportunity ? '✓ In Pipeline' : isPushing ? 'Adding…' : '→ Push to Pipeline'}
         </ActionBtn>
         <ActionBtn tone="primary" onClick={openEdit}>Edit</ActionBtn>
         {contact.status === 'closed' ? (
@@ -528,9 +530,6 @@ function DetailPanel({
               </div>
             ))}
           </div>
-          <a href="/opportunities" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none' }}>
-            View in Pipeline →
-          </a>
         </Panel>
       )}
 
@@ -548,9 +547,6 @@ function DetailPanel({
               </div>
             ))}
           </div>
-          <a href="/tasks" style={{ display: 'block', marginTop: 10, fontSize: 11, fontWeight: 700, color: 'var(--r-gold)', textDecoration: 'none' }}>
-            View all tasks →
-          </a>
         </Panel>
       )}
 
@@ -650,6 +646,7 @@ export default function ContactsPage() {
   const { createOpportunity }  = useOpportunities();
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [pushingId, setPushingId] = useState<string | null>(null);
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
@@ -683,26 +680,29 @@ export default function ContactsPage() {
     }
   }
 
-  // Push a contact into the pipeline as a new Prospect opportunity.
-  // Calls Supabase directly via useOpportunities so the deal persists.
   async function pushContactToOpportunities(contactId: string) {
     const c = contacts.find((x) => x.id === contactId);
     if (!c) return;
     const alreadyExists = opportunities.some(
       (o) => o.contactName.toLowerCase() === c.fullName.toLowerCase()
     );
-    if (alreadyExists) return;
+    if (alreadyExists) {
+      showToast(`${c.fullName} is already in the pipeline`, false);
+      return;
+    }
     const firstProp = properties.find((p) => c.linkedPropertyIds.includes(p.id));
-    // Infer pipeline from contact role: seller-only contacts go into seller pipeline.
     const pipelineType = (c.role === 'seller' || (c.sellerProfile && !c.buyerProfile))
       ? 'seller' as const
       : 'buyer' as const;
+    // Agents assign to themselves; brokers carry the contact's stored assignment.
+    const agentId = (currentRole === 'agent' && memberId) ? memberId : (c.assignedAgentId ?? undefined);
+    setPushingId(contactId);
     try {
       await createOpportunity({
         contactName:        c.fullName,
         propertyAddress:    firstProp?.address,
         propertyId:         firstProp?.id,
-        assignedAgentId:    c.assignedAgentId,
+        assignedAgentId:    agentId,
         pipelineType,
         stage:              'lead_received',
         value:              0,
@@ -711,10 +711,12 @@ export default function ContactsPage() {
         nextStep:           'Initial qualification — review profile and schedule intro call.',
         notes:              c.notes.length > 0 ? [c.notes[c.notes.length - 1].body] : [],
       });
-      showToast(`${c.fullName} pushed to pipeline`);
-    } catch (err) {
+      showToast(`${c.fullName} added to ${pipelineType} pipeline`);
+    } catch (err: any) {
       console.error('[pushContactToOpportunities]', err);
-      showToast('Failed to push to pipeline', false);
+      showToast(err?.message ?? 'Failed to push to pipeline', false);
+    } finally {
+      setPushingId(null);
     }
   }
 
@@ -972,6 +974,7 @@ export default function ContactsPage() {
               properties={properties}
               opportunities={opportunities}
               tasks={tasks}
+              isPushing={pushingId === selectedContact?.id}
               onAddNote={addContactNote}
               onAssignAgent={assignContactToAgent}
               onMarkHot={handleMarkHot}
@@ -995,19 +998,6 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* ── G. Cross-link footer ── */}
-      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--r-border)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        {[
-          { href: '/leads', label: '← Leads', desc: 'Early-stage intake and qualification' },
-          { href: '/opportunities', label: '→ Pipeline', desc: 'Active deal stages by contact' },
-          { href: '/tasks', label: '→ Tasks', desc: 'All follow-ups and open actions' },
-        ].map(({ href, label, desc }) => (
-          <a key={href} href={href} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.02)', textDecoration: 'none', minWidth: 180 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-gold)' }}>{label}</span>
-            <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>{desc}</span>
-          </a>
-        ))}
-      </div>
     </AppShell>
   );
 }

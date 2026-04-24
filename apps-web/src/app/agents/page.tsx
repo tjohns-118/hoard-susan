@@ -602,12 +602,6 @@ export default function AgentsPage() {
                           badge={stageLabel}
                           badgeTone={['negotiating','repair_negotiation','offer_received','offer_submitted'].includes(o.stage) ? 'warning' : o.priority === 'high' ? 'danger' : 'default'}
                         >
-                          <a
-                            href="/opportunities"
-                            style={{ fontSize: 11, fontWeight: 600, color: '#c4b5fd', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(99,102,241,0.07)', whiteSpace: 'nowrap' }}
-                          >
-                            View →
-                          </a>
                           <ReassignSelect
                             agents={agents.filter((ag) => ag.id !== selected.id)}
                             onSelect={(agentId) => assignOpportunityToAgent(o.id, agentId)}
@@ -698,24 +692,17 @@ export default function AgentsPage() {
               )}
             </div>{/* end tab content container */}
 
-            {/* Broker actions footer */}
+            {/* Switch agent */}
+            {otherAgents.length > 0 && (
             <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginRight: 4 }}>Broker actions:</span>
-              <a href="/leads" style={{ fontSize: 12, fontWeight: 600, color: '#93c5fd', textDecoration: 'none', padding: '5px 12px', borderRadius: 7, border: '1px solid rgba(96,165,250,0.2)', background: 'rgba(59,130,246,0.07)' }}>
-                View leads →
-              </a>
-              <a href="/opportunities" style={{ fontSize: 12, fontWeight: 600, color: '#c4b5fd', textDecoration: 'none', padding: '5px 12px', borderRadius: 7, border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(99,102,241,0.07)' }}>
-                View pipeline →
-              </a>
-              {otherAgents.length > 0 && (
                 <button
                   onClick={() => setSelectedId(otherAgents[0].id)}
                   style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', padding: '5px 12px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer' }}
                 >
                   Switch to {otherAgents[0].name.split(' ')[0]} →
                 </button>
-              )}
             </div>
+            )}
           </div>
         )}
       </div>
