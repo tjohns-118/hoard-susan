@@ -156,7 +156,7 @@ function LeadCard({
   onUpdateStatus: (id: string, status: LeadStatus) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile  | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
-  onUpdateLead: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole }) => Promise<void>;
+  onUpdateLead: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean }) => Promise<void>;
   onDeleteLead: (id: string) => Promise<void>;
 }) {
   const isHot = lead.tags.includes('hot');
@@ -173,6 +173,7 @@ function LeadCard({
   const [editPhone,  setEditPhone]  = useState(lead.phone  ?? '');
   const [editSource, setEditSource] = useState(lead.source ?? '');
   const [editRole,   setEditRole]   = useState<ContactRole>(lead.role ?? 'buyer');
+  const [editNewsletter, setEditNewsletter] = useState(lead.newsletterOptIn);
   const [editSaving, setEditSaving] = useState(false);
   const [editError,  setEditError]  = useState('');
 
@@ -182,6 +183,7 @@ function LeadCard({
     setEditPhone(lead.phone  ?? '');
     setEditSource(lead.source ?? '');
     setEditRole(lead.role ?? 'buyer');
+    setEditNewsletter(lead.newsletterOptIn);
     setEditError('');
     setShowEdit(true);
     setShowProfile(false);
@@ -193,11 +195,12 @@ function LeadCard({
     setEditError('');
     try {
       await onUpdateLead(lead.id, {
-        fullName: editName,
-        email:    editEmail  || undefined,
-        phone:    editPhone  || undefined,
-        source:   editSource || undefined,
-        role:     editRole,
+        fullName:        editName,
+        email:           editEmail  || undefined,
+        phone:           editPhone  || undefined,
+        source:          editSource || undefined,
+        role:            editRole,
+        newsletterOptIn: editNewsletter,
       });
       setShowEdit(false);
     } catch (e: any) {
@@ -335,6 +338,11 @@ function LeadCard({
             <div style={{ fontSize: 13, color: 'var(--r-text-2)' }}>
               {lead.phone ?? <span style={{ color: 'var(--r-text-3)', fontStyle: 'italic' }}>No phone</span>}
             </div>
+            {lead.newsletterOptIn && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-success)', background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)', borderRadius: 5, padding: '1px 6px', alignSelf: 'flex-start' }}>
+                ✓ Newsletter
+              </span>
+            )}
           </div>
 
           {/* Assigned agent */}
@@ -560,6 +568,15 @@ function LeadCard({
                 </select>
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={editNewsletter}
+                onChange={(e) => setEditNewsletter(e.target.checked)}
+                style={{ accentColor: 'var(--r-gold)', width: 14, height: 14, cursor: 'pointer' }}
+              />
+              Newsletter list
+            </label>
             {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>
@@ -652,13 +669,14 @@ export default function LeadsPage() {
   const [addRole, setAddRole] = useState<ContactRole>('buyer');
   const [addBuyer, setAddBuyer] = useState<BuyerProfile>(EMPTY_BUYER);
   const [addSeller, setAddSeller] = useState<SellerProfile>(EMPTY_SELLER);
+  const [addNewsletter, setAddNewsletter] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   function resetAddForm() {
     setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
     setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
-    setAddError('');
+    setAddNewsletter(false); setAddError('');
   }
 
   async function handleAddLead() {
@@ -674,6 +692,7 @@ export default function LeadsPage() {
         role: addRole,
         buyerProfile: (addRole === 'buyer' || addRole === 'both') ? addBuyer : undefined,
         sellerProfile: (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+        newsletterOptIn: addNewsletter,
       });
       setShowAddForm(false);
       resetAddForm();
@@ -928,6 +947,17 @@ export default function LeadsPage() {
             buyer={addBuyer}   setBuyer={setAddBuyer}
             seller={addSeller} setSeller={setAddSeller}
           />
+
+          {/* Newsletter opt-in */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 4 }}>
+            <input
+              type="checkbox"
+              checked={addNewsletter}
+              onChange={(e) => setAddNewsletter(e.target.checked)}
+              style={{ accentColor: 'var(--r-gold)', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            Add to newsletter list
+          </label>
 
           {addError && (
             <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>

@@ -109,6 +109,7 @@ export interface Contact {
   tags:               string[];
   buyerProfile?:      BuyerProfile;
   sellerProfile?:     SellerProfile;
+  newsletterOptIn:    boolean;
   lastActivityAt:     string;
   createdAt:          string;
   updatedAt:          string;

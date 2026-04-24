@@ -69,13 +69,14 @@ export function useLeads() {
   // ── Create ────────────────────────────────────────────────────────────────────
 
   async function createLead(fields: {
-    fullName:       string;
-    email?:         string;
-    phone?:         string;
-    source?:        string;
-    role?:          ContactRole;
-    buyerProfile?:  BuyerProfile;
-    sellerProfile?: SellerProfile;
+    fullName:        string;
+    email?:          string;
+    phone?:          string;
+    source?:         string;
+    role?:           ContactRole;
+    buyerProfile?:   BuyerProfile;
+    sellerProfile?:  SellerProfile;
+    newsletterOptIn?: boolean;
   }) {
     const res = await fetch('/api/leads', {
       method:  'POST',
@@ -139,20 +140,22 @@ export function useLeads() {
   // ── Edit core fields ──────────────────────────────────────────────────────────
 
   async function updateLead(leadId: string, fields: {
-    fullName: string;
-    email?:   string;
-    phone?:   string;
-    source?:  string;
-    role?:    ContactRole;
+    fullName:         string;
+    email?:           string;
+    phone?:           string;
+    source?:          string;
+    role?:            ContactRole;
+    newsletterOptIn?: boolean;
   }) {
     await patchApi({
-      action:   'updateLead',
+      action:          'updateLead',
       leadId,
-      fullName: fields.fullName,
-      email:    fields.email  ?? null,
-      phone:    fields.phone  ?? null,
-      source:   fields.source ?? null,
-      role:     fields.role,
+      fullName:        fields.fullName,
+      email:           fields.email  ?? null,
+      phone:           fields.phone  ?? null,
+      source:          fields.source ?? null,
+      role:            fields.role,
+      newsletterOptIn: fields.newsletterOptIn,
     });
   }
 

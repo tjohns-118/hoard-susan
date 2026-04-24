@@ -44,6 +44,7 @@ export async function GET() {
       contact_type,
       tags,
       is_hot,
+      newsletter_opt_in,
       buyer_profile,
       seller_profile,
       preferred_locations,
@@ -86,13 +87,14 @@ export async function POST(req: NextRequest) {
     membership?.role === 'agent' ? membership.memberId : null;
 
   const body = await req.json() as {
-    fullName:       string;
-    email?:         string;
-    phone?:         string;
-    source?:        string;
-    role?:          ContactRole;
-    buyerProfile?:  BuyerProfile;
-    sellerProfile?: SellerProfile;
+    fullName:          string;
+    email?:            string;
+    phone?:            string;
+    source?:           string;
+    role?:             ContactRole;
+    buyerProfile?:     BuyerProfile;
+    sellerProfile?:    SellerProfile;
+    newsletterOptIn?:  boolean;
   };
 
   if (!body.fullName?.trim()) {
@@ -112,6 +114,7 @@ export async function POST(req: NextRequest) {
       contact_type:      body.role ?? null,
       tags:              [],
       is_hot:            false,
+      newsletter_opt_in: body.newsletterOptIn ?? false,
       buyer_profile:     body.buyerProfile  ?? null,
       seller_profile:    body.sellerProfile ?? null,
       assigned_member_id: creatorMemberId,
@@ -143,10 +146,11 @@ export async function PATCH(req: NextRequest) {
     status?:   string;
     note?:     string;
     // updateLead fields
-    fullName?: string;
-    email?:    string | null;
-    phone?:    string | null;
-    source?:   string | null;
+    fullName?:         string;
+    email?:            string | null;
+    phone?:            string | null;
+    source?:           string | null;
+    newsletterOptIn?:  boolean;
   };
 
   const { action, leadId } = body;
@@ -290,17 +294,22 @@ export async function PATCH(req: NextRequest) {
     if (!body.fullName?.trim())
       return NextResponse.json({ error: 'fullName required' }, { status: 400 });
 
+    const updatePayload: Record<string, unknown> = {
+      full_name:        body.fullName.trim(),
+      email:            body.email?.trim()  || null,
+      phone:            body.phone?.trim()  || null,
+      source:           body.source?.trim() || null,
+      contact_type:     body.role ?? null,
+      updated_at:       new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+    };
+    if (body.newsletterOptIn !== undefined) {
+      updatePayload.newsletter_opt_in = body.newsletterOptIn;
+    }
+
     const { error } = await supabaseAdmin
       .from('contacts')
-      .update({
-        full_name:        body.fullName.trim(),
-        email:            body.email?.trim()  || null,
-        phone:            body.phone?.trim()  || null,
-        source:           body.source?.trim() || null,
-        contact_type:     body.role ?? null,
-        updated_at:       new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', leadId)
       .eq('stage', 'lead');
 
@@ -418,6 +427,7 @@ function mapLead(row: any): Lead {
     tags:             Array.isArray(row.tags) ? row.tags : [],
     buyerProfile,
     sellerProfile,
+    newsletterOptIn:  row.newsletter_opt_in ?? false,
     createdAt:        row.created_at ?? new Date().toISOString(),
     updatedAt:        row.updated_at ?? new Date().toISOString(),
   };

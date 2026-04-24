@@ -85,13 +85,14 @@ export function useContacts() {
   // ── Create ────────────────────────────────────────────────────────────────────
 
   async function createContact(fields: {
-    fullName:       string;
-    email?:         string;
-    phone?:         string;
-    source?:        string;
-    role?:          ContactRole;
-    buyerProfile?:  BuyerProfile;
-    sellerProfile?: SellerProfile;
+    fullName:         string;
+    email?:           string;
+    phone?:           string;
+    source?:          string;
+    role?:            ContactRole;
+    buyerProfile?:    BuyerProfile;
+    sellerProfile?:   SellerProfile;
+    newsletterOptIn?: boolean;
   }) {
     const res = await fetch('/api/contacts', {
       method:  'POST',
@@ -126,16 +127,17 @@ export function useContacts() {
 
   async function updateContact(
     contactId: string,
-    fields: Pick<Contact, 'fullName' | 'role'> & { email?: string; phone?: string; source?: string },
+    fields: Pick<Contact, 'fullName' | 'role'> & { email?: string; phone?: string; source?: string; newsletterOptIn?: boolean },
   ) {
     await patchApi({
-      action:    'updateContact',
+      action:          'updateContact',
       contactId,
-      fullName:  fields.fullName,
-      email:     fields.email  ?? null,
-      phone:     fields.phone  ?? null,
-      source:    fields.source ?? null,
-      role:      fields.role,
+      fullName:        fields.fullName,
+      email:           fields.email  ?? null,
+      phone:           fields.phone  ?? null,
+      source:          fields.source ?? null,
+      role:            fields.role,
+      newsletterOptIn: fields.newsletterOptIn,
     });
   }
 

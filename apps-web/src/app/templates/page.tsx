@@ -7,6 +7,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useTemplates } from '@/hooks/useTemplates';
+import { useAppStore } from '@/app/store/useAppStore';
 import type { TemplateCategory } from '@/data/mockDb';
 
 // ── Category metadata ─────────────────────────────────────────────
@@ -112,6 +113,11 @@ const EMPTY_FORM = { name: '', category: 'buyer' as TemplateCategory, body: '', 
 
 export default function TemplatesPage() {
   const { templates, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate } = useTemplates();
+  const contacts = useAppStore((s) => s.contacts);
+  const leads    = useAppStore((s) => s.leads);
+
+  // ── Top-level tab ─────────────────────────────────────────────────
+  const [topTab, setTopTab] = useState<'templates' | 'newsletter'>('templates');
 
   // ── UI state ─────────────────────────────────────────────────────
   const [selectedId,  setSelectedId]  = useState<string | null>(templates[0]?.id ?? null);
@@ -253,6 +259,30 @@ export default function TemplatesPage() {
           </button>
         </div>
       </div>
+
+      {/* Top tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {(['templates', 'newsletter'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setTopTab(tab)}
+            className="r-tab"
+            style={{
+              padding: '8px 18px', borderRadius: 9, fontSize: 12, fontWeight: topTab === tab ? 700 : 500,
+              border: '1px solid var(--r-border)',
+              background: topTab === tab ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.04)',
+              color: topTab === tab ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
+              cursor: 'pointer',
+            }}
+          >
+            {tab === 'templates' ? 'Templates' : 'Newsletter List'}
+          </button>
+        ))}
+      </div>
+
+      {topTab === 'newsletter' ? (
+        <NewsletterListSection contacts={contacts} leads={leads} />
+      ) : (<>
 
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 18 }}>
@@ -417,7 +447,119 @@ export default function TemplatesPage() {
           )}
         </div>
       </div>
+      </>)}
     </AppShell>
+  );
+}
+
+// ── Newsletter List section ────────────────────────────────────────
+
+function NewsletterListSection({
+  contacts,
+  leads,
+}: {
+  contacts: { id: string; fullName: string; email?: string; newsletterOptIn: boolean }[];
+  leads:    { id: string; fullName: string; email?: string; newsletterOptIn: boolean }[];
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const subscribers = useMemo(() => {
+    const seen = new Set<string>();
+    const all: { name: string; email: string; source: 'Contact' | 'Lead' }[] = [];
+
+    for (const c of contacts) {
+      if (c.newsletterOptIn && c.email) {
+        const key = c.email.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); all.push({ name: c.fullName, email: c.email, source: 'Contact' }); }
+      }
+    }
+    for (const l of leads) {
+      if (l.newsletterOptIn && l.email) {
+        const key = l.email.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); all.push({ name: l.fullName, email: l.email, source: 'Lead' }); }
+      }
+    }
+    return all.sort((a, b) => a.name.localeCompare(b.name));
+  }, [contacts, leads]);
+
+  function copyAll() {
+    const list = subscribers.map((s) => `${s.name} <${s.email}>`).join(', ');
+    navigator.clipboard.writeText(list).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  }
+
+  return (
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--r-font-serif)', color: 'var(--r-text)' }}>
+            Newsletter List
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--r-text-3)', marginTop: 3 }}>
+            {subscribers.length === 0
+              ? 'No subscribers yet — add contacts and leads with newsletter opt-in.'
+              : `${subscribers.length} subscriber${subscribers.length !== 1 ? 's' : ''} — unique emails, deduplicated across contacts and leads.`}
+          </div>
+        </div>
+        {subscribers.length > 0 && (
+          <button
+            onClick={copyAll}
+            style={{
+              padding: '8px 18px', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: copied ? '1px solid var(--r-success-border)' : '1px solid var(--r-border)',
+              background: copied ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+              color: copied ? 'var(--r-success)' : 'var(--r-gold-bright)',
+            }}
+          >
+            {copied ? '✓ Copied to clipboard' : '⎘ Copy all (BCC-ready)'}
+          </button>
+        )}
+      </div>
+
+      {/* List */}
+      {subscribers.length === 0 ? (
+        <div style={{
+          borderRadius: 16, border: '1px dashed var(--r-border)',
+          padding: '48px 24px', textAlign: 'center', color: 'var(--r-text-3)',
+        }}>
+          <div style={{ fontSize: 24, marginBottom: 10 }}>✉</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No newsletter subscribers yet</div>
+          <div style={{ fontSize: 12 }}>
+            Check the "Add to newsletter list" box when creating or editing a contact or lead.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {subscribers.map((s) => (
+            <div
+              key={s.email}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '10px 14px', borderRadius: 11,
+                background: 'var(--r-grad-card)', border: '1px solid var(--r-border)',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)' }}>{s.name}</span>
+                <span style={{ fontSize: 12, color: 'var(--r-text-3)' }}>{s.email}</span>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+                color: s.source === 'Contact' ? 'var(--r-success)' : 'var(--r-gold)',
+                background: s.source === 'Contact' ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+                border: `1px solid ${s.source === 'Contact' ? 'var(--r-success-border)' : 'var(--r-border)'}`,
+                borderRadius: 6, padding: '2px 8px',
+              }}>
+                {s.source}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

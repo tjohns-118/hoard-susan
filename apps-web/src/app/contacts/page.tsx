@@ -251,7 +251,7 @@ function DetailPanel({
   onPushToOpportunities: (id: string) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
-  onUpdateContact: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole }) => Promise<void>;
+  onUpdateContact: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean }) => Promise<void>;
   onArchiveContact: (id: string) => Promise<void>;
   onUnarchiveContact: (id: string) => Promise<void>;
   onDeleteContact: (id: string) => Promise<void>;
@@ -259,13 +259,14 @@ function DetailPanel({
 }) {
   const [noteText, setNoteText] = useState('');
   const [editMode, setEditMode] = useState(false);
-  const [editName,   setEditName]   = useState(contact.fullName);
-  const [editEmail,  setEditEmail]  = useState(contact.email  ?? '');
-  const [editPhone,  setEditPhone]  = useState(contact.phone  ?? '');
-  const [editSource, setEditSource] = useState(contact.source ?? '');
-  const [editRole,   setEditRole]   = useState<ContactRole>(contact.role ?? 'buyer');
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError,  setEditError]  = useState('');
+  const [editName,       setEditName]       = useState(contact.fullName);
+  const [editEmail,      setEditEmail]      = useState(contact.email  ?? '');
+  const [editPhone,      setEditPhone]      = useState(contact.phone  ?? '');
+  const [editSource,     setEditSource]     = useState(contact.source ?? '');
+  const [editRole,       setEditRole]       = useState<ContactRole>(contact.role ?? 'buyer');
+  const [editNewsletter, setEditNewsletter] = useState(contact.newsletterOptIn);
+  const [editSaving,     setEditSaving]     = useState(false);
+  const [editError,      setEditError]      = useState('');
 
   function openEdit() {
     setEditName(contact.fullName);
@@ -273,6 +274,7 @@ function DetailPanel({
     setEditPhone(contact.phone  ?? '');
     setEditSource(contact.source ?? '');
     setEditRole(contact.role ?? 'buyer');
+    setEditNewsletter(contact.newsletterOptIn);
     setEditError('');
     setEditMode(true);
   }
@@ -283,11 +285,12 @@ function DetailPanel({
     setEditError('');
     try {
       await onUpdateContact(contact.id, {
-        fullName: editName,
-        email:    editEmail  || undefined,
-        phone:    editPhone  || undefined,
-        source:   editSource || undefined,
-        role:     editRole,
+        fullName:        editName,
+        email:           editEmail  || undefined,
+        phone:           editPhone  || undefined,
+        source:          editSource || undefined,
+        role:            editRole,
+        newsletterOptIn: editNewsletter,
       });
       setEditMode(false);
     } catch (e: any) {
@@ -443,6 +446,15 @@ function DetailPanel({
               </select>
             </div>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={editNewsletter}
+              onChange={(e) => setEditNewsletter(e.target.checked)}
+              style={{ accentColor: 'var(--r-gold)', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            Newsletter list
+          </label>
           {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</ActionBtn>
@@ -485,6 +497,19 @@ function DetailPanel({
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Newsletter</div>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: 12, fontWeight: 600,
+              color:      contact.newsletterOptIn ? 'var(--r-success)'        : 'var(--r-text-3)',
+              background: contact.newsletterOptIn ? 'var(--r-success-bg)'     : 'rgba(200,164,92,0.04)',
+              border:     `1px solid ${contact.newsletterOptIn ? 'var(--r-success-border)' : 'var(--r-border)'}`,
+              borderRadius: 6, padding: '2px 8px',
+            }}>
+              {contact.newsletterOptIn ? '✓ Subscribed' : 'Not subscribed'}
+            </span>
           </div>
         </div>
       </Panel>
@@ -733,6 +758,7 @@ export default function ContactsPage() {
   const [addRole,      setAddRole]      = useState<ContactRole>('buyer');
   const [addBuyer,     setAddBuyer]     = useState<BuyerProfile>(EMPTY_BUYER);
   const [addSeller,    setAddSeller]    = useState<SellerProfile>(EMPTY_SELLER);
+  const [addNewsletter, setAddNewsletter] = useState(false);
   const [addError,     setAddError]     = useState('');
   const [addSaving,    setAddSaving]    = useState(false);
 
@@ -740,7 +766,7 @@ export default function ContactsPage() {
     setShowAddForm(false);
     setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
     setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
-    setAddError('');
+    setAddNewsletter(false); setAddError('');
   }
 
   async function handleAddContact() {
@@ -756,6 +782,7 @@ export default function ContactsPage() {
         role:           addRole,
         buyerProfile:   (addRole === 'buyer'  || addRole === 'both') ? addBuyer  : undefined,
         sellerProfile:  (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+        newsletterOptIn: addNewsletter,
       });
       resetAddForm();
     } catch (e: any) {
@@ -932,6 +959,17 @@ export default function ContactsPage() {
             buyer={addBuyer}   setBuyer={setAddBuyer}
             seller={addSeller} setSeller={setAddSeller}
           />
+
+          {/* Newsletter opt-in */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 6, marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={addNewsletter}
+              onChange={(e) => setAddNewsletter(e.target.checked)}
+              style={{ accentColor: 'var(--r-gold)', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            Add to newsletter list
+          </label>
 
           {addError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
