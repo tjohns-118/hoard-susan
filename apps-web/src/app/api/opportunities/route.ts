@@ -4,6 +4,7 @@
  * Confirmed V1 DB schema (post all migrations as of 2026-04-23):
  *   id                  uuid            PK
  *   brokerage_id        uuid            NOT NULL
+ *   title               text            NOT NULL
  *   property_address    text            nullable
  *   property_id         uuid            nullable
  *   assigned_member_id  uuid            nullable  (renamed from assigned_agent_id)
@@ -52,6 +53,7 @@ import {
 
 interface OpportunityInsert {
   brokerage_id:        string;
+  title:               string;
   property_address:    string | null;
   property_id:         string | null;
   assigned_member_id:  string | null;
@@ -174,10 +176,19 @@ export async function POST(req: NextRequest) {
       ? body.assignedAgentId
       : null;
 
-  console.log(`[opportunities POST] creating deal | stage=${stage} pipeline=${pipelineType}`);
+  // Generate title — preference order: contactName + pipeline, property address, generic fallback.
+  const pipelineLabel = pipelineType === 'seller' ? 'Seller' : 'Buyer';
+  const title = body.contactName?.trim()
+    ? `${body.contactName.trim()} — ${pipelineLabel}`
+    : body.propertyAddress?.trim()
+      ? `${body.propertyAddress.trim()} — ${pipelineLabel}`
+      : `New ${pipelineLabel} Opportunity`;
+
+  console.log(`[opportunities POST] creating deal | title="${title}" stage=${stage} pipeline=${pipelineType}`);
 
   const insertRow: OpportunityInsert = {
     brokerage_id:        BROKERAGE_ID,
+    title,
     property_address:    body.propertyAddress  ?? null,
     property_id:         body.propertyId        ?? null,
     assigned_member_id:  body.assignedAgentId   ?? null,
@@ -523,7 +534,7 @@ function mapOpportunity(row: any): Opportunity {
 
   return {
     id:                String(row.id ?? ''),
-    contactName:       String(row.contact_name ?? '').trim() || 'Unnamed',
+    contactName:       String(row.title ?? row.contact_name ?? '').trim() || 'Unnamed',
     propertyAddress:   row.property_address   ?? undefined,
     propertyId:        row.property_id         ?? undefined,
     assignedAgentId:   row.assigned_member_id   ?? undefined,
