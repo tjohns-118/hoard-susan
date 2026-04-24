@@ -30,7 +30,6 @@ import {
   LEGACY_STAGE_MAP,
   getStageDefinition,
   inferPipelineType,
-  initDocuments,
   BUYER_STAGES,
   SELLER_STAGES,
 } from '@/features/pipeline/definitions';
@@ -145,9 +144,6 @@ export async function POST(req: NextRequest) {
       ? body.assignedAgentId
       : null;
 
-  const documents = initDocuments(pipelineType);
-  const stageHistory: StageHistoryEntry[] = [{ fromStage: '', toStage: stage, changedAt: now }];
-
   console.log(`[opportunities POST] creating deal | stage=${stage} pipeline=${pipelineType}`);
 
   const { data, error } = await supabaseAdmin
@@ -161,8 +157,6 @@ export async function POST(req: NextRequest) {
       stage,
       stage_updated_at:    now,
       stage_owner:         stageOwnerUUID,
-      stage_history:       stageHistory,
-      documents,
       value:               body.value             ?? 0,
       probability:         body.probability        ?? 15,
       expected_close_date: closeDate,
@@ -285,14 +279,6 @@ export async function PATCH(req: NextRequest) {
         ? cur.assigned_member_id as string
         : null;
 
-    // Build history entry
-    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
-    const historyEntry: StageHistoryEntry = {
-      fromStage: String(cur.stage ?? ''),
-      toStage:   targetStage,
-      changedAt: now,
-    };
-
     // Probability adjustments for terminal stages
     const extra: Record<string, unknown> = {};
     if (targetStage === 'closed') extra.probability = 100;
@@ -306,7 +292,6 @@ export async function PATCH(req: NextRequest) {
         pipeline_type:    pipelineType,   // confirm/persist resolved value
         stage_updated_at: now,
         stage_owner:      stageOwnerUUID,
-        stage_history:    [...existingHistory, historyEntry],
         updated_at:       now,
         ...extra,
       })
@@ -350,13 +335,6 @@ export async function PATCH(req: NextRequest) {
 
     console.log(`[markLost] oppId=${oppId} | from=${cur.stage} → lost | pipeline=${pipelineType}`);
 
-    const existingHistory: StageHistoryEntry[] = Array.isArray(cur.stage_history) ? cur.stage_history : [];
-    const historyEntry: StageHistoryEntry = {
-      fromStage: String(cur.stage ?? ''),
-      toStage:   'lost',
-      changedAt: now,
-    };
-
     const { data: updated, error: updateErr } = await supabaseAdmin
       .from('opportunities')
       .update({
@@ -364,7 +342,6 @@ export async function PATCH(req: NextRequest) {
         pipeline_type:    pipelineType,
         stage_updated_at: now,
         stage_owner:      null,
-        stage_history:    [...existingHistory, historyEntry],
         probability:      0,
         updated_at:       now,
       })
@@ -429,30 +406,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── updateDocument ────────────────────────────────────────────────────────────
+  // documents column was removed from the live DB — no-op until re-added via migration.
 
   if (action === 'updateDocument') {
-    if (!body.docKey || !body.docStatus)
-      return NextResponse.json({ error: 'docKey and docStatus required' }, { status: 400 });
-    const { data: cur } = await supabaseAdmin
-      .from('opportunities')
-      .select('documents')
-      .eq('id', oppId)
-      .maybeSingle();
-    const docs: PipelineDocument[] = Array.isArray(cur?.documents) ? cur.documents : [];
-    const updatedDocs = docs.map((d) => {
-      if (d.key !== body.docKey) return d;
-      return {
-        ...d,
-        status:   body.docStatus!,
-        sentAt:   body.docStatus === 'sent'   ? now : d.sentAt,
-        signedAt: body.docStatus === 'signed' ? now : d.signedAt,
-      };
-    });
-    const { error } = await supabaseAdmin
-      .from('opportunities')
-      .update({ documents: updatedDocs, updated_at: now })
-      .eq('id', oppId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 
