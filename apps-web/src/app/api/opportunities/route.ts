@@ -1,22 +1,34 @@
 /**
  * /api/opportunities — server-side CRUD for the real-estate transaction pipeline.
  *
- * Confirmed DB schema (post-migration):
- *   stage             text            — validated against VALID_STAGES
- *   pipeline_type     text            — 'buyer' | 'seller', defaults to 'buyer'
- *   stage_history     jsonb           — append-only array of { fromStage, toStage, changedAt }
- *   stage_owner       uuid, nullable  — UUID of assigned agent when stage owner is 'agent', else null
- *   stage_updated_at  timestamptz     — set on every stage transition
+ * Confirmed V1 DB schema (post all migrations as of 2026-04-23):
+ *   id                  uuid            PK
+ *   brokerage_id        uuid            NOT NULL
+ *   property_address    text            nullable
+ *   property_id         uuid            nullable
+ *   assigned_member_id  uuid            nullable  (renamed from assigned_agent_id)
+ *   pipeline_type       text            'buyer'|'seller', default 'buyer'
+ *   stage               text            validated against VALID_STAGES
+ *   stage_updated_at    timestamptz     set on every stage transition
+ *   stage_owner         uuid            nullable — UUID of the assigned member when stage owner is 'agent'
+ *   value               numeric         default 0
+ *   probability         integer         default 15
+ *   expected_close_date date            nullable
+ *   priority            text            'high'|'medium'|'low', default 'medium'
+ *   next_step           text            nullable
+ *   notes               jsonb           array of strings, default '[]'
+ *   created_at          timestamptz     auto
+ *   updated_at          timestamptz     auto
+ *
+ * REMOVED columns (do not reference in any DB write):
+ *   contact_name        — removed via un-tracked migration
+ *   assigned_agent_id   — renamed to assigned_member_id
+ *   documents           — removed via un-tracked migration
+ *   stage_history       — removed via un-tracked migration
  *
  * GET   — fetch all opportunities for the active brokerage
  * POST  — create a new deal (buyer or seller pipeline)
- * PATCH — stage transitions, agent assignment, note addition, next-step update, document status
- *
- * Stage transitions (action: 'moveStage'):
- *   1. Validate target stage exists in this deal's specific pipeline type.
- *   2. Single atomic update: stage, stage_updated_at, stage_owner, stage_history, updated_at.
- *   3. Return updated opportunity row.
- *   4. Fire 'task' triggers server-side (non-fatal).
+ * PATCH — stage transitions, agent assignment, note addition, next-step update
  *
  * Uses supabaseAdmin (service role) to bypass RLS.
  */
@@ -33,6 +45,27 @@ import {
   BUYER_STAGES,
   SELLER_STAGES,
 } from '@/features/pipeline/definitions';
+
+// ── V1 insert whitelist ───────────────────────────────────────────────────────
+// Typed exactly against the confirmed live schema.  TypeScript will error at
+// compile time if any removed or non-existent column is referenced.
+
+interface OpportunityInsert {
+  brokerage_id:        string;
+  property_address:    string | null;
+  property_id:         string | null;
+  assigned_member_id:  string | null;
+  pipeline_type:       string;
+  stage:               string;
+  stage_updated_at:    string;
+  stage_owner:         string | null;
+  value:               number;
+  probability:         number;
+  expected_close_date: string;
+  priority:            string;
+  next_step:           string | null;
+  notes:               string[];
+}
 
 // ── Valid stage set ───────────────────────────────────────────────────────────
 // Union of all buyer + seller stage values.  Used for first-pass validation
@@ -86,7 +119,7 @@ export async function POST(req: NextRequest) {
     );
 
   const body = await req.json() as {
-    contactName:         string;
+    contactName?:        string;
     propertyAddress?:    string;
     propertyId?:         string;
     assignedAgentId?:    string;
@@ -99,9 +132,6 @@ export async function POST(req: NextRequest) {
     nextStep?:           string;
     notes?:              string[];
   };
-
-  if (!body.contactName?.trim())
-    return NextResponse.json({ error: 'contactName required' }, { status: 400 });
 
   // Apply legacy mapping before any validation so callers using old stage names still work.
   let stage = body.stage ?? 'lead_received';
@@ -146,24 +176,26 @@ export async function POST(req: NextRequest) {
 
   console.log(`[opportunities POST] creating deal | stage=${stage} pipeline=${pipelineType}`);
 
+  const insertRow: OpportunityInsert = {
+    brokerage_id:        BROKERAGE_ID,
+    property_address:    body.propertyAddress  ?? null,
+    property_id:         body.propertyId        ?? null,
+    assigned_member_id:  body.assignedAgentId   ?? null,
+    pipeline_type:       pipelineType,
+    stage,
+    stage_updated_at:    now,
+    stage_owner:         stageOwnerUUID,
+    value:               body.value             ?? 0,
+    probability:         body.probability        ?? 15,
+    expected_close_date: closeDate,
+    priority:            body.priority           ?? 'medium',
+    next_step:           body.nextStep           ?? null,
+    notes:               body.notes              ?? [],
+  };
+
   const { data, error } = await supabaseAdmin
     .from('opportunities')
-    .insert({
-      brokerage_id:        BROKERAGE_ID,
-      property_address:    body.propertyAddress  ?? null,
-      property_id:         body.propertyId        ?? null,
-      assigned_member_id:  body.assignedAgentId   ?? null,
-      pipeline_type:       pipelineType,
-      stage,
-      stage_updated_at:    now,
-      stage_owner:         stageOwnerUUID,
-      value:               body.value             ?? 0,
-      probability:         body.probability        ?? 15,
-      expected_close_date: closeDate,
-      priority:            body.priority           ?? 'medium',
-      next_step:           body.nextStep           ?? null,
-      notes:               body.notes              ?? [],
-    })
+    .insert(insertRow)
     .select()
     .single();
 
@@ -382,7 +414,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'noteBody required' }, { status: 400 });
     const { data: cur } = await supabaseAdmin
       .from('opportunities')
-      .select('notes')
+      .select('*')
       .eq('id', oppId)
       .maybeSingle();
     const existing = Array.isArray(cur?.notes) ? (cur.notes as string[]) : [];
