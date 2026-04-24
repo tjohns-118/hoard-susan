@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       contact_name:        body.contactName.trim(),
       property_address:    body.propertyAddress  ?? null,
       property_id:         body.propertyId        ?? null,
-      assigned_agent_id:   body.assignedAgentId   ?? null,
+      assigned_member_id:  body.assignedAgentId   ?? null,
       pipeline_type:       pipelineType,
       stage,
       stage_updated_at:    now,
@@ -280,10 +280,10 @@ export async function PATCH(req: NextRequest) {
     const targetDef = getStageDefinition(targetStage, pipelineType);
     const stageOwnerRole = targetDef?.owner ?? 'agent';
 
-    // stage_owner is uuid — write assigned_agent_id UUID when role is 'agent', else null
+    // stage_owner is uuid — write assigned_member_id UUID when role is 'agent', else null
     const stageOwnerUUID: string | null =
-      stageOwnerRole === 'agent' && isUUID(cur.assigned_agent_id)
-        ? cur.assigned_agent_id as string
+      stageOwnerRole === 'agent' && isUUID(cur.assigned_member_id)
+        ? cur.assigned_member_id as string
         : null;
 
     // Build history entry
@@ -390,7 +390,7 @@ export async function PATCH(req: NextRequest) {
   if (action === 'assignAgent') {
     const { error } = await supabaseAdmin
       .from('opportunities')
-      .update({ assigned_agent_id: body.agentId ?? null, updated_at: now })
+      .update({ assigned_member_id: body.agentId ?? null, updated_at: now })
       .eq('id', oppId);
     if (error) {
       console.error('[assignAgent] error | oppId:', oppId, '|', error.message);
@@ -539,7 +539,7 @@ function mapOpportunity(row: any): Opportunity {
     contactName:       String(row.contact_name ?? '').trim() || 'Unnamed',
     propertyAddress:   row.property_address   ?? undefined,
     propertyId:        row.property_id         ?? undefined,
-    assignedAgentId:   row.assigned_agent_id   ?? undefined,
+    assignedAgentId:   row.assigned_member_id   ?? undefined,
     pipelineType,
     stage:             stage as PipelineStage,
     stageUpdatedAt:    row.stage_updated_at    ?? undefined,
