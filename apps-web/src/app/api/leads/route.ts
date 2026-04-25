@@ -45,6 +45,7 @@ export async function GET() {
       tags,
       is_hot,
       newsletter_opt_in,
+      newsletter_tags,
       buyer_profile,
       seller_profile,
       preferred_locations,
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
     buyerProfile?:     BuyerProfile;
     sellerProfile?:    SellerProfile;
     newsletterOptIn?:  boolean;
+    newsletterTags?:   string[];
   };
 
   if (!body.fullName?.trim()) {
@@ -115,6 +117,7 @@ export async function POST(req: NextRequest) {
       tags:              [],
       is_hot:            false,
       newsletter_opt_in: body.newsletterOptIn ?? false,
+      newsletter_tags:   body.newsletterTags  ?? [],
       buyer_profile:     body.buyerProfile  ?? null,
       seller_profile:    body.sellerProfile ?? null,
       assigned_member_id: creatorMemberId,
@@ -151,6 +154,7 @@ export async function PATCH(req: NextRequest) {
     phone?:            string | null;
     source?:           string | null;
     newsletterOptIn?:  boolean;
+    newsletterTags?:   string[];
   };
 
   const { action, leadId } = body;
@@ -306,6 +310,9 @@ export async function PATCH(req: NextRequest) {
     if (body.newsletterOptIn !== undefined) {
       updatePayload.newsletter_opt_in = body.newsletterOptIn;
     }
+    if (body.newsletterTags !== undefined) {
+      updatePayload.newsletter_tags = body.newsletterTags;
+    }
 
     const { error } = await supabaseAdmin
       .from('contacts')
@@ -428,6 +435,7 @@ function mapLead(row: any): Lead {
     buyerProfile,
     sellerProfile,
     newsletterOptIn:  row.newsletter_opt_in ?? false,
+    newsletterTags:   Array.isArray(row.newsletter_tags) ? row.newsletter_tags : [],
     createdAt:        row.created_at ?? new Date().toISOString(),
     updatedAt:        row.updated_at ?? new Date().toISOString(),
   };

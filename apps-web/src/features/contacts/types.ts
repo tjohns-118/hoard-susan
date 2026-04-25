@@ -110,6 +110,7 @@ export interface Contact {
   buyerProfile?:      BuyerProfile;
   sellerProfile?:     SellerProfile;
   newsletterOptIn:    boolean;
+  newsletterTags:     string[];
   lastActivityAt:     string;
   createdAt:          string;
   updatedAt:          string;

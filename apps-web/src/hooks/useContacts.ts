@@ -93,6 +93,7 @@ export function useContacts() {
     buyerProfile?:    BuyerProfile;
     sellerProfile?:   SellerProfile;
     newsletterOptIn?: boolean;
+    newsletterTags?:  string[];
   }) {
     const res = await fetch('/api/contacts', {
       method:  'POST',
@@ -127,7 +128,7 @@ export function useContacts() {
 
   async function updateContact(
     contactId: string,
-    fields: Pick<Contact, 'fullName' | 'role'> & { email?: string; phone?: string; source?: string; newsletterOptIn?: boolean },
+    fields: Pick<Contact, 'fullName' | 'role'> & { email?: string; phone?: string; source?: string; newsletterOptIn?: boolean; newsletterTags?: string[] },
   ) {
     await patchApi({
       action:          'updateContact',
@@ -138,6 +139,7 @@ export function useContacts() {
       source:          fields.source ?? null,
       role:            fields.role,
       newsletterOptIn: fields.newsletterOptIn,
+      newsletterTags:  fields.newsletterTags,
     });
   }
 

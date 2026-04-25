@@ -77,6 +77,7 @@ export function useLeads() {
     buyerProfile?:   BuyerProfile;
     sellerProfile?:  SellerProfile;
     newsletterOptIn?: boolean;
+    newsletterTags?:  string[];
   }) {
     const res = await fetch('/api/leads', {
       method:  'POST',
@@ -146,6 +147,7 @@ export function useLeads() {
     source?:          string;
     role?:            ContactRole;
     newsletterOptIn?: boolean;
+    newsletterTags?:  string[];
   }) {
     await patchApi({
       action:          'updateLead',
@@ -156,6 +158,7 @@ export function useLeads() {
       source:          fields.source ?? null,
       role:            fields.role,
       newsletterOptIn: fields.newsletterOptIn,
+      newsletterTags:  fields.newsletterTags,
     });
   }
 

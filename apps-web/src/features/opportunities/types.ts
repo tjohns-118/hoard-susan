@@ -43,6 +43,7 @@ export interface Lead {
   buyerProfile?:     BuyerProfile;
   sellerProfile?:    SellerProfile;
   newsletterOptIn:   boolean;
+  newsletterTags:    string[];
   createdAt:         string;
   updatedAt:         string;
 }

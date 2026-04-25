@@ -130,6 +130,78 @@ function TagChip({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Newsletter tag input ──────────────────────────────────────────────────────
+
+const NL_TAG_PRESETS = ['Buyers', 'Sellers', 'Investors', 'Luxury', 'Waterfront', 'Past Clients', 'Open House', 'General'];
+
+function NewsletterTagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [customInput, setCustomInput] = useState('');
+
+  function togglePreset(preset: string) {
+    const lower = preset.toLowerCase();
+    const already = tags.some((t) => t.toLowerCase() === lower);
+    onChange(already ? tags.filter((t) => t.toLowerCase() !== lower) : [...tags, preset]);
+  }
+
+  function addCustom() {
+    const val = customInput.trim();
+    if (!val) return;
+    const lower = val.toLowerCase();
+    if (!tags.some((t) => t.toLowerCase() === lower)) onChange([...tags, val]);
+    setCustomInput('');
+  }
+
+  function removeTag(tag: string) {
+    onChange(tags.filter((t) => t !== tag));
+  }
+
+  return (
+    <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 9, background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Groups</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7 }}>
+        {NL_TAG_PRESETS.map((preset) => {
+          const active = tags.some((t) => t.toLowerCase() === preset.toLowerCase());
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => togglePreset(preset)}
+              style={{
+                padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                background: active ? 'var(--r-gold-faint)' : 'transparent',
+                border: `1px solid ${active ? 'var(--r-border)' : 'rgba(200,164,92,0.18)'}`,
+                color: active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+              }}
+            >
+              {active ? '✓ ' : ''}{preset}
+            </button>
+          );
+        })}
+      </div>
+      {tags.filter((t) => !NL_TAG_PRESETS.some((p) => p.toLowerCase() === t.toLowerCase())).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7 }}>
+          {tags.filter((t) => !NL_TAG_PRESETS.some((p) => p.toLowerCase() === t.toLowerCase())).map((tag) => (
+            <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', color: 'var(--r-gold-bright)' }}>
+              {tag}
+              <button type="button" onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r-text-3)', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          value={customInput}
+          onChange={(e) => setCustomInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          placeholder="Custom group…"
+          style={{ flex: 1, fontSize: 11, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-bg)', color: 'var(--r-text)', outline: 'none' }}
+        />
+        <button type="button" onClick={addCustom} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', color: 'var(--r-gold)', cursor: 'pointer', fontWeight: 700 }}>Add</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Lead card ─────────────────────────────────────────────────────────────────
 
 function LeadCard({
@@ -156,7 +228,7 @@ function LeadCard({
   onUpdateStatus: (id: string, status: LeadStatus) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile  | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
-  onUpdateLead: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean }) => Promise<void>;
+  onUpdateLead: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean; newsletterTags?: string[] }) => Promise<void>;
   onDeleteLead: (id: string) => Promise<void>;
 }) {
   const isHot = lead.tags.includes('hot');
@@ -173,9 +245,10 @@ function LeadCard({
   const [editPhone,  setEditPhone]  = useState(lead.phone  ?? '');
   const [editSource, setEditSource] = useState(lead.source ?? '');
   const [editRole,   setEditRole]   = useState<ContactRole>(lead.role ?? 'buyer');
-  const [editNewsletter, setEditNewsletter] = useState(lead.newsletterOptIn);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError,  setEditError]  = useState('');
+  const [editNewsletter,     setEditNewsletter]     = useState(lead.newsletterOptIn);
+  const [editNewsletterTags, setEditNewsletterTags] = useState<string[]>(lead.newsletterTags ?? []);
+  const [editSaving,         setEditSaving]         = useState(false);
+  const [editError,          setEditError]          = useState('');
 
   function openEdit() {
     setEditName(lead.fullName);
@@ -184,6 +257,7 @@ function LeadCard({
     setEditSource(lead.source ?? '');
     setEditRole(lead.role ?? 'buyer');
     setEditNewsletter(lead.newsletterOptIn);
+    setEditNewsletterTags(lead.newsletterTags ?? []);
     setEditError('');
     setShowEdit(true);
     setShowProfile(false);
@@ -201,6 +275,7 @@ function LeadCard({
         source:          editSource || undefined,
         role:            editRole,
         newsletterOptIn: editNewsletter,
+        newsletterTags:  editNewsletter ? editNewsletterTags : [],
       });
       setShowEdit(false);
     } catch (e: any) {
@@ -568,7 +643,7 @@ function LeadCard({
                 </select>
               </div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: editNewsletter ? 6 : 8 }}>
               <input
                 type="checkbox"
                 checked={editNewsletter}
@@ -577,6 +652,9 @@ function LeadCard({
               />
               Newsletter list
             </label>
+            {editNewsletter && (
+              <NewsletterTagInput tags={editNewsletterTags} onChange={setEditNewsletterTags} />
+            )}
             {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>
@@ -669,14 +747,15 @@ export default function LeadsPage() {
   const [addRole, setAddRole] = useState<ContactRole>('buyer');
   const [addBuyer, setAddBuyer] = useState<BuyerProfile>(EMPTY_BUYER);
   const [addSeller, setAddSeller] = useState<SellerProfile>(EMPTY_SELLER);
-  const [addNewsletter, setAddNewsletter] = useState(false);
+  const [addNewsletter,     setAddNewsletter]     = useState(false);
+  const [addNewsletterTags, setAddNewsletterTags] = useState<string[]>([]);
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   function resetAddForm() {
     setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
     setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
-    setAddNewsletter(false); setAddError('');
+    setAddNewsletter(false); setAddNewsletterTags([]); setAddError('');
   }
 
   async function handleAddLead() {
@@ -685,14 +764,15 @@ export default function LeadsPage() {
     setAddError('');
     try {
       await createLead({
-        fullName: addName,
-        email: addEmail || undefined,
-        phone: addPhone || undefined,
-        source: addSource || undefined,
-        role: addRole,
-        buyerProfile: (addRole === 'buyer' || addRole === 'both') ? addBuyer : undefined,
-        sellerProfile: (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+        fullName:        addName,
+        email:           addEmail || undefined,
+        phone:           addPhone || undefined,
+        source:          addSource || undefined,
+        role:            addRole,
+        buyerProfile:    (addRole === 'buyer'  || addRole === 'both') ? addBuyer  : undefined,
+        sellerProfile:   (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
         newsletterOptIn: addNewsletter,
+        newsletterTags:  addNewsletter ? addNewsletterTags : [],
       });
       setShowAddForm(false);
       resetAddForm();
@@ -949,7 +1029,7 @@ export default function LeadsPage() {
           />
 
           {/* Newsletter opt-in */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 4, marginBottom: addNewsletter ? 6 : 0 }}>
             <input
               type="checkbox"
               checked={addNewsletter}
@@ -958,6 +1038,9 @@ export default function LeadsPage() {
             />
             Add to newsletter list
           </label>
+          {addNewsletter && (
+            <NewsletterTagInput tags={addNewsletterTags} onChange={setAddNewsletterTags} />
+          )}
 
           {addError && (
             <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>

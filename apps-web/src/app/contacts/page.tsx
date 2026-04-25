@@ -126,6 +126,78 @@ function ActionBtn({ children, onClick, tone = 'default', disabled }: { children
   );
 }
 
+// ── Newsletter tag input ──────────────────────────────────────────────────────
+
+const NL_TAG_PRESETS = ['Buyers', 'Sellers', 'Investors', 'Luxury', 'Waterfront', 'Past Clients', 'Open House', 'General'];
+
+function NewsletterTagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [customInput, setCustomInput] = useState('');
+
+  function togglePreset(preset: string) {
+    const lower = preset.toLowerCase();
+    const already = tags.some((t) => t.toLowerCase() === lower);
+    onChange(already ? tags.filter((t) => t.toLowerCase() !== lower) : [...tags, preset]);
+  }
+
+  function addCustom() {
+    const val = customInput.trim();
+    if (!val) return;
+    const lower = val.toLowerCase();
+    if (!tags.some((t) => t.toLowerCase() === lower)) onChange([...tags, val]);
+    setCustomInput('');
+  }
+
+  function removeTag(tag: string) {
+    onChange(tags.filter((t) => t !== tag));
+  }
+
+  return (
+    <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 9, background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Groups</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7 }}>
+        {NL_TAG_PRESETS.map((preset) => {
+          const active = tags.some((t) => t.toLowerCase() === preset.toLowerCase());
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => togglePreset(preset)}
+              style={{
+                padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                background: active ? 'var(--r-gold-faint)' : 'transparent',
+                border: `1px solid ${active ? 'var(--r-border)' : 'rgba(200,164,92,0.18)'}`,
+                color: active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+              }}
+            >
+              {active ? '✓ ' : ''}{preset}
+            </button>
+          );
+        })}
+      </div>
+      {tags.filter((t) => !NL_TAG_PRESETS.some((p) => p.toLowerCase() === t.toLowerCase())).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7 }}>
+          {tags.filter((t) => !NL_TAG_PRESETS.some((p) => p.toLowerCase() === t.toLowerCase())).map((tag) => (
+            <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', color: 'var(--r-gold-bright)' }}>
+              {tag}
+              <button type="button" onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r-text-3)', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          value={customInput}
+          onChange={(e) => setCustomInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          placeholder="Custom group…"
+          style={{ flex: 1, fontSize: 11, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-bg)', color: 'var(--r-text)', outline: 'none' }}
+        />
+        <button type="button" onClick={addCustom} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', color: 'var(--r-gold)', cursor: 'pointer', fontWeight: 700 }}>Add</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Contact Row ───────────────────────────────────────────────────────────────
 
 function ContactRow({
@@ -251,7 +323,7 @@ function DetailPanel({
   onPushToOpportunities: (id: string) => void;
   onUpdateBuyerProfile:  (id: string, p: BuyerProfile | null, role: ContactRole) => Promise<void>;
   onUpdateSellerProfile: (id: string, p: SellerProfile | null, role: ContactRole) => Promise<void>;
-  onUpdateContact: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean }) => Promise<void>;
+  onUpdateContact: (id: string, fields: { fullName: string; email?: string; phone?: string; source?: string; role?: ContactRole; newsletterOptIn?: boolean; newsletterTags?: string[] }) => Promise<void>;
   onArchiveContact: (id: string) => Promise<void>;
   onUnarchiveContact: (id: string) => Promise<void>;
   onDeleteContact: (id: string) => Promise<void>;
@@ -264,9 +336,10 @@ function DetailPanel({
   const [editPhone,      setEditPhone]      = useState(contact.phone  ?? '');
   const [editSource,     setEditSource]     = useState(contact.source ?? '');
   const [editRole,       setEditRole]       = useState<ContactRole>(contact.role ?? 'buyer');
-  const [editNewsletter, setEditNewsletter] = useState(contact.newsletterOptIn);
-  const [editSaving,     setEditSaving]     = useState(false);
-  const [editError,      setEditError]      = useState('');
+  const [editNewsletter,     setEditNewsletter]     = useState(contact.newsletterOptIn);
+  const [editNewsletterTags, setEditNewsletterTags] = useState<string[]>(contact.newsletterTags ?? []);
+  const [editSaving,         setEditSaving]         = useState(false);
+  const [editError,          setEditError]          = useState('');
 
   function openEdit() {
     setEditName(contact.fullName);
@@ -275,6 +348,7 @@ function DetailPanel({
     setEditSource(contact.source ?? '');
     setEditRole(contact.role ?? 'buyer');
     setEditNewsletter(contact.newsletterOptIn);
+    setEditNewsletterTags(contact.newsletterTags ?? []);
     setEditError('');
     setEditMode(true);
   }
@@ -291,6 +365,7 @@ function DetailPanel({
         source:          editSource || undefined,
         role:            editRole,
         newsletterOptIn: editNewsletter,
+        newsletterTags:  editNewsletter ? editNewsletterTags : [],
       });
       setEditMode(false);
     } catch (e: any) {
@@ -446,7 +521,7 @@ function DetailPanel({
               </select>
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginBottom: editNewsletter ? 6 : 10 }}>
             <input
               type="checkbox"
               checked={editNewsletter}
@@ -455,6 +530,9 @@ function DetailPanel({
             />
             Newsletter list
           </label>
+          {editNewsletter && (
+            <NewsletterTagInput tags={editNewsletterTags} onChange={setEditNewsletterTags} />
+          )}
           {editError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{editError}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <ActionBtn tone="primary" onClick={handleSaveEdit} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</ActionBtn>
@@ -758,7 +836,8 @@ export default function ContactsPage() {
   const [addRole,      setAddRole]      = useState<ContactRole>('buyer');
   const [addBuyer,     setAddBuyer]     = useState<BuyerProfile>(EMPTY_BUYER);
   const [addSeller,    setAddSeller]    = useState<SellerProfile>(EMPTY_SELLER);
-  const [addNewsletter, setAddNewsletter] = useState(false);
+  const [addNewsletter,     setAddNewsletter]     = useState(false);
+  const [addNewsletterTags, setAddNewsletterTags] = useState<string[]>([]);
   const [addError,     setAddError]     = useState('');
   const [addSaving,    setAddSaving]    = useState(false);
 
@@ -766,7 +845,7 @@ export default function ContactsPage() {
     setShowAddForm(false);
     setAddName(''); setAddEmail(''); setAddPhone(''); setAddSource('');
     setAddRole('buyer'); setAddBuyer(EMPTY_BUYER); setAddSeller(EMPTY_SELLER);
-    setAddNewsletter(false); setAddError('');
+    setAddNewsletter(false); setAddNewsletterTags([]); setAddError('');
   }
 
   async function handleAddContact() {
@@ -775,14 +854,15 @@ export default function ContactsPage() {
     setAddError('');
     try {
       await createContact({
-        fullName:       addName,
-        email:          addEmail  || undefined,
-        phone:          addPhone  || undefined,
-        source:         addSource || undefined,
-        role:           addRole,
-        buyerProfile:   (addRole === 'buyer'  || addRole === 'both') ? addBuyer  : undefined,
-        sellerProfile:  (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
+        fullName:        addName,
+        email:           addEmail  || undefined,
+        phone:           addPhone  || undefined,
+        source:          addSource || undefined,
+        role:            addRole,
+        buyerProfile:    (addRole === 'buyer'  || addRole === 'both') ? addBuyer  : undefined,
+        sellerProfile:   (addRole === 'seller' || addRole === 'both') ? addSeller : undefined,
         newsletterOptIn: addNewsletter,
+        newsletterTags:  addNewsletter ? addNewsletterTags : [],
       });
       resetAddForm();
     } catch (e: any) {
@@ -961,7 +1041,7 @@ export default function ContactsPage() {
           />
 
           {/* Newsletter opt-in */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 6, marginBottom: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--r-text-2)', userSelect: 'none', marginTop: 6, marginBottom: addNewsletter ? 6 : 10 }}>
             <input
               type="checkbox"
               checked={addNewsletter}
@@ -970,6 +1050,9 @@ export default function ContactsPage() {
             />
             Add to newsletter list
           </label>
+          {addNewsletter && (
+            <NewsletterTagInput tags={addNewsletterTags} onChange={setAddNewsletterTags} />
+          )}
 
           {addError && <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{addError}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
