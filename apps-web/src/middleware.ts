@@ -24,11 +24,12 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  // Let API routes, Next internals, and login page through without redirect.
+  // Let API routes, Next internals, login, and claim-account through without redirect.
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/login')
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/claim-account')
   ) {
     return res;
   }

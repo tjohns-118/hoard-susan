@@ -19,8 +19,11 @@ export default function AddAgentPage() {
   const [phone, setPhone] = useState('');
   const [role,  setRole]  = useState<AgentRole>('agent');
 
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [addedName,   setAddedName]   = useState('');
+  const [addedEmail,  setAddedEmail]  = useState('');
+  const [copied,      setCopied]      = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,7 +35,8 @@ export default function AddAgentPage() {
     setError(null);
     try {
       await createAgent({ name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role });
-      router.push('/settings');
+      setAddedName(name.trim());
+      setAddedEmail(email.trim().toLowerCase());
     } catch (err: any) {
       setError(err?.message ?? 'Failed to add agent.');
     } finally {
@@ -84,122 +88,191 @@ export default function AddAgentPage() {
           Add Agent
         </h1>
         <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--r-text-3)' }}>
-          Invite a new agent to your brokerage workspace.
+          Register a new member in your brokerage.
         </p>
       </div>
 
       <div style={{ maxWidth: 520 }}>
-        <SectionCard title="Agent Details" description="Basic information for the new team member">
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {addedEmail ? (
+          /* ── Success state ────────────────────────────────── */
+          <SectionCard title="Agent added" description={`${addedName} is now registered in your brokerage.`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-            {/* Name */}
-            <div>
-              <label style={labelStyle}>Full Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. James Holloway"
-                style={inputStyle}
-                disabled={saving}
-                required
-              />
-            </div>
-
-            {/* Email */}
-            <div>
-              <label style={labelStyle}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. james@example.com"
-                style={inputStyle}
-                disabled={saving}
-                required
-              />
-            </div>
-
-            {/* Phone */}
-            <div>
-              <label style={labelStyle}>Phone <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. (512) 555-0100"
-                style={inputStyle}
-                disabled={saving}
-              />
-            </div>
-
-            {/* Role */}
-            <div>
-              <label style={labelStyle}>Role</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as AgentRole)}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-                disabled={saving}
-              >
-                <option value="agent">Agent</option>
-                <option value="admin">Admin</option>
-                <option value="broker">Broker</option>
-              </select>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div style={{
-                padding: '10px 14px', borderRadius: 9,
-                background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)',
-                color: 'var(--r-danger)', fontSize: 12, fontWeight: 600,
-              }}>
-                {error}
+              <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.6 }}>
+                Share the link below with <strong style={{ color: 'var(--r-text)' }}>{addedName}</strong> and
+                tell them to claim their account using the email you registered:
               </div>
-            )}
 
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              {/* Email chip */}
+              <div style={{
+                padding: '8px 12px', borderRadius: 8, background: 'rgba(200,164,92,0.04)',
+                border: '1px solid var(--r-border)', fontSize: 12, fontWeight: 600,
+                color: 'var(--r-gold)', fontFamily: 'monospace',
+              }}>
+                {addedEmail}
+              </div>
+
+              {/* Claim link */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
+                  Claim account link
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 8,
+                    background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)',
+                    fontSize: 12, color: 'var(--r-text-2)', fontFamily: 'monospace',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {typeof window !== 'undefined' ? window.location.origin : ''}/claim-account
+                  </div>
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/claim-account`;
+                      navigator.clipboard.writeText(url).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      });
+                    }}
+                    style={{
+                      padding: '9px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                      border: '1px solid var(--r-border)', background: copied ? 'var(--r-success-bg)' : 'var(--r-gold-faint)',
+                      color: copied ? 'var(--r-success)' : 'var(--r-gold-bright)', cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {copied ? 'Copied ✓' : 'Copy link'}
+                  </button>
+                </div>
+              </div>
+
               <button
-                type="submit"
-                disabled={saving}
-                className="r-btn-gold"
+                onClick={() => router.push('/settings')}
                 style={{
-                  padding: '10px 24px', borderRadius: 9, fontSize: 13, fontWeight: 700,
+                  marginTop: 4, padding: '10px 24px', borderRadius: 9, fontSize: 13, fontWeight: 700,
                   border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
-                  color: 'var(--r-gold-bright)', cursor: saving ? 'default' : 'pointer',
-                  opacity: saving ? 0.6 : 1,
+                  color: 'var(--r-gold-bright)', cursor: 'pointer',
                 }}
               >
-                {saving ? 'Adding…' : 'Add Agent'}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.back()}
-                disabled={saving}
-                style={{
-                  padding: '10px 20px', borderRadius: 9, fontSize: 13, fontWeight: 700,
-                  border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
-                  color: 'var(--r-text-3)', cursor: saving ? 'default' : 'pointer',
-                }}
-              >
-                Cancel
+                Done
               </button>
             </div>
+          </SectionCard>
+        ) : (
+          /* ── Add form ──────────────────────────────────────── */
+          <>
+            <SectionCard title="Agent Details" description="Basic information for the new team member">
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          </form>
-        </SectionCard>
+                {/* Name */}
+                <div>
+                  <label style={labelStyle}>Full Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. James Holloway"
+                    style={inputStyle}
+                    disabled={saving}
+                    required
+                  />
+                </div>
 
-        {/* Info note */}
-        <div style={{
-          marginTop: 16, padding: '12px 16px', borderRadius: 10,
-          background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)',
-          fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.6,
-        }}>
-          The agent will be created and added to your brokerage immediately.
-          They will receive an invitation email once authentication is configured.
-        </div>
+                {/* Email */}
+                <div>
+                  <label style={labelStyle}>Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. james@example.com"
+                    style={inputStyle}
+                    disabled={saving}
+                    required
+                  />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label style={labelStyle}>Phone <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. (512) 555-0100"
+                    style={inputStyle}
+                    disabled={saving}
+                  />
+                </div>
+
+                {/* Role */}
+                <div>
+                  <label style={labelStyle}>Role</label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as AgentRole)}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                    disabled={saving}
+                  >
+                    <option value="agent">Agent</option>
+                    <option value="admin">Admin</option>
+                    <option value="broker">Broker</option>
+                  </select>
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 9,
+                    background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)',
+                    color: 'var(--r-danger)', fontSize: 12, fontWeight: 600,
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="r-btn-gold"
+                    style={{
+                      padding: '10px 24px', borderRadius: 9, fontSize: 13, fontWeight: 700,
+                      border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
+                      color: 'var(--r-gold-bright)', cursor: saving ? 'default' : 'pointer',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                  >
+                    {saving ? 'Adding…' : 'Add Agent'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    disabled={saving}
+                    style={{
+                      padding: '10px 20px', borderRadius: 9, fontSize: 13, fontWeight: 700,
+                      border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
+                      color: 'var(--r-text-3)', cursor: saving ? 'default' : 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+              </form>
+            </SectionCard>
+
+            {/* Info note */}
+            <div style={{
+              marginTop: 16, padding: '12px 16px', borderRadius: 10,
+              background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)',
+              fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.6,
+            }}>
+              The agent will be registered immediately. Share the claim link with them so
+              they can set their password — no email will be sent automatically.
+            </div>
+          </>
+        )}
       </div>
     </AppShell>
   );

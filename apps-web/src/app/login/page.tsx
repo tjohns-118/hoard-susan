@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 
 export default function LoginPage() {
@@ -119,6 +120,13 @@ export default function LoginPage() {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--r-text-3)', marginTop: 4 }}>
+            New to Hoard?{' '}
+            <Link href="/claim-account" style={{ color: 'var(--r-gold)', textDecoration: 'none', fontWeight: 600 }}>
+              Claim your account
+            </Link>
+          </div>
         </form>
       </div>
     </div>
