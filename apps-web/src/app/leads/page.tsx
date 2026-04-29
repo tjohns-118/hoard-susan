@@ -600,7 +600,7 @@ function LeadCard({
               Permanently delete {lead.fullName}?
             </div>
             <div style={{ fontSize: 12, color: 'var(--r-text-2)', marginBottom: 10, lineHeight: 1.5 }}>
-              This removes the lead and all associated notes. Tasks linked to this lead will have their link cleared. This cannot be undone.
+              This permanently removes the lead, all associated notes, and all linked tasks. This cannot be undone.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn tone="danger" onClick={handleDelete} disabled={deleting}>

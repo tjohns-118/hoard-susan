@@ -328,16 +328,26 @@ export async function PATCH(req: NextRequest) {
 }
 
 // ── DELETE /api/leads ─────────────────────────────────────────────────────────
-// Permanently removes a lead (contact row with stage='lead') and its notes.
-// Same safety pattern as DELETE /api/contacts: notes deleted first, then the row.
-// Tasks with lead_id pointing here get lead_id=NULL via ON DELETE SET NULL.
+// Permanently removes a lead (contact row with stage='lead'), its notes, and
+// all tasks linked to it. Sequence: tasks → notes → lead row.
 
 export async function DELETE(req: NextRequest) {
   const BROKERAGE_ID = await getBrokerageId();
   const { leadId } = await req.json() as { leadId: string };
   if (!leadId) return NextResponse.json({ error: 'leadId required' }, { status: 400 });
 
-  // 1. Delete child notes first.
+  // 1. Delete tasks linked to this lead.
+  const { error: tasksErr } = await supabaseAdmin
+    .from('tasks')
+    .delete()
+    .eq('lead_id', leadId);
+
+  if (tasksErr) {
+    console.error('[DELETE /api/leads] tasks cleanup error:', tasksErr.message);
+    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+  }
+
+  // 2. Delete child notes.
   const { error: notesErr } = await supabaseAdmin
     .from('contact_notes')
     .delete()
@@ -348,7 +358,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: notesErr.message }, { status: 500 });
   }
 
-  // 2. Delete the lead row — scoped to brokerage and stage='lead' for safety.
+  // 3. Delete the lead row — scoped to brokerage and stage='lead' for safety.
   const { error } = await supabaseAdmin
     .from('contacts')
     .delete()

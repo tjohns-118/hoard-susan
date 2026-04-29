@@ -458,6 +458,43 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ error: `Unknown action: "${action}"` }, { status: 400 });
 }
 
+// ── DELETE /api/opportunities ─────────────────────────────────────────────────
+// Permanently removes an opportunity and all tasks linked to it.
+// Sequence: tasks → opportunity row.
+
+export async function DELETE(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
+  const { oppId } = await req.json() as { oppId: string };
+  if (!oppId) return NextResponse.json({ error: 'oppId required' }, { status: 400 });
+  if (!UUID_RE.test(oppId))
+    return NextResponse.json({ error: 'Invalid oppId — must be a UUID' }, { status: 400 });
+
+  // 1. Delete tasks linked to this opportunity.
+  const { error: tasksErr } = await supabaseAdmin
+    .from('tasks')
+    .delete()
+    .eq('opportunity_id', oppId);
+
+  if (tasksErr) {
+    console.error('[DELETE /api/opportunities] tasks cleanup error:', tasksErr.message);
+    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+  }
+
+  // 2. Delete the opportunity row — scoped to brokerage for safety.
+  const { error } = await supabaseAdmin
+    .from('opportunities')
+    .delete()
+    .eq('id', oppId)
+    .eq('brokerage_id', BROKERAGE_ID ?? '');
+
+  if (error) {
+    console.error('[DELETE /api/opportunities]', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 // ── Trigger execution ─────────────────────────────────────────────────────────
 // Inserts task rows for 'task' triggers on the entered stage. Non-fatal —
 // a task-insert failure must not roll back a committed stage transition.

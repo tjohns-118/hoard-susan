@@ -480,7 +480,7 @@ function DetailPanel({
             Permanently delete {contact.fullName}?
           </div>
           <div style={{ fontSize: 12, color: 'var(--r-text-2)', marginBottom: 12, lineHeight: 1.5 }}>
-            This will remove the contact and all associated notes from Supabase. Tasks linked to this contact will have their link cleared but will not be deleted. This action cannot be undone.
+            This will permanently remove the contact, all associated notes, and all linked tasks. This action cannot be undone.
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <ActionBtn tone="danger" onClick={handleDelete} disabled={deleting}>

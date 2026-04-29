@@ -341,18 +341,26 @@ export async function PATCH(req: NextRequest) {
 }
 
 // ── DELETE /api/contacts ──────────────────────────────────────────────────────
-// Permanently removes a contact and its notes from Supabase.
-// Tasks referencing this contact have their contact_id/lead_id set to NULL
-// automatically by the DB constraint (ON DELETE SET NULL) — no orphans.
-// Notes do NOT have a guaranteed cascade in all environments, so we delete
-// them explicitly first to be safe.
+// Permanently removes a contact, its notes, and all linked tasks.
+// Sequence: tasks → notes → contact row.
 
 export async function DELETE(req: NextRequest) {
   const BROKERAGE_ID = await getBrokerageId();
   const { contactId } = await req.json() as { contactId: string };
   if (!contactId) return NextResponse.json({ error: 'contactId required' }, { status: 400 });
 
-  // 1. Delete child notes first (safe even if CASCADE is already configured).
+  // 1. Delete tasks linked to this contact.
+  const { error: tasksErr } = await supabaseAdmin
+    .from('tasks')
+    .delete()
+    .eq('contact_id', contactId);
+
+  if (tasksErr) {
+    console.error('[DELETE /api/contacts] tasks cleanup error:', tasksErr.message);
+    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+  }
+
+  // 2. Delete child notes (safe even if CASCADE is already configured).
   const { error: notesErr } = await supabaseAdmin
     .from('contact_notes')
     .delete()
@@ -363,7 +371,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: notesErr.message }, { status: 500 });
   }
 
-  // 2. Delete the contact row — scoped to brokerage for safety.
+  // 3. Delete the contact row — scoped to brokerage for safety.
   const { error } = await supabaseAdmin
     .from('contacts')
     .delete()

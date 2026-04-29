@@ -148,22 +148,31 @@ export default function TasksPage() {
   }, [tasks]);
 
   // ── Context resolver ──
+  // Returns a fallback label when the linked entity no longer exists (deleted).
   function getContext(task: Task): { label: string; color: string } | null {
     if (task.contactId) {
       const c = contacts.find((x) => x.id === task.contactId);
-      return c ? { label: `Contact — ${c.fullName}`, color: '#93c5fd' } : null;
+      return c
+        ? { label: `Contact — ${c.fullName}`, color: '#93c5fd' }
+        : { label: 'Deleted Contact', color: 'rgba(150,150,160,0.55)' };
     }
     if (task.leadId) {
       const l = leads.find((x) => x.id === task.leadId);
-      return l ? { label: `Lead — ${l.fullName}`, color: '#fbbf24' } : null;
+      return l
+        ? { label: `Lead — ${l.fullName}`, color: '#fbbf24' }
+        : { label: 'Deleted Lead', color: 'rgba(150,150,160,0.55)' };
     }
     if (task.opportunityId) {
       const o = opportunities.find((x) => x.id === task.opportunityId);
-      return o ? { label: `Deal — ${o.contactName}`, color: '#a78bfa' } : null;
+      return o
+        ? { label: `Deal — ${o.contactName}`, color: '#a78bfa' }
+        : { label: 'Deleted Opportunity', color: 'rgba(150,150,160,0.55)' };
     }
     if (task.propertyId) {
       const p = properties.find((x) => x.id === task.propertyId);
-      return p ? { label: `Property — ${p.address}`, color: '#34d399' } : null;
+      return p
+        ? { label: `Property — ${p.address}`, color: '#34d399' }
+        : { label: 'Deleted Property', color: 'rgba(150,150,160,0.55)' };
     }
     return null;
   }
