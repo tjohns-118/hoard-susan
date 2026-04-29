@@ -56,7 +56,7 @@ type FilterKey = 'all' | 'high' | 'buyers' | 'investors' | 'unassigned';
 
 // ── Score threshold ───────────────────────────────────────────────────────────
 
-const SCORE_THRESHOLD = 25;
+const SCORE_THRESHOLD = 20;
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
 
@@ -654,11 +654,11 @@ const FILTER_LABELS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function MatchesPage() {
-  const { assignLeadToAgent }    = useLeads();
-  const { assignContactToAgent } = useContacts();
-  useProperties();
-  const { createOpportunity } = useOpportunities();
-  const { createEvent }       = useEvents();
+  const { assignLeadToAgent, reload: reloadLeads }         = useLeads();
+  const { assignContactToAgent, reload: reloadContacts }   = useContacts();
+  const { reload: reloadProperties }                       = useProperties();
+  const { createOpportunity, reload: reloadOpportunities } = useOpportunities();
+  const { createEvent }                                    = useEvents();
   const router = useRouter();
 
   const contacts      = useAppStore((s) => s.contacts);
@@ -669,10 +669,20 @@ export default function MatchesPage() {
   const currentRole   = useAppStore((s) => s.currentRole);
   const memberId      = useAppStore((s) => s.memberId);
 
-  const [filter, setFilter]   = useState<FilterKey>('all');
-  const [search, setSearch]   = useState('');
-  const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
-  const [actedOn, setActedOn] = useState<Set<string>>(new Set());
+  const [filter, setFilter]     = useState<FilterKey>('all');
+  const [search, setSearch]     = useState('');
+  const [toast, setToast]       = useState<{ msg: string; ok: boolean } | null>(null);
+  const [actedOn, setActedOn]   = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await Promise.all([reloadContacts(), reloadLeads(), reloadProperties(), reloadOpportunities()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // ── Build person pool ─────────────────────────────────────────────────────
   const persons = useMemo<MatchPerson[]>(() => {
@@ -815,8 +825,11 @@ export default function MatchesPage() {
     if (properties.filter((p) => p.status !== 'sold').length === 0)
       return 'No active inventory yet — add properties to begin generating matches.';
     if (persons.length === 0)
-      return 'No buyer-capable leads or contacts yet — add leads with buyer profiles to surface matches.';
-    return 'No strong matches yet — as your network grows, Hoard will surface deal opportunities automatically.';
+      return 'No buyer-capable leads or contacts yet — add contacts or leads with buyer tags to surface matches.';
+    const hasBuyerProfiles = persons.some((p) => p.buyerProfile != null);
+    if (!hasBuyerProfiles)
+      return 'Matches improve significantly with buyer profiles filled in — open a contact or lead and set their price range, target area, and property type.';
+    return 'No matches above the confidence threshold yet. Try refreshing, or add more detail to buyer profiles (price range, area, property type) to improve match quality.';
   }, [search, filter, properties, persons]);
 
   async function handleCreateOpp(match: ComputedMatch) {
@@ -914,8 +927,23 @@ export default function MatchesPage() {
               High-signal connections between buyers, sellers, and inventory — ranked by match quality.
             </p>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {groups.length} buyer{groups.length !== 1 ? 's' : ''} · {allMatches.length} matches
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {groups.length} buyer{groups.length !== 1 ? 's' : ''} · {allMatches.length} matches
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{
+                padding: '6px 13px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
+                color: refreshing ? 'var(--r-text-3)' : 'var(--r-text-2)',
+                cursor: refreshing ? 'default' : 'pointer',
+                opacity: refreshing ? 0.6 : 1,
+              }}
+            >
+              {refreshing ? 'Refreshing…' : '↻ Refresh'}
+            </button>
           </div>
         </div>
       </div>
@@ -1005,7 +1033,7 @@ export default function MatchesPage() {
           {[
             { label: 'Strong 80–100',    color: 'var(--r-success)' },
             { label: 'Medium 60–79',     color: 'var(--r-gold)' },
-            { label: 'Developing 25–59', color: '#7ca4cc' },
+            { label: 'Developing 20–59', color: '#7ca4cc' },
           ].map(({ label, color }) => (
             <div key={label} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />

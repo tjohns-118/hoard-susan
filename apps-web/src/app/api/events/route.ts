@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
+import { getSessionUser } from '@/lib/getSessionUser';
+import { getMembership } from '@/lib/getMembership';
 import type { EventRecord } from '@/data/mockDb';
 
 const VALID_TYPES = ['showing', 'closing', 'call', 'meeting', 'deadline', 'follow-up'] as const;
@@ -23,11 +25,31 @@ export async function GET() {
     return NextResponse.json([]);
   }
 
-  const { data, error } = await supabaseAdmin
+  // Scope events to agent's own + brokerage-wide (null agent_id).
+  // Broker sees everything.
+  let agentMemberId: string | null = null;
+  try {
+    const sessionUser = await getSessionUser();
+    if (sessionUser) {
+      const membership = await getMembership(sessionUser.id, sessionUser.email);
+      if (membership?.role === 'agent') {
+        agentMemberId = membership.memberId;
+      }
+    }
+  } catch { /* fall through — return full list */ }
+
+  let query = supabaseAdmin
     .from('events')
     .select('*')
     .eq('brokerage_id', BROKERAGE_ID)
     .order('starts_at', { ascending: true });
+
+  if (agentMemberId) {
+    // agent_id IS NULL (team event) OR agent_id = this agent's member ID
+    query = query.or(`agent_id.is.null,agent_id.eq.${agentMemberId}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('[/api/events GET]', error.message);

@@ -171,6 +171,12 @@ export default function CalendarPage() {
     return ev ? ev.agentId === memberId : false;
   }
 
+  // ── Agent-scoped event list (client-side guard mirrors API filter) ──
+  const visibleEvents = useMemo(() => {
+    if (currentRole !== 'agent') return events;
+    return events.filter((e) => !e.agentId || e.agentId === memberId);
+  }, [events, currentRole, memberId]);
+
   // ── Dynamic date anchors (computed once per render cycle) ─────────
   const REF_TODAY    = useMemo(() => makeTodayKey(), []);
   const REF_ISO      = useMemo(() => new Date(`${REF_TODAY}T12:00:00.000Z`), [REF_TODAY]);
@@ -185,7 +191,7 @@ export default function CalendarPage() {
   const allItems = useMemo((): CalendarItem[] => {
     const items: CalendarItem[] = [];
 
-    for (const e of events) {
+    for (const e of visibleEvents) {
       const dateKey     = e.startsAt.slice(0, 10);
       const contactName = e.contactId     ? contacts.find((c) => c.id === e.contactId)?.fullName         : undefined;
       const propertyName = e.propertyId   ? properties.find((p) => p.id === e.propertyId)?.address       : undefined;
@@ -246,7 +252,7 @@ export default function CalendarPage() {
     }
 
     const coveredOppIds = new Set(
-      events.filter((e) => e.type === 'closing' && e.opportunityId).map((e) => e.opportunityId!)
+      visibleEvents.filter((e) => e.type === 'closing' && e.opportunityId).map((e) => e.opportunityId!)
     );
     for (const o of opportunities) {
       if (['closed', 'post_close_followup', 'lost'].includes(o.stage) || !o.expectedCloseDate) continue;
@@ -273,7 +279,7 @@ export default function CalendarPage() {
     }
 
     return items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [events, tasks, leads, contacts, opportunities, properties, agents, REF_TODAY, REF_ISO]);
+  }, [visibleEvents, tasks, leads, contacts, opportunities, properties, agents, REF_TODAY, REF_ISO]);
 
   // ── KPI ──────────────────────────────────────────────────────────
   const todayItems    = allItems.filter((i) => i.dateKey === REF_TODAY);
@@ -286,7 +292,7 @@ export default function CalendarPage() {
   const overdueTasks = tasks.filter((t) => !t.completed && t.dueAt && t.dueAt.slice(0, 10) < REF_TODAY);
   const hotLeadsNoEvent = leads.filter((l) => {
     if (!l.tags.includes('hot')) return false;
-    return !events.some((e) => e.leadId === l.id);
+    return !visibleEvents.some((e) => e.leadId === l.id);
   });
 
   // ── Intelligence ─────────────────────────────────────────────────
@@ -475,7 +481,7 @@ export default function CalendarPage() {
           {createError && (
             <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 10 }}>{createError}</div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
               onClick={handleCreateEvent}
               disabled={createSaving}
@@ -492,6 +498,11 @@ export default function CalendarPage() {
             >
               Cancel
             </button>
+            {currentRole === 'broker' && (
+              <span style={{ fontSize: 10, color: 'var(--r-text-3)', marginLeft: 4 }}>
+                Team event — visible to all agents
+              </span>
+            )}
           </div>
         </div>
       )}

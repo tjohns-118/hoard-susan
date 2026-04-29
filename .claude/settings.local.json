@@ -30,7 +30,11 @@
       "Bash(npx next *)",
       "Bash(xargs grep *)",
       "Bash(xargs -I {} basename {})",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(sed -n '104,115p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useProperties.ts)",
+      "Bash(sed -n '170,185p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useContacts.ts)",
+      "Bash(sed -n '179,194p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useLeads.ts)",
+      "Bash(sed -n '140,155p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useOpportunities.ts)"
     ]
   }
 }

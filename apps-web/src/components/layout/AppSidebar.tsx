@@ -29,10 +29,11 @@ const SHARED_NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { href: '/tasks',     label: 'Tasks' },
-      { href: '/calendar',  label: 'Calendar' },
-      { href: '/templates', label: 'Templates' },
-      { href: '/imports',   label: 'Imports' },
+      { href: '/tasks',      label: 'Tasks' },
+      { href: '/calendar',   label: 'Calendar' },
+      { href: '/newsletter', label: 'Newsletter' },
+      { href: '/templates',  label: 'Templates' },
+      { href: '/imports',    label: 'Imports' },
     ],
   },
 ];

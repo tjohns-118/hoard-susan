@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
@@ -119,17 +119,26 @@ function PillBtn({
   );
 }
 
+// ── Task category types ───────────────────────────────────────────────────────
+
+type TaskCategory = 'general' | 'social_post' | 'marketing';
+const SOCIAL_PLATFORMS = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'X (Twitter)', 'YouTube'];
+
 // ── Opportunity Card ──────────────────────────────────────────────────────────
 
 function OpportunityCard({
-  opp, agents, onAdvance, onGoBack, onMarkLost, onAddTask, isDragging, onDragStart, onDragEnd,
+  opp, agents, onAdvance, onGoBack, onMarkLost, createTask, onToast, isDragging, onDragStart, onDragEnd,
 }: {
   opp:          Opportunity;
   agents:       { id: string; name: string }[];
   onAdvance:    (id: string) => void;
   onGoBack:     (id: string) => void;
   onMarkLost:   (id: string) => void;
-  onAddTask:    (id: string) => void;
+  createTask:   (fields: {
+    title: string; priority?: 'high' | 'medium' | 'low';
+    dueAt?: string; opportunityId?: string;
+  }) => Promise<void>;
+  onToast:      (msg: string, ok: boolean) => void;
   isDragging?:  boolean;
   onDragStart?: () => void;
   onDragEnd?:   () => void;
@@ -144,6 +153,62 @@ function OpportunityCard({
   const unsignedBlocking = opp.documents.some(
     (d) => d.blockingNextStage && d.requiredForStage === opp.stage && d.status !== 'signed'
   );
+
+  // ── Inline task form state ──────────────────────────────────────────
+  const [showTask,    setShowTask]    = useState(false);
+  const [taskTitle,   setTaskTitle]   = useState('');
+  const [taskCat,     setTaskCat]     = useState<TaskCategory>('general');
+  const [taskPlatform,setTaskPlatform]= useState('Instagram');
+  const [taskPriority,setTaskPriority]= useState<'high' | 'medium' | 'low'>(opp.priority as any ?? 'medium');
+  const [taskDue,     setTaskDue]     = useState('');
+  const [taskSaving,  setTaskSaving]  = useState(false);
+  const [taskErr,     setTaskErr]     = useState('');
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showTask) {
+      setTaskTitle(`Follow up — ${opp.contactName}`);
+      setTaskCat('general');
+      setTaskPlatform('Instagram');
+      setTaskPriority(opp.priority as any ?? 'medium');
+      setTaskDue('');
+      setTaskErr('');
+      setTimeout(() => titleRef.current?.focus(), 50);
+    }
+  }, [showTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSaveTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!taskTitle.trim()) { setTaskErr('Title is required.'); return; }
+    setTaskSaving(true); setTaskErr('');
+    try {
+      let title = taskTitle.trim();
+      if (taskCat === 'social_post') title = `[${taskPlatform}] ${title}`;
+      else if (taskCat === 'marketing') title = `[Marketing] ${title}`;
+      await createTask({
+        title,
+        priority:      taskPriority,
+        dueAt:         taskDue ? `${taskDue}T09:00:00.000Z` : undefined,
+        opportunityId: opp.id,
+      });
+      onToast('Task added', true);
+      setShowTask(false);
+    } catch (err: any) {
+      setTaskErr(err?.message ?? 'Failed to create task.');
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
+  const inputSm: React.CSSProperties = {
+    width: '100%', padding: '6px 9px', borderRadius: 6, fontSize: 11,
+    border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)',
+    color: 'var(--r-text)', outline: 'none', boxSizing: 'border-box',
+  };
+  const labelSm: React.CSSProperties = {
+    fontSize: 9, fontWeight: 700, color: 'var(--r-text-3)',
+    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3, display: 'block',
+  };
 
   return (
     <div
@@ -270,8 +335,135 @@ function OpportunityCard({
           </PillBtn>
         )}
         <PillBtn tone="danger" onClick={() => onMarkLost(opp.id)}>Lost</PillBtn>
-        <PillBtn onClick={() => onAddTask(opp.id)}>+ Task</PillBtn>
+        <PillBtn tone={showTask ? 'accent' : 'default'} onClick={() => setShowTask((v) => !v)}>
+          {showTask ? '× Task' : '+ Task'}
+        </PillBtn>
       </div>
+
+      {/* ── Inline task form ─────────────────────────────────────── */}
+      {showTask && (
+        <form
+          onSubmit={handleSaveTask}
+          style={{
+            marginTop: 6, padding: '12px', borderRadius: 10,
+            background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div>
+            <label style={labelSm}>Title *</label>
+            <input
+              ref={titleRef}
+              value={taskTitle}
+              onChange={(e) => setTaskTitle(e.target.value)}
+              style={inputSm}
+              placeholder="Task description…"
+              disabled={taskSaving}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+            <div>
+              <label style={labelSm}>Category</label>
+              <select
+                value={taskCat}
+                onChange={(e) => setTaskCat(e.target.value as TaskCategory)}
+                style={{ ...inputSm, cursor: 'pointer' }}
+                disabled={taskSaving}
+              >
+                <option value="general">General</option>
+                <option value="social_post">Social Post</option>
+                <option value="marketing">Marketing</option>
+              </select>
+            </div>
+            {taskCat === 'social_post' ? (
+              <div>
+                <label style={labelSm}>Platform</label>
+                <select
+                  value={taskPlatform}
+                  onChange={(e) => setTaskPlatform(e.target.value)}
+                  style={{ ...inputSm, cursor: 'pointer' }}
+                  disabled={taskSaving}
+                >
+                  {SOCIAL_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label style={labelSm}>Priority</label>
+                <select
+                  value={taskPriority}
+                  onChange={(e) => setTaskPriority(e.target.value as any)}
+                  style={{ ...inputSm, cursor: 'pointer' }}
+                  disabled={taskSaving}
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {taskCat === 'social_post' && (
+            <div>
+              <label style={labelSm}>Priority</label>
+              <select
+                value={taskPriority}
+                onChange={(e) => setTaskPriority(e.target.value as any)}
+                style={{ ...inputSm, cursor: 'pointer' }}
+                disabled={taskSaving}
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label style={labelSm}>Due Date (optional)</label>
+            <input
+              type="date"
+              value={taskDue}
+              onChange={(e) => setTaskDue(e.target.value)}
+              style={{ ...inputSm, fontSize: 11 }}
+              disabled={taskSaving}
+            />
+          </div>
+
+          {taskErr && (
+            <div style={{ fontSize: 10, color: 'var(--r-danger)' }}>{taskErr}</div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="submit"
+              disabled={taskSaving}
+              style={{
+                flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
+                color: 'var(--r-gold-bright)', cursor: taskSaving ? 'default' : 'pointer',
+                opacity: taskSaving ? 0.6 : 1,
+              }}
+            >
+              {taskSaving ? 'Saving…' : 'Save Task'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTask(false)}
+              style={{
+                padding: '6px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
+                color: 'var(--r-text-3)', cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
@@ -354,20 +546,6 @@ export default function OpportunitiesPage() {
     } catch (err: any) {
       showToast(`Failed: ${err?.message ?? 'unknown error'}`, false);
       reload();
-    }
-  }
-
-  async function handleAddOppTask(oppId: string) {
-    const opp = opportunities.find((o) => o.id === oppId);
-    if (!opp) return;
-    try {
-      await createTask({
-        title:         `Follow up on ${opp.contactName} — ${opp.propertyAddress ?? 'opportunity'}`,
-        priority:      opp.priority,
-        opportunityId: oppId,
-      });
-    } catch (err) {
-      console.error('[handleAddOppTask]', err);
     }
   }
 
@@ -619,7 +797,8 @@ export default function OpportunitiesPage() {
                         onAdvance={handleAdvanceStage}
                         onGoBack={handleGoBack}
                         onMarkLost={handleMarkLost}
-                        onAddTask={handleAddOppTask}
+                        createTask={createTask}
+                        onToast={showToast}
                         isDragging={draggingOppId === opp.id}
                         onDragStart={() => setDraggingOppId(opp.id)}
                         onDragEnd={() => setDraggingOppId(null)}
