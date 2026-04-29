@@ -85,6 +85,58 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, event: mapEvent(data) }, { status: 201 });
 }
 
+// ── PATCH /api/events ─────────────────────────────────────────────────────────
+
+export async function PATCH(req: NextRequest) {
+  const BROKERAGE_ID = await getBrokerageId();
+  if (!BROKERAGE_ID)
+    return NextResponse.json({ error: 'Brokerage not configured' }, { status: 503 });
+
+  const body = await req.json() as {
+    id:              string;
+    title?:          string;
+    type?:           string;
+    startsAt?:       string;
+    endsAt?:         string | null;
+    notes?:          string | null;
+    contactId?:      string | null;
+    leadId?:         string | null;
+    opportunityId?:  string | null;
+    propertyId?:     string | null;
+  };
+
+  if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  const updates: Record<string, unknown> = {};
+  if (body.title      !== undefined) updates.title          = body.title?.trim() ?? null;
+  if (body.type       !== undefined) updates.type           = VALID_TYPES.includes(body.type as any) ? body.type : 'meeting';
+  if (body.startsAt   !== undefined) updates.starts_at      = body.startsAt;
+  if ('endsAt'        in body)       updates.ends_at        = body.endsAt        ?? null;
+  if ('notes'         in body)       updates.notes          = body.notes?.trim() ?? null;
+  if ('contactId'     in body)       updates.contact_id     = body.contactId     ?? null;
+  if ('leadId'        in body)       updates.lead_id        = body.leadId        ?? null;
+  if ('opportunityId' in body)       updates.opportunity_id = body.opportunityId ?? null;
+  if ('propertyId'    in body)       updates.property_id    = body.propertyId    ?? null;
+
+  if (Object.keys(updates).length === 0)
+    return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+
+  const { data, error } = await supabaseAdmin
+    .from('events')
+    .update(updates)
+    .eq('id', body.id)
+    .eq('brokerage_id', BROKERAGE_ID)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[/api/events PATCH]', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, event: mapEvent(data) });
+}
+
 // ── DELETE /api/events ────────────────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {

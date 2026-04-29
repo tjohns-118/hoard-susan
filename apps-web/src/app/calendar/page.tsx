@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
@@ -56,6 +56,7 @@ interface CalendarItem {
   isOverdue: boolean;
   urgency: UrgencyLevel;
   source: 'event' | 'task' | 'closing';
+  endsAt?: string;
   contactName?: string;
   propertyName?: string;
   oppName?: string;
@@ -99,7 +100,7 @@ interface CreateEventForm {
 // ── Page ──────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const { events, createEvent } = useEvents();
+  const { events, createEvent, updateEvent, deleteEvent } = useEvents();
   const { toggleTask, scheduleTask } = useTasks();
   const tasks         = useAppStore((s) => s.tasks);
   const leads         = useAppStore((s) => s.leads);
@@ -107,6 +108,8 @@ export default function CalendarPage() {
   const opportunities = useAppStore((s) => s.opportunities);
   const properties    = useAppStore((s) => s.properties);
   const agents        = useAppStore((s) => s.agents);
+  const currentRole   = useAppStore((s) => s.currentRole);
+  const memberId      = useAppStore((s) => s.memberId);
 
   const [view, setView]       = useState<'agenda' | 'week'>('agenda');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -115,6 +118,8 @@ export default function CalendarPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError]   = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   const [createForm, setCreateForm]     = useState<CreateEventForm>({
     title: '', type: 'meeting', date: '', startTime: '09:00', endTime: '10:00',
     notes: '', contactId: '', opportunityId: '',
@@ -141,6 +146,7 @@ export default function CalendarPage() {
         notes:          createForm.notes.trim() || undefined,
         contactId:      createForm.contactId     || undefined,
         opportunityId:  createForm.opportunityId || undefined,
+        agentId:        currentRole === 'agent' && memberId ? memberId : undefined,
       });
       setShowCreate(false);
       setCreateForm((f) => ({ ...f, title: '', notes: '', contactId: '', opportunityId: '' }));
@@ -149,6 +155,20 @@ export default function CalendarPage() {
     } finally {
       setCreateSaving(false);
     }
+  }
+
+  // ── Toast helper ─────────────────────────────────────────────────
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  // ── Edit/delete permission ────────────────────────────────────────
+  function canEditItem(item: CalendarItem): boolean {
+    if (item.source !== 'event') return false;
+    if (currentRole === 'broker') return true;
+    const ev = events.find((e) => e.id === item.id);
+    return ev ? ev.agentId === memberId : false;
   }
 
   // ── Dynamic date anchors (computed once per render cycle) ─────────
@@ -183,6 +203,7 @@ export default function CalendarPage() {
         isOverdue: dateKey < REF_TODAY,
         urgency: type === 'closing' ? 'critical' : type === 'showing' ? 'high' : 'medium',
         source: 'event',
+        endsAt: e.endsAt,
         contactName, propertyName, oppName, agentName,
         notes: e.notes,
         contactId: e.contactId,
@@ -533,8 +554,15 @@ export default function CalendarPage() {
           {selectedItem && (
             <DetailPanel
               item={selectedItem}
+              contacts={contacts}
+              leads={leads}
+              opportunities={opportunities}
+              canEdit={canEditItem(selectedItem)}
               onClose={() => setSelectedId(null)}
               onToggleTask={toggleTask}
+              onUpdate={updateEvent}
+              onDelete={deleteEvent}
+              onToast={showToast}
             />
           )}
 
@@ -621,6 +649,19 @@ export default function CalendarPage() {
           </div>
         </div>
       </div>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          padding: '10px 18px', borderRadius: 10,
+          background: toast.type === 'success' ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
+          border: `1px solid ${toast.type === 'success' ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
+          color: toast.type === 'success' ? 'var(--r-success)' : 'var(--r-danger)',
+          fontSize: 12, fontWeight: 700, boxShadow: 'var(--r-shadow)',
+          pointerEvents: 'none',
+        }}>
+          {toast.message}
+        </div>
+      )}
     </AppShell>
   );
 }
@@ -849,62 +890,221 @@ function WeekView({ week, allItems, selectedId, onSelect }: {
 
 // ── Detail panel ───────────────────────────────────────────────────
 
-function DetailPanel({ item, onClose, onToggleTask }: {
+type EditEventForm = {
+  title: string; type: CreateEventType; date: string;
+  startTime: string; endTime: string; notes: string;
+  contactId: string; opportunityId: string;
+};
+
+function DetailPanel({ item, contacts, leads, opportunities, canEdit, onClose, onToggleTask, onUpdate, onDelete, onToast }: {
   item: CalendarItem;
+  contacts: Array<{ id: string; fullName: string }>;
+  leads: Array<{ id: string; fullName: string }>;
+  opportunities: Array<{ id: string; contactName: string; propertyAddress?: string }>;
+  canEdit: boolean;
   onClose: () => void;
   onToggleTask: (id: string) => void;
+  onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onToast: (message: string, type: 'success' | 'error') => void;
 }) {
   const tm = TYPE_META[item.type];
+  const [mode, setMode]       = useState<'view' | 'edit' | 'confirm-delete'>('view');
+  const [saving, setSaving]   = useState(false);
+  const [editErr, setEditErr] = useState('');
+
+  const makeInitForm = (): EditEventForm => ({
+    title:         item.title,
+    type:          (item.type as CreateEventType) ?? 'meeting',
+    date:          item.dateKey,
+    startTime:     item.sortKey.slice(11, 16),
+    endTime:       item.endsAt ? item.endsAt.slice(11, 16) : '',
+    notes:         item.notes ?? '',
+    contactId:     item.contactId ?? '',
+    opportunityId: item.opportunityId ?? '',
+  });
+
+  const [editForm, setEditForm] = useState<EditEventForm>(makeInitForm);
+
+  useEffect(() => {
+    setMode('view');
+    setEditErr('');
+    setEditForm(makeInitForm());
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    if (!editForm.title.trim() || !editForm.date) { setEditErr('Title and date are required.'); return; }
+    setSaving(true); setEditErr('');
+    try {
+      await onUpdate(item.id, {
+        title:         editForm.title.trim(),
+        type:          editForm.type,
+        startsAt:      `${editForm.date}T${editForm.startTime}:00.000Z`,
+        endsAt:        editForm.endTime ? `${editForm.date}T${editForm.endTime}:00.000Z` : null,
+        notes:         editForm.notes.trim() || null,
+        contactId:     editForm.contactId     || null,
+        opportunityId: editForm.opportunityId || null,
+      });
+      setMode('view');
+      onToast('Event updated.', 'success');
+    } catch (err: any) {
+      setEditErr(err?.message ?? 'Failed to update event.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setSaving(true);
+    try {
+      await onDelete(item.id);
+      onToast('Event deleted.', 'success');
+      onClose();
+    } catch (err: any) {
+      onToast(err?.message ?? 'Failed to delete event.', 'error');
+      setSaving(false);
+      setMode('view');
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 10px', borderRadius: 7,
+    border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)',
+    color: 'var(--r-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box',
+  };
+  const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer', fontSize: 11 };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)',
+    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4,
+  };
+
   return (
     <div className="r-card" style={{ borderRadius: 16, border: `1px solid ${tm.border}`, background: 'rgba(200,164,92,0.03)' }}>
       {/* Header */}
       <div style={{ padding: '13px 16px', borderBottom: `1px solid ${tm.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: tm.bg }}>
-        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: tm.color }}>{tm.label}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: tm.color }}>
+          {mode === 'edit' ? 'Edit Event' : mode === 'confirm-delete' ? 'Delete Event' : tm.label}
+        </span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--r-text-3)', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
       </div>
 
-      <div style={{ padding: '14px 16px' }}>
-        {/* Title */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)', lineHeight: 1.4, marginBottom: 12 }}>
-          {item.title}
-        </div>
-
-        {/* Fact rows */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          {[
-            { label: 'Date',     value: new Date(`${item.dateKey}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }), color: 'var(--r-text)' },
-            !item.isAllDay ? { label: 'Time', value: item.timeLabel.replace('Due ', ''), color: 'var(--r-text)' } : null,
-            item.contactName  ? { label: 'Contact',  value: item.contactName,  color: 'var(--r-gold)' } : null,
-            item.propertyName ? { label: 'Property', value: item.propertyName, color: '#9b8ab4' } : null,
-            item.oppName      ? { label: 'Deal',     value: item.oppName,      color: 'var(--r-gold)' } : null,
-            item.agentName    ? { label: 'Agent',    value: item.agentName,    color: 'var(--r-text-2)' } : null,
-          ].filter(Boolean).map((row) => (
-            <div key={row!.label} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-              <span style={{ fontSize: 10, color: 'var(--r-text-3)', width: 52, flexShrink: 0 }}>{row!.label}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: row!.color, lineHeight: 1.3 }}>{row!.value}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Notes */}
-        {item.notes && (
-          <div style={{ fontSize: 11, color: 'var(--r-text-2)', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(200,164,92,0.03)', borderRadius: 7, border: '1px solid var(--r-border)', marginBottom: 12 }}>
-            {item.notes}
+      {mode === 'confirm-delete' ? (
+        <div style={{ padding: '16px 16px' }}>
+          <div style={{ fontSize: 12, color: 'var(--r-text)', marginBottom: 14, lineHeight: 1.5 }}>
+            Delete <strong>{item.title}</strong>? This cannot be undone.
           </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {item.taskId && (
-            <button
-              onClick={() => onToggleTask(item.taskId!)}
-              style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-success)', padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-success-border)', background: 'var(--r-success-bg)', cursor: 'pointer', width: '100%' }}
-            >
-              Mark Complete ✓
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleDelete} disabled={saving} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--r-danger-border)', background: 'var(--r-danger-bg)', color: 'var(--r-danger)', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Deleting…' : 'Delete'}
             </button>
-          )}
+            <button onClick={() => setMode('view')} disabled={saving} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
+      ) : mode === 'edit' ? (
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ marginBottom: 10 }}>
+            <div style={labelStyle}>Title *</div>
+            <input value={editForm.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div>
+              <div style={labelStyle}>Type</div>
+              <select value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value as CreateEventType }))} style={selectStyle}>
+                {(['showing','call','meeting','deadline','follow-up','closing'] as CreateEventType[]).map((t) => (
+                  <option key={t} value={t}>{TYPE_META[t].label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>Date *</div>
+              <input type="date" value={editForm.date} onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))} style={{ ...inputStyle, fontSize: 11 }} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div>
+              <div style={labelStyle}>Start</div>
+              <input type="time" value={editForm.startTime} onChange={(e) => setEditForm((f) => ({ ...f, startTime: e.target.value }))} style={{ ...inputStyle, fontSize: 11 }} />
+            </div>
+            <div>
+              <div style={labelStyle}>End</div>
+              <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((f) => ({ ...f, endTime: e.target.value }))} style={{ ...inputStyle, fontSize: 11 }} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={labelStyle}>Contact</div>
+            <select value={editForm.contactId} onChange={(e) => setEditForm((f) => ({ ...f, contactId: e.target.value }))} style={{ ...selectStyle, color: editForm.contactId ? 'var(--r-text)' : 'var(--r-text-3)' }}>
+              <option value="">None</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+              {leads.map((l) => <option key={`lead-${l.id}`} value={l.id}>{l.fullName} (lead)</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={labelStyle}>Deal</div>
+            <select value={editForm.opportunityId} onChange={(e) => setEditForm((f) => ({ ...f, opportunityId: e.target.value }))} style={{ ...selectStyle, color: editForm.opportunityId ? 'var(--r-text)' : 'var(--r-text-3)' }}>
+              <option value="">None</option>
+              {opportunities.map((o) => <option key={o.id} value={o.id}>{o.contactName}{o.propertyAddress ? ` — ${o.propertyAddress}` : ''}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={labelStyle}>Notes</div>
+            <input value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Additional notes…" style={inputStyle} />
+          </div>
+          {editErr && <div style={{ fontSize: 11, color: 'var(--r-danger)', marginBottom: 8 }}>{editErr}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', color: 'var(--r-gold-bright)', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => { setMode('view'); setEditErr(''); }} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)', lineHeight: 1.4, marginBottom: 12 }}>
+            {item.title}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {[
+              { label: 'Date',     value: new Date(`${item.dateKey}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }), color: 'var(--r-text)' },
+              !item.isAllDay ? { label: 'Time', value: item.timeLabel.replace('Due ', ''), color: 'var(--r-text)' } : null,
+              item.contactName  ? { label: 'Contact',  value: item.contactName,  color: 'var(--r-gold)' }      : null,
+              item.propertyName ? { label: 'Property', value: item.propertyName, color: '#9b8ab4' }            : null,
+              item.oppName      ? { label: 'Deal',     value: item.oppName,      color: 'var(--r-gold)' }      : null,
+              item.agentName    ? { label: 'Agent',    value: item.agentName,    color: 'var(--r-text-2)' }    : null,
+            ].filter(Boolean).map((row) => (
+              <div key={row!.label} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 10, color: 'var(--r-text-3)', width: 52, flexShrink: 0 }}>{row!.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: row!.color, lineHeight: 1.3 }}>{row!.value}</span>
+              </div>
+            ))}
+          </div>
+          {item.notes && (
+            <div style={{ fontSize: 11, color: 'var(--r-text-2)', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(200,164,92,0.03)', borderRadius: 7, border: '1px solid var(--r-border)', marginBottom: 12 }}>
+              {item.notes}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {item.taskId && (
+              <button onClick={() => onToggleTask(item.taskId!)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-success)', padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-success-border)', background: 'var(--r-success-bg)', cursor: 'pointer', width: '100%' }}>
+                Mark Complete ✓
+              </button>
+            )}
+            {canEdit && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setMode('edit')} style={{ flex: 1, padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.06)', color: 'var(--r-text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  Edit
+                </button>
+                <button onClick={() => setMode('confirm-delete')} style={{ flex: 1, padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-danger-border)', background: 'var(--r-danger-bg)', color: 'var(--r-danger)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

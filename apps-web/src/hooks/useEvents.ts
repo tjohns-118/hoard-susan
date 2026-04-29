@@ -64,6 +64,29 @@ export function useEvents() {
     await reload();
   }
 
+  // ── Update ────────────────────────────────────────────────────────────────────
+
+  async function updateEvent(id: string, fields: {
+    title?:          string;
+    type?:           EventRecord['type'];
+    startsAt?:       string;
+    endsAt?:         string | null;
+    notes?:          string | null;
+    contactId?:      string | null;
+    leadId?:         string | null;
+    opportunityId?:  string | null;
+    propertyId?:     string | null;
+  }) {
+    const res = await fetch('/api/events', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id, ...fields }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? 'Update event failed');
+    await reload();
+  }
+
   // ── Delete ────────────────────────────────────────────────────────────────────
 
   async function deleteEvent(id: string) {
@@ -81,6 +104,7 @@ export function useEvents() {
     events,
     reload,
     createEvent,
+    updateEvent,
     deleteEvent,
   };
 }
