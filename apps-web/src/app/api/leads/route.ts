@@ -18,6 +18,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
+import { normalizeToAreaKeys } from '@/lib/areaUtils';
 import type {
   Lead, ContactRole, BuyerProfile, SellerProfile,
 } from '@/features/opportunities/types';
@@ -48,6 +49,8 @@ export async function GET() {
       newsletter_tags,
       buyer_profile,
       seller_profile,
+      buyer_area_keys,
+      seller_area_keys,
       preferred_locations,
       preferred_property_types,
       budget_min,
@@ -120,6 +123,8 @@ export async function POST(req: NextRequest) {
       newsletter_tags:   body.newsletterTags  ?? [],
       buyer_profile:     body.buyerProfile  ?? null,
       seller_profile:    body.sellerProfile ?? null,
+      buyer_area_keys:   normalizeToAreaKeys(body.buyerProfile?.targetArea ?? ''),
+      seller_area_keys:  normalizeToAreaKeys((body.sellerProfile as any)?.propertyLocation ?? ''),
       assigned_member_id: creatorMemberId,
       last_activity_at:  new Date().toISOString(),
     })
@@ -163,17 +168,19 @@ export async function PATCH(req: NextRequest) {
   if (action === 'updateBuyerProfile') {
     const newRole     = body.role ?? 'buyer';
     const contactType = body.profile ? newRole : (newRole === 'both' ? 'seller' : null);
+    const profile     = body.profile as BuyerProfile | null | undefined;
 
     const { error } = await supabaseAdmin
       .from('contacts')
       .update({
-        buyer_profile:    body.profile ?? null,
+        buyer_profile:    profile ?? null,
+        buyer_area_keys:  normalizeToAreaKeys((profile as BuyerProfile | null)?.targetArea ?? ''),
         contact_type:     contactType,
         updated_at:       new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
       })
       .eq('id', leadId)
-      .eq('stage', 'lead');   // safety: only touch lead-stage rows
+      .eq('stage', 'lead');
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
@@ -182,11 +189,13 @@ export async function PATCH(req: NextRequest) {
   if (action === 'updateSellerProfile') {
     const newRole     = body.role ?? 'seller';
     const contactType = body.profile ? newRole : (newRole === 'both' ? 'buyer' : null);
+    const profile     = body.profile as SellerProfile | null | undefined;
 
     const { error } = await supabaseAdmin
       .from('contacts')
       .update({
-        seller_profile:   body.profile ?? null,
+        seller_profile:   profile ?? null,
+        seller_area_keys: normalizeToAreaKeys((profile as SellerProfile | null)?.propertyLocation ?? ''),
         contact_type:     contactType,
         updated_at:       new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
@@ -444,6 +453,8 @@ function mapLead(row: any): Lead {
     tags:             Array.isArray(row.tags) ? row.tags : [],
     buyerProfile,
     sellerProfile,
+    buyerAreaKeys:    Array.isArray(row.buyer_area_keys)  ? row.buyer_area_keys  : [],
+    sellerAreaKeys:   Array.isArray(row.seller_area_keys) ? row.seller_area_keys : [],
     newsletterOptIn:  row.newsletter_opt_in ?? false,
     newsletterTags:   Array.isArray(row.newsletter_tags) ? row.newsletter_tags : [],
     createdAt:        row.created_at ?? new Date().toISOString(),

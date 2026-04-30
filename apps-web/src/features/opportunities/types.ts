@@ -42,6 +42,8 @@ export interface Lead {
   tags:              string[];
   buyerProfile?:     BuyerProfile;
   sellerProfile?:    SellerProfile;
+  buyerAreaKeys:     string[];
+  sellerAreaKeys:    string[];
   newsletterOptIn:   boolean;
   newsletterTags:    string[];
   createdAt:         string;

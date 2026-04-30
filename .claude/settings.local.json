@@ -34,7 +34,13 @@
       "Bash(sed -n '104,115p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useProperties.ts)",
       "Bash(sed -n '170,185p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useContacts.ts)",
       "Bash(sed -n '179,194p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useLeads.ts)",
-      "Bash(sed -n '140,155p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useOpportunities.ts)"
+      "Bash(sed -n '140,155p' C:/Users/trist/Documents/hoard/apps-web/src/hooks/useOpportunities.ts)",
+      "Bash(xargs ls *)",
+      "Bash(sed -n '300,380p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/properties/route.ts)",
+      "Bash(sed -n '80,200p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/contacts/route.ts)",
+      "Bash(sed -n '36,70p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/leads/route.ts)",
+      "Bash(sed -n '409,470p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/leads/route.ts)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

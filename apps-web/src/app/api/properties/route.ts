@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
+import { inferAreaKeys } from '@/lib/areaUtils';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
 
 // ── GET /api/properties ───────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
       notes:              [],
       images:             [],
       listed_at:          body.listedAt        ?? new Date().toISOString(),
+      area_keys:          inferAreaKeys(body.city, body.county, body.state),
     })
     .select()
     .single();
@@ -175,11 +177,16 @@ export async function PUT(req: NextRequest) {
       existingId = data?.id ?? null;
     }
 
+    const city  = row.city?.trim()  ?? undefined;
+    const state = row.state?.trim() ?? undefined;
+    const county = (row as any).county?.trim() ?? undefined;
+
     const payload: Record<string, unknown> = {
       brokerage_id:   BROKERAGE_ID,
       address_line_1: line1,
-      city:           row.city?.trim()  ?? null,
-      state:          row.state?.trim() ?? null,
+      city:           city  ?? null,
+      state:          state ?? null,
+      county:         county ?? null,
       zip:            row.zip?.trim()   ?? null,
       price:          row.price         ?? 0,
       beds:           row.beds          ?? null,
@@ -189,6 +196,7 @@ export async function PUT(req: NextRequest) {
       listing_url:    row.listingUrl?.trim() ?? null,
       source:         row.source?.trim() ?? 'csv_import',
       status:         row.status        ?? 'active',
+      area_keys:      inferAreaKeys(city, county, state),
       updated_at:     now,
     };
 
@@ -335,8 +343,9 @@ function mapProperty(row: any): PropertyRecord {
     source:           String(row.source       ?? '').trim() || undefined,
     assignedAgentId:  row.assigned_agent_id   ?? undefined,
     linkedContactIds: Array.isArray(row.linked_contact_ids) ? row.linked_contact_ids : [],
-    tags:             Array.isArray(row.tags)  ? row.tags  : [],
-    notes:            Array.isArray(row.notes) ? row.notes : [],
+    tags:             Array.isArray(row.tags)      ? row.tags      : [],
+    notes:            Array.isArray(row.notes)     ? row.notes     : [],
+    areaKeys:         Array.isArray(row.area_keys) ? row.area_keys : [],
     listedAt:         row.listed_at      ?? undefined,
     contractedAt:     row.contracted_at  ?? undefined,
     closedAt:         row.closed_at      ?? undefined,

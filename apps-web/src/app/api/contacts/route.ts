@@ -33,6 +33,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
+import { normalizeToAreaKeys } from '@/lib/areaUtils';
 import type {
   Contact, ContactNote, ContactRole,
   BuyerProfile, SellerProfile,
@@ -69,6 +70,8 @@ export async function GET() {
       updated_at,
       buyer_profile,
       seller_profile,
+      buyer_area_keys,
+      seller_area_keys,
       preferred_locations,
       preferred_property_types,
       budget_min,
@@ -136,6 +139,8 @@ export async function POST(req: NextRequest) {
       newsletter_tags:   body.newsletterTags  ?? [],
       buyer_profile:     body.buyerProfile  ?? null,
       seller_profile:    body.sellerProfile ?? null,
+      buyer_area_keys:   normalizeToAreaKeys(body.buyerProfile?.targetArea ?? ''),
+      seller_area_keys:  normalizeToAreaKeys((body.sellerProfile as any)?.propertyLocation ?? ''),
       assigned_member_id: creatorMemberId,
       last_activity_at:  new Date().toISOString(),
     })
@@ -246,15 +251,17 @@ export async function PATCH(req: NextRequest) {
   // ── updateBuyerProfile ────────────────────────────────────────────────────
 
   if (action === 'updateBuyerProfile') {
-    const newRole = body.role ?? 'buyer';
-    const contactType = newRole; // 'buyer' | 'seller' | 'both'
+    const newRole     = body.role ?? 'buyer';
+    const contactType = newRole;
+    const profile     = body.profile as BuyerProfile | null | undefined;
 
     const { error } = await supabaseAdmin
       .from('contacts')
       .update({
-        buyer_profile:  body.profile ?? null,
-        contact_type:   body.profile ? contactType : (newRole === 'both' ? 'seller' : null),
-        updated_at:     new Date().toISOString(),
+        buyer_profile:   profile ?? null,
+        buyer_area_keys: normalizeToAreaKeys((profile as BuyerProfile | null)?.targetArea ?? ''),
+        contact_type:    profile ? contactType : (newRole === 'both' ? 'seller' : null),
+        updated_at:      new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
       })
       .eq('id', contactId);
@@ -268,13 +275,15 @@ export async function PATCH(req: NextRequest) {
   if (action === 'updateSellerProfile') {
     const newRole = body.role ?? 'seller';
     const contactType = newRole;
+    const profile = body.profile as SellerProfile | null | undefined;
 
     const { error } = await supabaseAdmin
       .from('contacts')
       .update({
-        seller_profile:  body.profile ?? null,
-        contact_type:    body.profile ? contactType : (newRole === 'both' ? 'buyer' : null),
-        updated_at:      new Date().toISOString(),
+        seller_profile:   profile ?? null,
+        seller_area_keys: normalizeToAreaKeys((profile as SellerProfile | null)?.propertyLocation ?? ''),
+        contact_type:     profile ? contactType : (newRole === 'both' ? 'buyer' : null),
+        updated_at:       new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
       })
       .eq('id', contactId);
@@ -455,6 +464,8 @@ function mapContact(row: any): Contact {
     tags:             Array.isArray(row.tags) ? row.tags : [],
     buyerProfile,
     sellerProfile,
+    buyerAreaKeys:    Array.isArray(row.buyer_area_keys)  ? row.buyer_area_keys  : [],
+    sellerAreaKeys:   Array.isArray(row.seller_area_keys) ? row.seller_area_keys : [],
     newsletterOptIn:  row.newsletter_opt_in ?? false,
     newsletterTags:   Array.isArray(row.newsletter_tags) ? row.newsletter_tags : [],
     lastActivityAt:   row.last_activity_at  ?? row.updated_at ?? new Date().toISOString(),

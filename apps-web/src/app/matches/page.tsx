@@ -12,6 +12,9 @@ import { useContacts } from '@/hooks/useContacts';
 import { useOpportunities } from '@/hooks/useOpportunities';
 import { useProperties } from '@/hooks/useProperties';
 import { useEvents } from '@/hooks/useEvents';
+import {
+  normalizeToAreaKeys, inferAreaKeys, expandAreaKeys, formatAreaKey,
+} from '@/lib/areaUtils';
 import type { Contact } from '@/features/contacts/types';
 import type { Lead } from '@/features/opportunities/types';
 import type { BuyerProfile, ContactRole } from '@/features/contacts/types';
@@ -31,6 +34,7 @@ interface MatchPerson {
   notes:             { body: string }[];
   linkedPropertyIds: string[];
   buyerProfile?:     BuyerProfile;
+  buyerAreaKeys:     string[];
   assignedAgentId?:  string;
   lastActivityAt:    string;
   source?:           string;
@@ -58,186 +62,144 @@ type FilterKey = 'all' | 'high' | 'buyers' | 'investors' | 'unassigned';
 
 const SCORE_THRESHOLD = 20;
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
-
-const REF = new Date();
+// ── Match scoring ─────────────────────────────────────────────────────────────
+//
+// Weights (total 100):
+//   Area match (exact)    35
+//   Area match (expanded) 25
+//   Price fit             25 / 15
+//   Beds minimum           8
+//   Baths minimum          7
+//   Sqft minimum          10
+//   Property type         10
+//   Intent tags            5
+//   Recency bonus       +1–3 (absorbed into 100 cap)
+//
+// Area keys are computed from DB columns when present; falls back to on-the-fly
+// inference from city/county/state so existing data without keys still matches.
 
 function computeMatchScore(
-  person:       MatchPerson,
-  property:     PropertyRecord,
-  allProperties: PropertyRecord[],
+  person:   MatchPerson,
+  property: PropertyRecord,
 ): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
-
-  const propAddress = (property.address ?? '').toLowerCase();
-  const propType    = (property.type    ?? '').toLowerCase();
-  const propCounty  = (property.county  ?? '').toLowerCase().replace(' county', '');
-  const propCity    = (property.city    ?? '').toLowerCase();
-  const propState   = (property.state   ?? '').toLowerCase();
-  const propPrice   = typeof property.price === 'number' && property.price > 0
-    ? property.price : null;
-
-  const notesText = person.notes
-    .map((n) => (n?.body ?? ''))
-    .join(' ')
-    .toLowerCase();
-
-  const linkedProps = allProperties.filter(
-    (p) => person.linkedPropertyIds.includes(p.id)
-  );
-
   const bp = person.buyerProfile;
 
-  // ── 1. Price alignment (+30, penalty -10) ──────────────────────────────────
-  let priceScore = 0;
+  // ── 1. Area match (35 / 25) ───────────────────────────────────────────────
+  const buyerKeys = person.buyerAreaKeys.length > 0
+    ? person.buyerAreaKeys
+    : normalizeToAreaKeys(bp?.targetArea ?? '');
 
-  if (propPrice !== null) {
-    if (bp?.priceMin != null || bp?.priceMax != null) {
+  const propKeys = property.areaKeys.length > 0
+    ? property.areaKeys
+    : inferAreaKeys(property.city, property.county, property.state);
+
+  if (buyerKeys.length > 0 && propKeys.length > 0) {
+    const directOverlap = buyerKeys.filter((k) => propKeys.includes(k));
+    if (directOverlap.length > 0) {
+      score += 35;
+      reasons.push(`Matches target area: ${formatAreaKey(directOverlap[0])}`);
+    } else {
+      const buyerExpanded = new Set(expandAreaKeys(buyerKeys));
+      const propExpanded  = new Set(expandAreaKeys(propKeys));
+      let expandedMatch: string | null = null;
+      for (const k of buyerExpanded) {
+        if (propExpanded.has(k)) { expandedMatch = k; break; }
+      }
+      if (expandedMatch) {
+        score += 25;
+        reasons.push(`Property in target area: ${formatAreaKey(expandedMatch)}`);
+      }
+    }
+  } else {
+    // Fallback text matching for data without area keys
+    const targetArea = (bp?.targetArea ?? '').toLowerCase();
+    const propCounty = (property.county ?? '').toLowerCase().replace(/\s*county\s*$/i, '');
+    const propCity   = (property.city   ?? '').toLowerCase();
+    const propAddr   = (property.address ?? '').toLowerCase();
+    if (targetArea) {
+      if (propAddr.includes(targetArea)) {
+        score += 25; reasons.push('Address matches target area');
+      } else if (propCounty && (propCounty.includes(targetArea) || targetArea.includes(propCounty))) {
+        score += 20; reasons.push(`Target area matches: ${property.county}`);
+      } else if (propCity && (propCity.includes(targetArea) || targetArea.includes(propCity))) {
+        score += 18; reasons.push(`Target area matches: ${property.city}`);
+      }
+    }
+  }
+
+  // ── 2. Price fit (25 / 15, penalty -10) ──────────────────────────────────
+  const propPrice = typeof property.price === 'number' && property.price > 0
+    ? property.price : null;
+
+  if (propPrice !== null && bp) {
+    if (bp.priceMin != null || bp.priceMax != null) {
       const lo = bp.priceMin ?? 0;
       const hi = bp.priceMax ?? Infinity;
       if (propPrice >= lo && propPrice <= hi) {
-        priceScore = 30;
+        score += 25;
+        reasons.push('Within buyer price range');
       } else if (propPrice >= lo * 0.85 && propPrice <= hi * 1.20) {
-        priceScore = 18;
+        score += 15;
+        reasons.push('Price range within reach');
       } else if (bp.priceMax != null && propPrice > bp.priceMax * 1.30) {
-        // Over-budget: penalise — price well above buyer's stated ceiling
         score -= 10;
         reasons.push('Price exceeds buyer budget ceiling');
       }
     }
-
-    if (priceScore === 0 && linkedProps.length > 0) {
-      const linkedPrices = linkedProps
-        .map((p) => p.price)
-        .filter((v) => typeof v === 'number' && v > 0);
-      if (linkedPrices.length > 0) {
-        const lo       = Math.min(...linkedPrices) * 0.55;
-        const hiStrict = Math.max(...linkedPrices) * 1.40;
-        const loStrict = Math.min(...linkedPrices) * 0.80;
-        if (propPrice >= lo && propPrice <= hiStrict) {
-          priceScore = propPrice >= loStrict ? 30 : 18;
-        }
-      }
-    }
-
-    if (priceScore === 0) {
-      const prequalM = notesText.match(/pre[- ]?qualif(?:ied)?\s+at\s+\$([0-9.]+)m/i);
-      if (prequalM) {
-        const budget = parseFloat(prequalM[1]) * 1_000_000;
-        const diff   = Math.abs(budget - propPrice) / propPrice;
-        priceScore = diff <= 0.25 ? 30 : diff <= 0.50 ? 18 : 0;
-      }
-    }
   }
 
-  if (priceScore >= 30) { score += 30; reasons.push('Price range aligns with qualification'); }
-  else if (priceScore >= 18) { score += 18; reasons.push('Price range within reach'); }
-
-  // ── 2. Location / address match (+25) ──────────────────────────────────────
-  if (propAddress && notesText.includes(propAddress)) {
-    score += 25;
-    reasons.push(`Previously inquired about ${property.address}`);
-  } else {
-    const targetArea = (bp?.targetArea ?? '').toLowerCase();
-    if (targetArea && propAddress && propAddress.includes(targetArea)) {
-      score += 22;
-      reasons.push(`Target area matches listing location`);
-    } else if (targetArea && propCounty && propCounty.includes(targetArea)) {
-      score += 22;
-      reasons.push(`Target area matches listing county`);
-    } else if (targetArea && propCity && propCity.includes(targetArea)) {
-      score += 18;
-      reasons.push(`Target area matches listing city`);
-    } else if (propCounty && notesText.includes(propCounty)) {
-      score += 22;
-      reasons.push(`Interest in ${property.county} market`);
-    } else if (propCity && notesText.includes(propCity)) {
-      score += 18;
-      reasons.push(`Familiar with ${property.city} area`);
-    } else if (linkedProps.some((p) => p.county && p.county === property.county)) {
-      score += 12;
-      reasons.push(`Active in ${property.county ?? 'same'} market`);
-    } else if (notesText.includes('hill country') && propState === 'tx') {
-      score += 10;
-      reasons.push('Expressed interest in Texas Hill Country');
-    }
-  }
-
-  // ── 3. Property type match (+20) ────────────────────────────────────────────
-  if (propType) {
-    const bpType = (bp?.propertyType ?? '').toLowerCase();
-    if (bpType && bpType === propType) {
-      score += 20;
-      reasons.push(`Buyer profile targets ${property.type || 'this'} property type`);
-    } else if (notesText.includes(propType)) {
-      score += 20;
-      reasons.push(`Explicitly seeking ${property.type} property`);
-    } else if (linkedProps.some((p) => (p.type ?? '').toLowerCase() === propType)) {
-      score += 14;
-      reasons.push(`Previously viewed ${property.type} properties`);
-    } else if (person.tags.some((t) => ['buyer', 'investor'].includes(t))) {
-      score += 6;
-    }
-  }
-
-  // ── 4. Beds match (+8) ──────────────────────────────────────────────────────
+  // ── 3. Beds minimum (8) ───────────────────────────────────────────────────
   if (bp?.bedsMin != null && property.beds != null) {
-    const propBeds = Number(property.beds);
-    if (!isNaN(propBeds) && propBeds >= bp.bedsMin) {
+    if (Number(property.beds) >= bp.bedsMin) {
       score += 8;
-      reasons.push(`Meets minimum ${bp.bedsMin}+ bed requirement`);
+      reasons.push(`Meets bedroom requirement (${bp.bedsMin}+ bd)`);
     }
   }
 
-  // ── 5. Baths match (+5) ─────────────────────────────────────────────────────
+  // ── 4. Baths minimum (7) ─────────────────────────────────────────────────
   if (bp?.bathsMin != null && property.baths != null) {
-    const propBaths = Number(property.baths);
-    if (!isNaN(propBaths) && propBaths >= bp.bathsMin) {
-      score += 5;
-      reasons.push(`Meets minimum ${bp.bathsMin}+ bath requirement`);
+    if (Number(property.baths) >= bp.bathsMin) {
+      score += 7;
+      reasons.push(`Meets bathroom requirement (${bp.bathsMin}+ ba)`);
     }
   }
 
-  // ── 6. Sqft match (+6) ──────────────────────────────────────────────────────
+  // ── 5. Sqft minimum (10) ─────────────────────────────────────────────────
   if (bp?.sqftMin != null && property.sqft != null) {
-    const propSqft = Number(property.sqft);
-    if (!isNaN(propSqft) && propSqft >= bp.sqftMin) {
-      score += 6;
-      reasons.push(`Meets minimum ${bp.sqftMin.toLocaleString()} sqft requirement`);
+    if (Number(property.sqft) >= bp.sqftMin) {
+      score += 10;
+      reasons.push(`Meets size requirement (${bp.sqftMin.toLocaleString()}+ sqft)`);
     }
   }
 
-  // ── 7. Profile completeness (+5) ────────────────────────────────────────────
-  if (bp) {
-    const filledFields = [
-      bp.targetArea, bp.priceMin, bp.priceMax, bp.propertyType,
-      bp.bedsMin, bp.bathsMin, bp.sqftMin,
-    ].filter((v) => v != null && v !== '').length;
-    if (filledFields >= 3) {
-      score += 5;
+  // ── 6. Property type (10) ─────────────────────────────────────────────────
+  if (bp?.propertyType && property.type) {
+    const bpType   = bp.propertyType.toLowerCase().replace(/_/g, ' ');
+    const propType = property.type.toLowerCase().replace(/_/g, ' ');
+    if (bpType === propType || propType.includes(bpType) || bpType.includes(propType)) {
+      score += 10;
+      reasons.push('Property type matches buyer preference');
     }
   }
 
-  // ── 8. Intent tags (+15) ────────────────────────────────────────────────────
-  const hotTags   = person.tags.filter((t) => ['hot', 'conversion-ready'].includes(t));
-  const buyerTags = person.tags.filter((t) => ['investor', 'buyer'].includes(t));
+  // ── 7. Intent tags (5) ───────────────────────────────────────────────────
+  const hotTags = person.tags.filter((t) => ['hot', 'conversion-ready'].includes(t));
   if (hotTags.length > 0) {
-    score += 15;
+    score += 5;
     reasons.push(`High-intent signal — ${hotTags.join(', ')}`);
-  } else if (buyerTags.length > 0) {
-    score += 8;
-    reasons.push(`Confirmed ${buyerTags[0]} profile`);
+  } else if (person.tags.some((t) => ['investor', 'buyer'].includes(t))) {
+    score += 3;
   }
 
-  // ── 9. Recency (+10) ────────────────────────────────────────────────────────
+  // ── 8. Recency micro-bonus (absorbed into 100 cap) ───────────────────────
   const lastActive = new Date(person.lastActivityAt);
-  const daysAgo    = isNaN(lastActive.getTime())
-    ? Infinity
-    : (REF.getTime() - lastActive.getTime()) / 86_400_000;
-  if      (daysAgo <= 3)  { score += 10; reasons.push('Active in last 72 hours'); }
-  else if (daysAgo <= 7)  { score += 7;  reasons.push('Active this week'); }
-  else if (daysAgo <= 14) { score += 4; }
+  if (!isNaN(lastActive.getTime())) {
+    const daysAgo = (Date.now() - lastActive.getTime()) / 86_400_000;
+    if (daysAgo <= 3) score += 3;
+    else if (daysAgo <= 7) score += 1;
+  }
 
   return { score: Math.min(Math.round(score), 100), reasons: reasons.slice(0, 4) };
 }
@@ -701,6 +663,7 @@ export default function MatchesPage() {
         notes:             Array.isArray(c.notes)             ? c.notes             : [],
         linkedPropertyIds: Array.isArray(c.linkedPropertyIds) ? c.linkedPropertyIds : [],
         buyerProfile:      c.buyerProfile,
+        buyerAreaKeys:     Array.isArray(c.buyerAreaKeys)     ? c.buyerAreaKeys     : [],
         assignedAgentId:   c.assignedAgentId,
         lastActivityAt:    c.lastActivityAt ?? c.updatedAt ?? new Date().toISOString(),
         source:            c.source,
@@ -721,6 +684,7 @@ export default function MatchesPage() {
         notes:             Array.isArray(l.notes)             ? l.notes             : [],
         linkedPropertyIds: Array.isArray(l.linkedPropertyIds) ? l.linkedPropertyIds : [],
         buyerProfile:      l.buyerProfile,
+        buyerAreaKeys:     Array.isArray(l.buyerAreaKeys)     ? l.buyerAreaKeys     : [],
         assignedAgentId:   l.assignedAgentId,
         lastActivityAt:    l.updatedAt ?? new Date().toISOString(),
         source:            l.source,
@@ -742,7 +706,7 @@ export default function MatchesPage() {
 
     for (const person of persons) {
       for (const property of matchableProps) {
-        const { score, reasons } = computeMatchScore(person, property, properties);
+        const { score, reasons } = computeMatchScore(person, property);
         if (score < SCORE_THRESHOLD) continue;
 
         const matchId = `${person.kind}:${person.id}:${property.id}`;
@@ -816,7 +780,7 @@ export default function MatchesPage() {
   const highCount    = allMatches.filter((m) => m.score >= 80).length;
   const newThisWeek  = allMatches.filter((m) => {
     const t = new Date(m.person.lastActivityAt).getTime();
-    return !isNaN(t) && (REF.getTime() - t) / 86_400_000 <= 7;
+    return !isNaN(t) && (Date.now() - t) / 86_400_000 <= 7;
   }).length;
   const actedOnCount = allMatches.filter((m) => m.alreadyInPipeline || actedOn.has(m.id)).length;
 
@@ -1041,7 +1005,7 @@ export default function MatchesPage() {
             </div>
           ))}
           <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--r-text-3)' }}>
-            Weights: price +30 · location +25 · type +20 · beds +8 · baths +5 · sqft +6 · profile +5 · intent +15 · recency +10
+            Weights: area +35 · price +25 · sqft +10 · type +10 · beds +8 · baths +7 · intent +5
           </div>
         </div>
       )}

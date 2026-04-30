@@ -33,6 +33,7 @@ function parseCSV(text: string): { headers: string[]; rows: string[][] } {
 type CsvPropertyRow = {
   addressLine1: string;
   city?: string;
+  county?: string;
   state?: string;
   zip?: string;
   price?: number;
@@ -46,7 +47,8 @@ type CsvPropertyRow = {
 const PROP_COL_MAP: Record<string, keyof CsvPropertyRow> = {
   address: 'addressLine1', address_line_1: 'addressLine1', address_line1: 'addressLine1',
   street: 'addressLine1', street_address: 'addressLine1', property_address: 'addressLine1',
-  city: 'city', state: 'state', zip: 'zip', zip_code: 'zip', postal_code: 'zip',
+  city: 'city', county: 'county',
+  state: 'state', zip: 'zip', zip_code: 'zip', postal_code: 'zip',
   price: 'price', list_price: 'price', listing_price: 'price', asking_price: 'price',
   beds: 'beds', bedrooms: 'beds', bed: 'beds',
   baths: 'baths', bathrooms: 'baths', bath: 'baths',
@@ -62,7 +64,7 @@ function normalizePropRows(headers: string[], rows: string[][]): CsvPropertyRow[
     cols.forEach((val, i) => {
       const key = mapped[i];
       if (!key || !val) return;
-      if (['addressLine1', 'city', 'state', 'zip', 'mlsNumber', 'listingUrl'].includes(key)) {
+      if (['addressLine1', 'city', 'county', 'state', 'zip', 'mlsNumber', 'listingUrl'].includes(key)) {
         (obj as any)[key] = val;
       } else {
         const n = parseFloat(val.replace(/[$,]/g, ''));

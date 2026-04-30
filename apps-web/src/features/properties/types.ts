@@ -40,6 +40,8 @@ export interface PropertyRecord {
   linkedContactIds: string[];
   tags: string[];
   notes: PropertyNote[];
+  /** Normalized area keys derived from city/county/state — used by match engine. */
+  areaKeys: string[];
   listedAt?: string;
   contractedAt?: string;
   closedAt?: string;

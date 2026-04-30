@@ -109,6 +109,10 @@ export interface Contact {
   tags:               string[];
   buyerProfile?:      BuyerProfile;
   sellerProfile?:     SellerProfile;
+  /** Normalized area keys generated from buyerProfile.targetArea — used by match engine. */
+  buyerAreaKeys:      string[];
+  /** Normalized area keys generated from sellerProfile.propertyLocation. */
+  sellerAreaKeys:     string[];
   newsletterOptIn:    boolean;
   newsletterTags:     string[];
   lastActivityAt:     string;
