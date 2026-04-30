@@ -152,7 +152,10 @@ export function ProfileSummary({ subject }: { subject: ProfileSubject }) {
   if (subject.sellerProfile) {
     const sp = subject.sellerProfile;
     const parts: string[] = [];
-    if (sp.propertyLocation) parts.push(sp.propertyLocation);
+    const addr = sp.addressLine1 ?? sp.propertyLocation;
+    if (addr) parts.push(addr);
+    if (sp.city && sp.state) parts.push(`${sp.city}, ${sp.state}`);
+    else if (sp.city || sp.state) parts.push(sp.city ?? sp.state ?? '');
     if (sp.beds && sp.baths) parts.push(`${sp.beds}bd/${sp.baths}ba`);
     if (sp.condition) parts.push(CONDITION_LABELS[sp.condition] ?? sp.condition);
     if (sp.estimatedValue) parts.push(fmtPrice(sp.estimatedValue));
@@ -262,15 +265,24 @@ export function ProfilePanel({
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#85c28e', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Seller</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              {([
-                ['Location',   subject.sellerProfile.propertyLocation],
-                ['Beds',       subject.sellerProfile.beds  ? `${subject.sellerProfile.beds}`  : null],
-                ['Baths',      subject.sellerProfile.baths ? `${subject.sellerProfile.baths}` : null],
-                ['Sqft',       subject.sellerProfile.sqft  ? subject.sellerProfile.sqft.toLocaleString() : null],
-                ['Type',       subject.sellerProfile.propertyType ? PROP_TYPE_LABELS[subject.sellerProfile.propertyType] : null],
-                ['Condition',  subject.sellerProfile.condition ? CONDITION_LABELS[subject.sellerProfile.condition] : null],
-                ['Est. Value', subject.sellerProfile.estimatedValue ? fmtPrice(subject.sellerProfile.estimatedValue) : null],
-              ] as [string, string | null | undefined][]).filter(([, v]) => v).map(([label, val]) => (
+              {((() => {
+                const sp = subject.sellerProfile!;
+                const addr = sp.addressLine1 ?? sp.propertyLocation ?? null;
+                const cityState = [sp.city, sp.state].filter(Boolean).join(', ') || null;
+                return [
+                  ['Address',    addr],
+                  ['City / State', cityState],
+                  ['Zip',        sp.zip  ?? null],
+                  ['County',     sp.county ?? null],
+                  ['Beds',       sp.beds  ? `${sp.beds}`  : null],
+                  ['Baths',      sp.baths ? `${sp.baths}` : null],
+                  ['Sqft',       sp.sqft  ? sp.sqft.toLocaleString() : null],
+                  ['Acreage',    sp.acreage ? `${sp.acreage} ac` : null],
+                  ['Type',       sp.propertyType ? PROP_TYPE_LABELS[sp.propertyType] : null],
+                  ['Condition',  sp.condition ? CONDITION_LABELS[sp.condition] : null],
+                  ['Est. Value', sp.estimatedValue ? fmtPrice(sp.estimatedValue) : null],
+                ] as [string, string | null][];
+              })()).filter(([, v]) => v).map(([label, val]) => (
                 <div key={label}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
                   <div style={{ fontSize: 12, color: 'var(--r-text-2)' }}>{val}</div>
@@ -354,14 +366,38 @@ export function ProfilePanel({
       {hasSeller && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#85c28e', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Seller Profile</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-            <div><FieldLabel>Property Location</FieldLabel>
-              <input style={inputStyle} value={seller.propertyLocation ?? ''} onChange={(e) => setSeller({ ...seller, propertyLocation: e.target.value || undefined })} placeholder="123 Main St, Austin TX" />
+          {/* Address block */}
+          <div style={{ marginBottom: 8 }}>
+            <FieldLabel>Address</FieldLabel>
+            <input style={inputStyle} value={seller.addressLine1 ?? ''} onChange={(e) => setSeller({ ...seller, addressLine1: e.target.value || undefined })} placeholder="123 Ranch Rd" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 9, marginBottom: 9 }}>
+            <div><FieldLabel>City</FieldLabel>
+              <input style={inputStyle} value={seller.city ?? ''} onChange={(e) => setSeller({ ...seller, city: e.target.value || undefined })} placeholder="Kerrville" />
             </div>
+            <div><FieldLabel>State</FieldLabel>
+              <input style={inputStyle} value={seller.state ?? ''} onChange={(e) => setSeller({ ...seller, state: (e.target.value || undefined) })} placeholder="TX" maxLength={2} />
+            </div>
+            <div><FieldLabel>Zip</FieldLabel>
+              <input style={inputStyle} value={seller.zip ?? ''} onChange={(e) => setSeller({ ...seller, zip: e.target.value || undefined })} placeholder="78028" />
+            </div>
+          </div>
+          <div style={{ marginBottom: 9 }}>
+            <FieldLabel>County</FieldLabel>
+            <input style={inputStyle} value={seller.county ?? ''} onChange={(e) => setSeller({ ...seller, county: e.target.value || undefined })} placeholder="Kerr" />
+          </div>
+          {/* Property details */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
             <div><FieldLabel>Property Type</FieldLabel>
               <select style={selectStyle} value={seller.propertyType ?? ''} onChange={(e) => setSeller({ ...seller, propertyType: (e.target.value as PropertyType) || undefined })}>
                 <option value="">Select...</option>
                 {PROPERTY_TYPES.map((t) => <option key={t} value={t}>{PROP_TYPE_LABELS[t]}</option>)}
+              </select>
+            </div>
+            <div><FieldLabel>Condition</FieldLabel>
+              <select style={selectStyle} value={seller.condition ?? ''} onChange={(e) => setSeller({ ...seller, condition: (e.target.value as SellerCondition) || undefined })}>
+                <option value="">Select...</option>
+                {SELLER_CONDITIONS.map((c) => <option key={c} value={c}>{CONDITION_LABELS[c]}</option>)}
               </select>
             </div>
             <div><FieldLabel>Beds</FieldLabel>
@@ -373,11 +409,8 @@ export function ProfilePanel({
             <div><FieldLabel>Sqft</FieldLabel>
               <input style={inputStyle} type="number" value={seller.sqft ?? ''} onChange={(e) => setSeller({ ...seller, sqft: e.target.value ? Number(e.target.value) : undefined })} placeholder="1800" />
             </div>
-            <div><FieldLabel>Condition</FieldLabel>
-              <select style={selectStyle} value={seller.condition ?? ''} onChange={(e) => setSeller({ ...seller, condition: (e.target.value as SellerCondition) || undefined })}>
-                <option value="">Select...</option>
-                {SELLER_CONDITIONS.map((c) => <option key={c} value={c}>{CONDITION_LABELS[c]}</option>)}
-              </select>
+            <div><FieldLabel>Acreage</FieldLabel>
+              <input style={inputStyle} type="number" value={seller.acreage ?? ''} onChange={(e) => setSeller({ ...seller, acreage: e.target.value ? Number(e.target.value) : undefined })} placeholder="50" />
             </div>
             <div><FieldLabel>Estimated Value</FieldLabel>
               <input style={inputStyle} type="number" value={seller.estimatedValue ?? ''} onChange={(e) => setSeller({ ...seller, estimatedValue: e.target.value ? Number(e.target.value) : undefined })} placeholder="850000" />
@@ -480,9 +513,25 @@ export function ProfileFormSection({
       {hasSeller && (
         <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(133,194,142,0.05)', border: '1px solid rgba(133,194,142,0.2)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#85c28e', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Seller Profile</div>
+          {/* Address */}
+          <div style={{ marginBottom: 8 }}>
+            <FieldLabel>Address</FieldLabel>
+            <input style={inputStyle} value={seller.addressLine1 ?? ''} onChange={(e) => setSeller({ ...seller, addressLine1: e.target.value || undefined })} placeholder="123 Ranch Rd" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <div><FieldLabel>City</FieldLabel>
+              <input style={inputStyle} value={seller.city ?? ''} onChange={(e) => setSeller({ ...seller, city: e.target.value || undefined })} placeholder="Kerrville" />
+            </div>
+            <div><FieldLabel>State</FieldLabel>
+              <input style={inputStyle} value={seller.state ?? ''} onChange={(e) => setSeller({ ...seller, state: e.target.value || undefined })} placeholder="TX" maxLength={2} />
+            </div>
+            <div><FieldLabel>Zip</FieldLabel>
+              <input style={inputStyle} value={seller.zip ?? ''} onChange={(e) => setSeller({ ...seller, zip: e.target.value || undefined })} placeholder="78028" />
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <div><FieldLabel>Location</FieldLabel>
-              <input style={inputStyle} value={seller.propertyLocation ?? ''} onChange={(e) => setSeller({ ...seller, propertyLocation: e.target.value || undefined })} placeholder="Address..." />
+            <div><FieldLabel>County</FieldLabel>
+              <input style={inputStyle} value={seller.county ?? ''} onChange={(e) => setSeller({ ...seller, county: e.target.value || undefined })} placeholder="Kerr" />
             </div>
             <div><FieldLabel>Property Type</FieldLabel>
               <select style={selectStyle} value={seller.propertyType ?? ''} onChange={(e) => setSeller({ ...seller, propertyType: (e.target.value as PropertyType) || undefined })}>
@@ -501,6 +550,12 @@ export function ProfileFormSection({
             </div>
             <div><FieldLabel>Baths</FieldLabel>
               <input style={inputStyle} type="number" value={seller.baths ?? ''} onChange={(e) => setSeller({ ...seller, baths: e.target.value ? Number(e.target.value) : undefined })} placeholder="2" />
+            </div>
+            <div><FieldLabel>Sqft</FieldLabel>
+              <input style={inputStyle} type="number" value={seller.sqft ?? ''} onChange={(e) => setSeller({ ...seller, sqft: e.target.value ? Number(e.target.value) : undefined })} placeholder="1800" />
+            </div>
+            <div><FieldLabel>Acreage</FieldLabel>
+              <input style={inputStyle} type="number" value={seller.acreage ?? ''} onChange={(e) => setSeller({ ...seller, acreage: e.target.value ? Number(e.target.value) : undefined })} placeholder="50" />
             </div>
             <div><FieldLabel>Est. Value</FieldLabel>
               <input style={inputStyle} type="number" value={seller.estimatedValue ?? ''} onChange={(e) => setSeller({ ...seller, estimatedValue: e.target.value ? Number(e.target.value) : undefined })} placeholder="850000" />

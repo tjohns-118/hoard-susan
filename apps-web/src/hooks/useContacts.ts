@@ -94,7 +94,7 @@ export function useContacts() {
     sellerProfile?:   SellerProfile;
     newsletterOptIn?: boolean;
     newsletterTags?:  string[];
-  }): Promise<{ propertyCreated?: boolean; taskCreated?: boolean }> {
+  }): Promise<{ propertyCreated?: boolean; propertyUpdated?: boolean; taskCreated?: boolean }> {
     const res = await fetch('/api/contacts', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -106,6 +106,7 @@ export function useContacts() {
     await reload();
     return {
       propertyCreated: json.sideEffect === 'property_created',
+      propertyUpdated: json.sideEffect === 'property_updated',
       taskCreated:     json.sideEffect === 'task_created',
     };
   }
@@ -124,7 +125,7 @@ export function useContacts() {
     contactId: string,
     profile:   SellerProfile | null,
     role:      ContactRole,
-  ): Promise<{ propertyCreated?: boolean; taskCreated?: boolean }> {
+  ): Promise<{ propertyCreated?: boolean; propertyUpdated?: boolean; taskCreated?: boolean }> {
     const res = await fetch('/api/contacts', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -136,6 +137,7 @@ export function useContacts() {
     await reload();
     return {
       propertyCreated: json.sideEffect === 'property_created',
+      propertyUpdated: json.sideEffect === 'property_updated',
       taskCreated:     json.sideEffect === 'task_created',
     };
   }

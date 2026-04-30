@@ -866,9 +866,11 @@ export default function ContactsPage() {
       });
       resetAddForm();
       if (result.propertyCreated) {
-        showToast(`Contact saved — prospect property created from location`);
+        showToast(`Contact saved — prospect property created`);
+      } else if (result.propertyUpdated) {
+        showToast(`Contact saved — existing property updated`);
       } else if (result.taskCreated) {
-        showToast(`Contact saved — follow-up task created to collect property info`);
+        showToast(`Contact saved — follow-up task created to collect property details`);
       }
     } catch (e: any) {
       setAddError(e?.message ?? 'Failed to create contact.');
@@ -885,6 +887,8 @@ export default function ContactsPage() {
     const result = await updateSellerProfile(contactId, profile, role);
     if (result.propertyCreated) {
       showToast(`Seller profile saved — prospect property created`);
+    } else if (result.propertyUpdated) {
+      showToast(`Seller profile saved — existing property updated`);
     } else if (result.taskCreated) {
       showToast(`Seller profile saved — follow-up task created`);
     }

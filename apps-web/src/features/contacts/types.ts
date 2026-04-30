@@ -68,10 +68,21 @@ export interface BuyerProfile {
 }
 
 export interface SellerProfile {
+  // Structured address — mirrors the Properties "Add Property" form.
+  // Preferred over the legacy propertyLocation free-text field.
+  addressLine1?:   string;   // "123 Ranch Rd"
+  city?:           string;   // "Kerrville"
+  state?:          string;   // "TX"
+  zip?:            string;   // "78028"
+  county?:         string;   // "Kerr"
+  // Legacy / computed display value — still read for backward compat.
+  // New saves set this to "<addressLine1>, <city> <state>" so old display code works.
   propertyLocation?: string;
+  // Property details
   beds?:             number;
   baths?:            number;
   sqft?:             number;
+  acreage?:          number;
   propertyType?:     PropertyType;
   condition?:        SellerCondition;
   estimatedValue?:   number;

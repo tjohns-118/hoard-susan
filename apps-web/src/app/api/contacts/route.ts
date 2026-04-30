@@ -44,41 +44,109 @@ import type {
 // After a seller profile is saved, we either auto-create a prospect property
 // or create a follow-up task to collect missing property data.
 
+// Compute a display-friendly propertyLocation from structured fields.
+// Stored alongside the structured fields so legacy display code still works.
+function buildPropertyLocation(profile: SellerProfile): SellerProfile {
+  const { addressLine1, city, state, zip } = profile;
+  if (!addressLine1 && !city && !state) return profile; // nothing to compute
+  const parts: string[] = [];
+  if (addressLine1) parts.push(addressLine1);
+  const cityState = [city, state].filter(Boolean).join(' ');
+  if (cityState) parts.push(cityState);
+  if (zip) parts.push(zip);
+  return { ...profile, propertyLocation: parts.join(', ') };
+}
+
+// Compute seller_area_keys from structured fields (preferred) or legacy free-text.
+function sellerAreaKeys(profile: SellerProfile | null | undefined): string[] {
+  if (!profile) return [];
+  const { city, county, state, propertyLocation } = profile;
+  if (city || county || state) {
+    return inferAreaKeys(city?.trim() || undefined, county?.trim() || undefined, state?.trim() || undefined);
+  }
+  return normalizeToAreaKeys(propertyLocation ?? '');
+}
+
 async function triggerSellerSideEffect(
   brokerageId: string,
   contactId:   string,
   contactName: string,
   profile:     SellerProfile,
-): Promise<'property_created' | 'task_created' | null> {
-  const location = profile.propertyLocation?.trim() ?? '';
+): Promise<'property_created' | 'property_updated' | 'task_created' | null> {
+  // Resolve the best address_line_1: prefer structured field, fall back to legacy.
+  const addressLine1 = (profile.addressLine1 ?? profile.propertyLocation ?? '').trim();
+  const city         = profile.city?.trim()   || null;
+  const state        = profile.state?.trim()  || null;
+  const zip          = profile.zip?.trim()    || null;
+  const county       = profile.county?.trim() || null;
 
-  if (location.length >= 3) {
-    // ── Try to upsert a prospect property ────────────────────────────────────
+  const hasAddress = addressLine1.length >= 3;
+
+  if (hasAddress) {
+    // ── Deduplicate by brokerage_id + address_line_1 ─────────────────────────
     const { data: existing } = await supabaseAdmin
       .from('properties')
-      .select('id')
+      .select('id, linked_contact_ids')
       .eq('brokerage_id', brokerageId)
-      .ilike('address_line_1', location)
+      .ilike('address_line_1', addressLine1)
       .maybeSingle();
 
-    if (existing) return null; // already exists — no-op
+    const areaKeys = inferAreaKeys(city || undefined, county || undefined, state || undefined);
 
+    const propertyPayload = {
+      price:              profile.estimatedValue ?? 0,
+      property_type:      profile.propertyType   ?? null,
+      beds:               profile.beds            ?? null,
+      baths:              profile.baths           ?? null,
+      sqft:               profile.sqft            ?? null,
+      acreage:            profile.acreage         ?? null,
+      city,
+      state,
+      zip,
+      county,
+      area_keys:          areaKeys,
+      updated_at:         new Date().toISOString(),
+    };
+
+    if (existing) {
+      // Merge linked_contact_ids without duplicating.
+      const linked: string[] = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
+      const mergedLinked = linked.includes(contactId) ? linked : [...linked, contactId];
+
+      const { error } = await supabaseAdmin
+        .from('properties')
+        .update({ ...propertyPayload, linked_contact_ids: mergedLinked })
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('[triggerSellerSideEffect] property update error:', error.message);
+        return null;
+      }
+      return 'property_updated';
+    }
+
+    // Insert new prospect property.
     const { error } = await supabaseAdmin
       .from('properties')
       .insert({
         brokerage_id:       brokerageId,
-        address_line_1:     location,
+        address_line_1:     addressLine1,
+        city,
+        state,
+        zip,
+        county,
         status:             'prospect',
         price:              profile.estimatedValue ?? 0,
         property_type:      profile.propertyType   ?? null,
         beds:               profile.beds            ?? null,
         baths:              profile.baths           ?? null,
         sqft:               profile.sqft            ?? null,
+        acreage:            profile.acreage         ?? null,
         linked_contact_ids: [contactId],
         tags:               [],
         notes:              [],
         images:             [],
-        area_keys:          inferAreaKeys(undefined, undefined, undefined),
+        area_keys:          areaKeys,
         listed_at:          new Date().toISOString(),
       });
 
@@ -217,9 +285,9 @@ export async function POST(req: NextRequest) {
       newsletter_opt_in: body.newsletterOptIn ?? false,
       newsletter_tags:   body.newsletterTags  ?? [],
       buyer_profile:     body.buyerProfile  ?? null,
-      seller_profile:    body.sellerProfile ?? null,
+      seller_profile:    body.sellerProfile ? buildPropertyLocation(body.sellerProfile) : null,
       buyer_area_keys:   normalizeToAreaKeys(body.buyerProfile?.targetArea ?? ''),
-      seller_area_keys:  normalizeToAreaKeys((body.sellerProfile as any)?.propertyLocation ?? ''),
+      seller_area_keys:  sellerAreaKeys(body.sellerProfile),
       assigned_member_id: creatorMemberId,
       last_activity_at:  new Date().toISOString(),
     })
@@ -231,7 +299,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let sideEffect: 'property_created' | 'task_created' | null = null;
+  let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
   if (body.sellerProfile) {
     sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
   }
@@ -372,8 +440,8 @@ export async function PATCH(req: NextRequest) {
     const { error } = await supabaseAdmin
       .from('contacts')
       .update({
-        seller_profile:   profile ?? null,
-        seller_area_keys: normalizeToAreaKeys((profile as SellerProfile | null)?.propertyLocation ?? ''),
+        seller_profile:   profile ? buildPropertyLocation(profile) : null,
+        seller_area_keys: sellerAreaKeys(profile),
         contact_type:     profile ? contactType : (newRole === 'both' ? 'buyer' : null),
         updated_at:       new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
@@ -382,7 +450,7 @@ export async function PATCH(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    let sideEffect: 'property_created' | 'task_created' | null = null;
+    let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
     if (profile && BROKERAGE_ID && contactRow?.full_name) {
       sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
     }
