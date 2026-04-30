@@ -34,6 +34,10 @@ import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
 import { normalizeToAreaKeys, inferAreaKeys } from '@/lib/areaUtils';
+import {
+  safeInsertProperty, safeUpdateProperty, buildSyncWarning,
+  type PropertyDbInsert, type PropertyDbUpdate,
+} from '@/lib/propertyDb';
 import type {
   Contact, ContactNote, ContactRole,
   BuyerProfile, SellerProfile,
@@ -68,24 +72,11 @@ function sellerAreaKeys(profile: SellerProfile | null | undefined): string[] {
 }
 
 type SideEffectResult = {
-  propertyCreated:  boolean;
-  propertyUpdated:  boolean;
-  followUpCreated:  boolean;
+  propertyCreated:   boolean;
+  propertyUpdated:   boolean;
+  followUpCreated:   boolean;
   propertySyncError?: string;
 };
-
-// PostgreSQL 42703 = undefined_column; 23514 = check_violation.
-// Catches any "column does not exist" or CHECK/constraint violation message.
-function isSchemaError(err: { code?: string; message?: string }): boolean {
-  const msg = err.message ?? '';
-  return (
-    err.code === '42703' ||
-    err.code === '42P01' ||
-    msg.includes('does not exist') ||
-    msg.includes('column') ||
-    msg.includes('violates check constraint')
-  );
-}
 
 async function triggerSellerSideEffect(
   brokerageId: string,
@@ -95,17 +86,14 @@ async function triggerSellerSideEffect(
 ): Promise<SideEffectResult> {
   const NONE: SideEffectResult = { propertyCreated: false, propertyUpdated: false, followUpCreated: false };
 
-  // Resolve the best address_line_1: prefer structured field, fall back to legacy.
   const addressLine1 = (profile.addressLine1 ?? profile.propertyLocation ?? '').trim();
   const city         = profile.city?.trim()   || null;
   const state        = profile.state?.trim()  || null;
   const zip          = profile.zip?.trim()    || null;
   const county       = profile.county?.trim() || null;
-
-  const hasAddress = addressLine1.length >= 3;
+  const hasAddress   = addressLine1.length >= 3;
 
   if (hasAddress) {
-    // ── Deduplicate by brokerage_id + address_line_1 ─────────────────────────
     const { data: existing } = await supabaseAdmin
       .from('properties')
       .select('id, linked_contact_ids')
@@ -114,130 +102,67 @@ async function triggerSellerSideEffect(
       .maybeSingle();
 
     const areaKeys = inferAreaKeys(city || undefined, county || undefined, state || undefined);
-
-    const now = new Date().toISOString();
-    const basePayload = {
-      price:         typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
-      property_type: profile.propertyType ?? null,
-      beds:          profile.beds   != null ? Number(profile.beds)   : null,
-      baths:         profile.baths  != null ? Number(profile.baths)  : null,
-      sqft:          profile.sqft   != null ? Number(profile.sqft)   : null,
-      acreage:       profile.acreage != null ? Number(profile.acreage) : null,
-      city, state, zip, county,
-      updated_at:    now,
-    };
+    const now      = new Date().toISOString();
+    const price    = typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0;
 
     if (existing) {
-      const linked: string[] = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
+      const linked      = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
       const mergedLinked = linked.includes(contactId) ? linked : [...linked, contactId];
-      const updateWith    = { ...basePayload, linked_contact_ids: mergedLinked };
 
-      // Phase 1: try with area_keys
-      let { error } = await supabaseAdmin
-        .from('properties')
-        .update({ ...updateWith, area_keys: areaKeys })
-        .eq('id', existing.id);
+      const updatePayload: PropertyDbUpdate = {
+        price,
+        property_type:      profile.propertyType ?? null,
+        beds:               profile.beds    != null ? Number(profile.beds)    : null,
+        baths:              profile.baths   != null ? Number(profile.baths)   : null,
+        sqft:               profile.sqft    != null ? Number(profile.sqft)    : null,
+        acreage:            profile.acreage != null ? Number(profile.acreage) : null,
+        city, state, zip, county,
+        linked_contact_ids: mergedLinked,
+        area_keys:          areaKeys,
+        updated_at:         now,
+      };
 
-      let propertySyncError: string | undefined;
-      if (error && isSchemaError(error)) {
-        // Phase 2: retry without area_keys
-        console.warn('[triggerSellerSideEffect] update phase 1 failed (schema issue), retrying without area_keys:', error.message);
-        ({ error } = await supabaseAdmin
-          .from('properties')
-          .update(updateWith)
-          .eq('id', existing.id));
-        if (!error) propertySyncError = 'area_keys not indexed — run rebuild-area-keys to enable matching';
+      const result = await safeUpdateProperty(existing.id, updatePayload);
+      if (!result.ok) {
+        return { ...NONE, propertySyncError: `Property update failed: ${result.error}` };
       }
-
-      if (error) {
-        console.error('[triggerSellerSideEffect] property update FAILED:', { code: error.code, message: error.message, payload: updateWith });
-        return { ...NONE, propertySyncError: `Property update failed (${error.code ?? 'err'}): ${error.message}` };
-      }
-      return { propertyCreated: false, propertyUpdated: true, followUpCreated: false, propertySyncError };
+      return { propertyCreated: false, propertyUpdated: true, followUpCreated: false,
+               propertySyncError: buildSyncWarning(result.strippedColumns) };
     }
 
-    // ── Three-phase INSERT ───────────────────────────────────────────────────
-    // Phase 1: full insert (with area_keys + all optional fields)
-    // Phase 2: without area_keys (column might be missing)
-    // Phase 3: minimal safe insert (guaranteed columns only)
-    const insertFull = {
+    // ── INSERT new prospect property ─────────────────────────────────────────
+    const insertPayload: PropertyDbInsert = {
       brokerage_id:       brokerageId,
       address_line_1:     addressLine1,
       city, state, zip, county,
-      status:             'prospect' as const,
-      price:              typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
+      status:             'prospect',
+      price,
       property_type:      profile.propertyType ?? null,
-      beds:               profile.beds   != null ? Number(profile.beds)   : null,
-      baths:              profile.baths  != null ? Number(profile.baths)  : null,
-      sqft:               profile.sqft   != null ? Number(profile.sqft)   : null,
+      beds:               profile.beds    != null ? Number(profile.beds)    : null,
+      baths:              profile.baths   != null ? Number(profile.baths)   : null,
+      sqft:               profile.sqft    != null ? Number(profile.sqft)    : null,
       acreage:            profile.acreage != null ? Number(profile.acreage) : null,
       linked_contact_ids: [contactId],
-      tags:               [] as string[],
-      notes:              [] as unknown[],
-      images:             [] as string[],
+      tags:               [],
+      notes:              [],
+      images:             [],
+      area_keys:          areaKeys,
       listed_at:          now,
     };
 
-    console.log('[triggerSellerSideEffect] attempting property insert:', {
-      address_line_1: addressLine1, city, state, zip, county,
-      status: insertFull.status, price: insertFull.price,
-      areaKeys,
+    console.log('[triggerSellerSideEffect] inserting property:', {
+      address_line_1: addressLine1, city, state, status: 'prospect', price, areaKeys,
     });
 
-    // Phase 1
-    let { error: err1 } = await supabaseAdmin
-      .from('properties')
-      .insert({ ...insertFull, area_keys: areaKeys });
-
-    if (!err1) return { propertyCreated: true, propertyUpdated: false, followUpCreated: false };
-
-    console.warn('[triggerSellerSideEffect] phase 1 failed:', { code: err1.code, message: err1.message });
-
-    // Phase 2: without area_keys
-    let { error: err2 } = await supabaseAdmin
-      .from('properties')
-      .insert(insertFull);
-
-    if (!err2) {
-      return { propertyCreated: true, propertyUpdated: false, followUpCreated: false,
-               propertySyncError: 'area_keys not indexed — run rebuild-area-keys to enable matching' };
+    const result = await safeInsertProperty(insertPayload);
+    if (!result.ok) {
+      return { ...NONE, propertySyncError: `Property creation failed: ${result.error}` };
     }
-
-    console.warn('[triggerSellerSideEffect] phase 2 failed:', { code: err2.code, message: err2.message });
-
-    // Phase 3: minimal insert — only columns guaranteed to exist in every schema version
-    const insertMinimal = {
-      brokerage_id:       brokerageId,
-      address_line_1:     addressLine1,
-      status:             'active' as const,
-      price:              typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
-      linked_contact_ids: [contactId],
-      tags:               [] as string[],
-      notes:              [] as unknown[],
-      images:             [] as string[],
-      listed_at:          now,
-    };
-
-    const { error: err3 } = await supabaseAdmin
-      .from('properties')
-      .insert(insertMinimal);
-
-    if (!err3) {
-      return { propertyCreated: true, propertyUpdated: false, followUpCreated: false,
-               propertySyncError: `Saved with minimal fields — schema error prevented full insert. Phase 1: ${err1.message}. Phase 2: ${err2.message}` };
-    }
-
-    // All three phases failed — log everything and surface the error
-    console.error('[triggerSellerSideEffect] ALL INSERT PHASES FAILED:', {
-      phase1: { code: err1.code, message: err1.message },
-      phase2: { code: err2.code, message: err2.message },
-      phase3: { code: err3.code, message: err3.message },
-      payload: insertMinimal,
-    });
-    return { ...NONE, propertySyncError: `Property creation failed — ${err1.message} (phase 1); ${err2.message} (phase 2); ${err3.message} (phase 3)` };
+    return { propertyCreated: true, propertyUpdated: false, followUpCreated: false,
+             propertySyncError: buildSyncWarning(result.strippedColumns) };
 
   } else {
-    // ── Create a follow-up task if one doesn't exist yet ─────────────────────
+    // ── No usable address — create a follow-up task instead ──────────────────
     const taskTitle = `Complete property profile for ${contactName}`;
     const { data: existingTask } = await supabaseAdmin
       .from('tasks')
@@ -252,13 +177,7 @@ async function triggerSellerSideEffect(
 
     const { error } = await supabaseAdmin
       .from('tasks')
-      .insert({
-        brokerage_id: brokerageId,
-        title:        taskTitle,
-        priority:     'medium',
-        completed:    false,
-        contact_id:   contactId,
-      });
+      .insert({ brokerage_id: brokerageId, title: taskTitle, priority: 'medium', completed: false, contact_id: contactId });
 
     if (error) {
       console.error('[triggerSellerSideEffect] task insert error:', error.message);

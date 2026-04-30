@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { inferAreaKeys } from '@/lib/areaUtils';
+import { safeInsertProperty, safeUpdateProperty, type PropertyDbInsert, type PropertyDbUpdate } from '@/lib/propertyDb';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
 
 // ── GET /api/properties ───────────────────────────────────────────────────────
@@ -78,44 +79,66 @@ export async function POST(req: NextRequest) {
   if (!line1)
     return NextResponse.json({ error: 'addressLine1 (or address) required' }, { status: 400 });
 
-  const { data, error } = await supabaseAdmin
-    .from('properties')
-    .insert({
-      brokerage_id:       BROKERAGE_ID,
-      address_line_1:     line1,
-      address_line_2:     body.addressLine2?.trim() ?? null,
-      zip:                body.zip?.trim()          ?? null,
-      status:             body.status          ?? 'active',
-      price:              body.price           ?? 0,
-      property_type:      body.type            ?? null,
-      county:             body.county          ?? null,
-      city:               body.city            ?? null,
-      state:              body.state           ?? null,
-      acreage:            body.acreage         ?? null,
-      beds:               body.beds            ?? null,
-      baths:              body.baths           ?? null,
-      sqft:               body.sqft            ?? null,
-      year_built:         body.yearBuilt       ?? null,
-      mls_number:         body.mlsNumber       ?? null,
-      listing_url:        body.listingUrl      ?? null,
-      source:             body.source          ?? null,
-      assigned_agent_id:  body.assignedAgentId ?? null,
-      linked_contact_ids: [],
-      tags:               body.tags            ?? [],
-      notes:              [],
-      images:             [],
-      listed_at:          body.listedAt        ?? new Date().toISOString(),
-      area_keys:          inferAreaKeys(body.city, body.county, body.state),
-    })
-    .select()
-    .single();
+  const insertPayload: PropertyDbInsert = {
+    brokerage_id:       BROKERAGE_ID,
+    address_line_1:     line1,
+    address_line_2:     body.addressLine2?.trim() || null,
+    zip:                body.zip?.trim()          || null,
+    status:             body.status               ?? 'active',
+    price:              body.price                ?? 0,
+    property_type:      body.type                 ?? null,
+    county:             body.county               ?? null,
+    city:               body.city                 ?? null,
+    state:              body.state                ?? null,
+    acreage:            body.acreage              ?? null,
+    beds:               body.beds                 ?? null,
+    baths:              body.baths                ?? null,
+    sqft:               body.sqft                 ?? null,
+    year_built:         body.yearBuilt            ?? null,
+    mls_number:         body.mlsNumber            ?? null,
+    listing_url:        body.listingUrl           ?? null,
+    source:             body.source               ?? null,
+    assigned_agent_id:  body.assignedAgentId      ?? null,
+    linked_contact_ids: [],
+    tags:               body.tags                 ?? [],
+    notes:              [],
+    images:             [],
+    listed_at:          body.listedAt             ?? new Date().toISOString(),
+    area_keys:          inferAreaKeys(body.city, body.county, body.state),
+  };
 
-  if (error) {
-    console.error('[/api/properties POST]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Use safe insert — strips columns not yet in the PostgREST schema cache (e.g. acreage, images)
+  // and returns which columns were stripped so the caller can see a warning.
+  const { ok, strippedColumns, error: insertError } = await safeInsertProperty(insertPayload);
+
+  if (!ok) {
+    console.error('[/api/properties POST] insert failed:', insertError);
+    return NextResponse.json({ error: insertError ?? 'Insert failed' }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, property: mapProperty(data) }, { status: 201 });
+  // Fetch the just-inserted row so we can return a mapped PropertyRecord.
+  const { data, error: fetchError } = await supabaseAdmin
+    .from('properties')
+    .select('*')
+    .eq('brokerage_id', BROKERAGE_ID)
+    .ilike('address_line_1', line1)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (fetchError || !data) {
+    // Insert succeeded — just return ok without the full record.
+    return NextResponse.json({
+      ok: true,
+      strippedColumns: strippedColumns.length > 0 ? strippedColumns : undefined,
+    }, { status: 201 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    property: mapProperty(data),
+    strippedColumns: strippedColumns.length > 0 ? strippedColumns : undefined,
+  }, { status: 201 });
 }
 
 // ── PUT /api/properties — bulk CSV upsert ────────────────────────────────────
@@ -177,41 +200,57 @@ export async function PUT(req: NextRequest) {
       existingId = data?.id ?? null;
     }
 
-    const city  = row.city?.trim()  ?? undefined;
-    const state = row.state?.trim() ?? undefined;
-    const county = (row as any).county?.trim() ?? undefined;
-
-    const payload: Record<string, unknown> = {
-      brokerage_id:   BROKERAGE_ID,
-      address_line_1: line1,
-      city:           city  ?? null,
-      state:          state ?? null,
-      county:         county ?? null,
-      zip:            row.zip?.trim()   ?? null,
-      price:          row.price         ?? 0,
-      beds:           row.beds          ?? null,
-      baths:          row.baths         ?? null,
-      sqft:           row.sqft          ?? null,
-      mls_number:     row.mlsNumber?.trim() ?? null,
-      listing_url:    row.listingUrl?.trim() ?? null,
-      source:         row.source?.trim() ?? 'csv_import',
-      status:         row.status        ?? 'active',
-      area_keys:      inferAreaKeys(city, county, state),
-      updated_at:     now,
-    };
+    const city   = row.city?.trim()              || undefined;
+    const state  = row.state?.trim()             || undefined;
+    const county = (row as any).county?.trim()   || undefined;
+    const status = (row.status ?? 'active') as 'active' | 'pending' | 'sold' | 'prospect';
 
     if (existingId) {
-      const { error } = await supabaseAdmin
-        .from('properties')
-        .update(payload)
-        .eq('id', existingId);
-      if (error) { console.error('[PUT /api/properties] update error', error.message); skipped++; }
+      const updatePayload: PropertyDbUpdate = {
+        address_line_1: line1,
+        city:           city   ?? null,
+        state:          state  ?? null,
+        county:         county ?? null,
+        zip:            row.zip?.trim()        || null,
+        price:          row.price              ?? 0,
+        beds:           row.beds               ?? null,
+        baths:          row.baths              ?? null,
+        sqft:           row.sqft               ?? null,
+        mls_number:     row.mlsNumber?.trim()  || null,
+        listing_url:    row.listingUrl?.trim() || null,
+        source:         row.source?.trim()     || 'csv_import',
+        status,
+        area_keys:      inferAreaKeys(city, county, state),
+        updated_at:     now,
+      };
+      const res = await safeUpdateProperty(existingId, updatePayload);
+      if (!res.ok) { console.error('[PUT /api/properties] update error', res.error); skipped++; }
       else updated++;
     } else {
-      const { error } = await supabaseAdmin
-        .from('properties')
-        .insert({ ...payload, linked_contact_ids: [], tags: [], notes: [], images: [], listed_at: now });
-      if (error) { console.error('[PUT /api/properties] insert error', error.message); skipped++; }
+      const insertPayload: PropertyDbInsert = {
+        brokerage_id:       BROKERAGE_ID,
+        address_line_1:     line1,
+        city:               city   ?? null,
+        state:              state  ?? null,
+        county:             county ?? null,
+        zip:                row.zip?.trim()        || null,
+        price:              row.price              ?? 0,
+        beds:               row.beds               ?? null,
+        baths:              row.baths              ?? null,
+        sqft:               row.sqft               ?? null,
+        mls_number:         row.mlsNumber?.trim()  || null,
+        listing_url:        row.listingUrl?.trim() || null,
+        source:             row.source?.trim()     || 'csv_import',
+        status,
+        area_keys:          inferAreaKeys(city, county, state),
+        linked_contact_ids: [],
+        tags:               [],
+        notes:              [],
+        images:             [],
+        listed_at:          now,
+      };
+      const res = await safeInsertProperty(insertPayload);
+      if (!res.ok) { console.error('[PUT /api/properties] insert error', res.error); skipped++; }
       else inserted++;
     }
   }
