@@ -67,12 +67,22 @@ function sellerAreaKeys(profile: SellerProfile | null | undefined): string[] {
   return normalizeToAreaKeys(propertyLocation ?? '');
 }
 
+type SideEffectResult = {
+  sideEffect: 'property_created' | 'property_updated' | 'task_created' | null;
+  syncError?: string;
+};
+
+// PostgreSQL 42703 = undefined_column. Also catches Supabase "does not exist" messages.
+function isColumnMissingError(err: { code?: string; message?: string }): boolean {
+  return err.code === '42703' || (err.message?.includes('does not exist') ?? false);
+}
+
 async function triggerSellerSideEffect(
   brokerageId: string,
   contactId:   string,
   contactName: string,
   profile:     SellerProfile,
-): Promise<'property_created' | 'property_updated' | 'task_created' | null> {
+): Promise<SideEffectResult> {
   // Resolve the best address_line_1: prefer structured field, fall back to legacy.
   const addressLine1 = (profile.addressLine1 ?? profile.propertyLocation ?? '').trim();
   const city         = profile.city?.trim()   || null;
@@ -93,68 +103,81 @@ async function triggerSellerSideEffect(
 
     const areaKeys = inferAreaKeys(city || undefined, county || undefined, state || undefined);
 
-    const propertyPayload = {
+    const basePayload = {
+      price:         profile.estimatedValue ?? 0,
+      property_type: profile.propertyType   ?? null,
+      beds:          profile.beds            ?? null,
+      baths:         profile.baths           ?? null,
+      sqft:          profile.sqft            ?? null,
+      acreage:       profile.acreage         ?? null,
+      city, state, zip, county,
+      updated_at:    new Date().toISOString(),
+    };
+
+    if (existing) {
+      const linked: string[] = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
+      const mergedLinked = linked.includes(contactId) ? linked : [...linked, contactId];
+
+      // Two-phase UPDATE: try with area_keys, fall back without if column is missing.
+      let { error } = await supabaseAdmin
+        .from('properties')
+        .update({ ...basePayload, linked_contact_ids: mergedLinked, area_keys: areaKeys })
+        .eq('id', existing.id);
+
+      let syncError: string | undefined;
+      if (error && isColumnMissingError(error)) {
+        ({ error } = await supabaseAdmin
+          .from('properties')
+          .update({ ...basePayload, linked_contact_ids: mergedLinked })
+          .eq('id', existing.id));
+        if (!error) syncError = 'area_keys column missing — run the area keys migration to enable matching';
+      }
+
+      if (error) {
+        console.error('[triggerSellerSideEffect] property update error:', error.message);
+        return { sideEffect: null, syncError: `Property update failed: ${error.message}` };
+      }
+      return { sideEffect: 'property_updated', syncError };
+    }
+
+    // ── Two-phase INSERT: try with area_keys, retry without if column missing ──
+    const insertBase = {
+      brokerage_id:       brokerageId,
+      address_line_1:     addressLine1,
+      city, state, zip, county,
+      status:             'prospect',
       price:              profile.estimatedValue ?? 0,
       property_type:      profile.propertyType   ?? null,
       beds:               profile.beds            ?? null,
       baths:              profile.baths           ?? null,
       sqft:               profile.sqft            ?? null,
       acreage:            profile.acreage         ?? null,
-      city,
-      state,
-      zip,
-      county,
-      area_keys:          areaKeys,
-      updated_at:         new Date().toISOString(),
+      linked_contact_ids: [contactId],
+      tags:               [],
+      notes:              [],
+      images:             [],
+      listed_at:          new Date().toISOString(),
     };
 
-    if (existing) {
-      // Merge linked_contact_ids without duplicating.
-      const linked: string[] = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
-      const mergedLinked = linked.includes(contactId) ? linked : [...linked, contactId];
-
-      const { error } = await supabaseAdmin
-        .from('properties')
-        .update({ ...propertyPayload, linked_contact_ids: mergedLinked })
-        .eq('id', existing.id);
-
-      if (error) {
-        console.error('[triggerSellerSideEffect] property update error:', error.message);
-        return null;
-      }
-      return 'property_updated';
-    }
-
-    // Insert new prospect property.
-    const { error } = await supabaseAdmin
+    let { error } = await supabaseAdmin
       .from('properties')
-      .insert({
-        brokerage_id:       brokerageId,
-        address_line_1:     addressLine1,
-        city,
-        state,
-        zip,
-        county,
-        status:             'prospect',
-        price:              profile.estimatedValue ?? 0,
-        property_type:      profile.propertyType   ?? null,
-        beds:               profile.beds            ?? null,
-        baths:              profile.baths           ?? null,
-        sqft:               profile.sqft            ?? null,
-        acreage:            profile.acreage         ?? null,
-        linked_contact_ids: [contactId],
-        tags:               [],
-        notes:              [],
-        images:             [],
-        area_keys:          areaKeys,
-        listed_at:          new Date().toISOString(),
-      });
+      .insert({ ...insertBase, area_keys: areaKeys });
 
-    if (error) {
+    let syncError: string | undefined;
+    if (error && isColumnMissingError(error)) {
+      // area_keys column doesn't exist yet — insert without it so the property is still created.
+      const retry = await supabaseAdmin.from('properties').insert(insertBase);
+      if (retry.error) {
+        console.error('[triggerSellerSideEffect] property insert error (retry):', retry.error.message);
+        return { sideEffect: null, syncError: `Property creation failed: ${retry.error.message}` };
+      }
+      syncError = 'area_keys column missing — run the area keys migration to enable matching';
+    } else if (error) {
       console.error('[triggerSellerSideEffect] property insert error:', error.message);
-      return null;
+      return { sideEffect: null, syncError: `Property creation failed: ${error.message}` };
     }
-    return 'property_created';
+
+    return { sideEffect: 'property_created', syncError };
   } else {
     // ── Create a follow-up task if one doesn't exist yet ─────────────────────
     const taskTitle = `Complete property profile for ${contactName}`;
@@ -167,7 +190,7 @@ async function triggerSellerSideEffect(
       .eq('completed', false)
       .maybeSingle();
 
-    if (existingTask) return null; // already open — skip
+    if (existingTask) return { sideEffect: null };
 
     const { error } = await supabaseAdmin
       .from('tasks')
@@ -181,9 +204,9 @@ async function triggerSellerSideEffect(
 
     if (error) {
       console.error('[triggerSellerSideEffect] task insert error:', error.message);
-      return null;
+      return { sideEffect: null, syncError: `Task creation failed: ${error.message}` };
     }
-    return 'task_created';
+    return { sideEffect: 'task_created' };
   }
 }
 
@@ -300,11 +323,14 @@ export async function POST(req: NextRequest) {
   }
 
   let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
+  let syncError: string | undefined;
   if (body.sellerProfile) {
-    sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
+    const result = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
+    sideEffect = result.sideEffect;
+    syncError  = result.syncError;
   }
 
-  return NextResponse.json({ ok: true, contact: mapContact(data), sideEffect }, { status: 201 });
+  return NextResponse.json({ ok: true, contact: mapContact(data), sideEffect, syncError }, { status: 201 });
 }
 
 // ── PATCH /api/contacts ───────────────────────────────────────────────────────
@@ -451,11 +477,14 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
+    let syncError: string | undefined;
     if (profile && BROKERAGE_ID && contactRow?.full_name) {
-      sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
+      const result = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
+      sideEffect = result.sideEffect;
+      syncError  = result.syncError;
     }
 
-    return NextResponse.json({ ok: true, sideEffect });
+    return NextResponse.json({ ok: true, sideEffect, syncError });
   }
 
   // ── updateContact ─────────────────────────────────────────────────────────

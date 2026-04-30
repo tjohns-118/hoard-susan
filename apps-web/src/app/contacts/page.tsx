@@ -865,12 +865,16 @@ export default function ContactsPage() {
         newsletterTags:  addNewsletter ? addNewsletterTags : [],
       });
       resetAddForm();
-      if (result.propertyCreated) {
-        showToast(`Contact saved — prospect property created`);
+      if (result.syncError && !result.propertyCreated && !result.propertyUpdated) {
+        showToast(`Contact saved — property sync failed: ${result.syncError}`, false);
+      } else if (result.propertyCreated) {
+        showToast(result.syncError ? `Contact saved — property created (area keys not indexed yet)` : `Contact saved — prospect property created`, !result.syncError);
       } else if (result.propertyUpdated) {
         showToast(`Contact saved — existing property updated`);
       } else if (result.taskCreated) {
         showToast(`Contact saved — follow-up task created to collect property details`);
+      } else {
+        showToast(`Contact saved`);
       }
     } catch (e: any) {
       setAddError(e?.message ?? 'Failed to create contact.');
@@ -885,12 +889,16 @@ export default function ContactsPage() {
     role:      ContactRole,
   ) {
     const result = await updateSellerProfile(contactId, profile, role);
-    if (result.propertyCreated) {
-      showToast(`Seller profile saved — prospect property created`);
+    if (result.syncError && !result.propertyCreated && !result.propertyUpdated) {
+      showToast(`Seller profile saved — property sync failed: ${result.syncError}`, false);
+    } else if (result.propertyCreated) {
+      showToast(result.syncError ? `Seller profile saved — property created (area keys not indexed yet)` : `Seller profile saved — prospect property created`, !result.syncError);
     } else if (result.propertyUpdated) {
       showToast(`Seller profile saved — existing property updated`);
     } else if (result.taskCreated) {
       showToast(`Seller profile saved — follow-up task created`);
+    } else {
+      showToast(`Seller profile saved`);
     }
   }
 
