@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
@@ -749,10 +749,15 @@ export default function ContactsPage() {
   const { createOpportunity }  = useOpportunities();
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pushingId, setPushingId] = useState<string | null>(null);
   function showToast(msg: string, ok = true) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
+    if (ok) {
+      toastTimer.current = setTimeout(() => setToast(null), 4000);
+    }
+    // Errors stay until dismissed — no auto-close
   }
 
   async function handleMarkHot(contactId: string) {
@@ -865,13 +870,17 @@ export default function ContactsPage() {
         newsletterTags:  addNewsletter ? addNewsletterTags : [],
       });
       resetAddForm();
-      if (result.syncError && !result.propertyCreated && !result.propertyUpdated) {
-        showToast(`Contact saved — property sync failed: ${result.syncError}`, false);
+      if (result.propertySyncError && !result.propertyCreated && !result.propertyUpdated) {
+        showToast(`Contact saved — property sync failed: ${result.propertySyncError}`, false);
       } else if (result.propertyCreated) {
-        showToast(result.syncError ? `Contact saved — property created (area keys not indexed yet)` : `Contact saved — prospect property created`, !result.syncError);
+        if (result.propertySyncError) {
+          showToast(`Contact saved — property created (partial sync: ${result.propertySyncError})`, false);
+        } else {
+          showToast(`Contact saved — prospect property created`);
+        }
       } else if (result.propertyUpdated) {
         showToast(`Contact saved — existing property updated`);
-      } else if (result.taskCreated) {
+      } else if (result.followUpCreated) {
         showToast(`Contact saved — follow-up task created to collect property details`);
       } else {
         showToast(`Contact saved`);
@@ -889,13 +898,17 @@ export default function ContactsPage() {
     role:      ContactRole,
   ) {
     const result = await updateSellerProfile(contactId, profile, role);
-    if (result.syncError && !result.propertyCreated && !result.propertyUpdated) {
-      showToast(`Seller profile saved — property sync failed: ${result.syncError}`, false);
+    if (result.propertySyncError && !result.propertyCreated && !result.propertyUpdated) {
+      showToast(`Seller profile saved — property sync failed: ${result.propertySyncError}`, false);
     } else if (result.propertyCreated) {
-      showToast(result.syncError ? `Seller profile saved — property created (area keys not indexed yet)` : `Seller profile saved — prospect property created`, !result.syncError);
+      if (result.propertySyncError) {
+        showToast(`Seller profile saved — property created (partial sync: ${result.propertySyncError})`, false);
+      } else {
+        showToast(`Seller profile saved — prospect property created`);
+      }
     } else if (result.propertyUpdated) {
       showToast(`Seller profile saved — existing property updated`);
-    } else if (result.taskCreated) {
+    } else if (result.followUpCreated) {
       showToast(`Seller profile saved — follow-up task created`);
     } else {
       showToast(`Seller profile saved`);
@@ -969,13 +982,17 @@ export default function ContactsPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 999,
-          padding: '12px 20px', borderRadius: 12,
+          padding: '12px 20px', borderRadius: 12, maxWidth: 480,
           background: toast.ok ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
           border: `1px solid ${toast.ok ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
           color: toast.ok ? 'var(--r-success)' : 'var(--r-danger)',
           fontSize: 13, fontWeight: 700, boxShadow: 'var(--r-shadow)',
+          display: 'flex', alignItems: 'flex-start', gap: 10,
         }}>
-          {toast.msg}
+          <span style={{ flex: 1, lineHeight: 1.4, wordBreak: 'break-word' }}>{toast.msg}</span>
+          {!toast.ok && (
+            <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, fontWeight: 900, padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+          )}
         </div>
       )}
       {/* ── Header ── */}

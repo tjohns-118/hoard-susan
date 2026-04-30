@@ -893,7 +893,13 @@ export default function MatchesPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              {groups.length} buyer{groups.length !== 1 ? 's' : ''} · {allMatches.length} matches
+              {groups.length} buyer{groups.length !== 1 ? 's' : ''} · {allMatches.length} match{allMatches.length !== 1 ? 'es' : ''}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--r-text-3)', borderLeft: '1px solid var(--r-border)', paddingLeft: 14 }}>
+              <span style={{ opacity: 0.7 }}>pool: </span>
+              {persons.length} buyer{persons.length !== 1 ? 's' : ''} ·{' '}
+              {properties.filter(p => p.status !== 'sold').length} properties ·{' '}
+              threshold {SCORE_THRESHOLD}
             </div>
             <button
               onClick={handleRefresh}

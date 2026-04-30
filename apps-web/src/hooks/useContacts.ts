@@ -94,7 +94,7 @@ export function useContacts() {
     sellerProfile?:   SellerProfile;
     newsletterOptIn?: boolean;
     newsletterTags?:  string[];
-  }): Promise<{ propertyCreated?: boolean; propertyUpdated?: boolean; taskCreated?: boolean; syncError?: string }> {
+  }): Promise<{ propertyCreated: boolean; propertyUpdated: boolean; followUpCreated: boolean; propertySyncError?: string }> {
     const res = await fetch('/api/contacts', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -102,13 +102,14 @@ export function useContacts() {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? 'Create contact failed');
+    if (json.propertySyncError) console.error('[createContact] propertySyncError:', json.propertySyncError);
     router.refresh();
     await reload();
     return {
-      propertyCreated: json.sideEffect === 'property_created',
-      propertyUpdated: json.sideEffect === 'property_updated',
-      taskCreated:     json.sideEffect === 'task_created',
-      syncError:       json.syncError ?? undefined,
+      propertyCreated:  json.propertyCreated  === true,
+      propertyUpdated:  json.propertyUpdated  === true,
+      followUpCreated:  json.followUpCreated  === true,
+      propertySyncError: json.propertySyncError ?? undefined,
     };
   }
 
@@ -126,7 +127,7 @@ export function useContacts() {
     contactId: string,
     profile:   SellerProfile | null,
     role:      ContactRole,
-  ): Promise<{ propertyCreated?: boolean; propertyUpdated?: boolean; taskCreated?: boolean; syncError?: string }> {
+  ): Promise<{ propertyCreated: boolean; propertyUpdated: boolean; followUpCreated: boolean; propertySyncError?: string }> {
     const res = await fetch('/api/contacts', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -134,13 +135,14 @@ export function useContacts() {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? 'Contact mutation failed');
+    if (json.propertySyncError) console.error('[updateSellerProfile] propertySyncError:', json.propertySyncError);
     router.refresh();
     await reload();
     return {
-      propertyCreated: json.sideEffect === 'property_created',
-      propertyUpdated: json.sideEffect === 'property_updated',
-      taskCreated:     json.sideEffect === 'task_created',
-      syncError:       json.syncError ?? undefined,
+      propertyCreated:  json.propertyCreated  === true,
+      propertyUpdated:  json.propertyUpdated  === true,
+      followUpCreated:  json.followUpCreated  === true,
+      propertySyncError: json.propertySyncError ?? undefined,
     };
   }
 

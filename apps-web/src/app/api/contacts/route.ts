@@ -68,13 +68,23 @@ function sellerAreaKeys(profile: SellerProfile | null | undefined): string[] {
 }
 
 type SideEffectResult = {
-  sideEffect: 'property_created' | 'property_updated' | 'task_created' | null;
-  syncError?: string;
+  propertyCreated:  boolean;
+  propertyUpdated:  boolean;
+  followUpCreated:  boolean;
+  propertySyncError?: string;
 };
 
-// PostgreSQL 42703 = undefined_column. Also catches Supabase "does not exist" messages.
-function isColumnMissingError(err: { code?: string; message?: string }): boolean {
-  return err.code === '42703' || (err.message?.includes('does not exist') ?? false);
+// PostgreSQL 42703 = undefined_column; 23514 = check_violation.
+// Catches any "column does not exist" or CHECK/constraint violation message.
+function isSchemaError(err: { code?: string; message?: string }): boolean {
+  const msg = err.message ?? '';
+  return (
+    err.code === '42703' ||
+    err.code === '42P01' ||
+    msg.includes('does not exist') ||
+    msg.includes('column') ||
+    msg.includes('violates check constraint')
+  );
 }
 
 async function triggerSellerSideEffect(
@@ -83,6 +93,8 @@ async function triggerSellerSideEffect(
   contactName: string,
   profile:     SellerProfile,
 ): Promise<SideEffectResult> {
+  const NONE: SideEffectResult = { propertyCreated: false, propertyUpdated: false, followUpCreated: false };
+
   // Resolve the best address_line_1: prefer structured field, fall back to legacy.
   const addressLine1 = (profile.addressLine1 ?? profile.propertyLocation ?? '').trim();
   const city         = profile.city?.trim()   || null;
@@ -103,81 +115,127 @@ async function triggerSellerSideEffect(
 
     const areaKeys = inferAreaKeys(city || undefined, county || undefined, state || undefined);
 
+    const now = new Date().toISOString();
     const basePayload = {
-      price:         profile.estimatedValue ?? 0,
-      property_type: profile.propertyType   ?? null,
-      beds:          profile.beds            ?? null,
-      baths:         profile.baths           ?? null,
-      sqft:          profile.sqft            ?? null,
-      acreage:       profile.acreage         ?? null,
+      price:         typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
+      property_type: profile.propertyType ?? null,
+      beds:          profile.beds   != null ? Number(profile.beds)   : null,
+      baths:         profile.baths  != null ? Number(profile.baths)  : null,
+      sqft:          profile.sqft   != null ? Number(profile.sqft)   : null,
+      acreage:       profile.acreage != null ? Number(profile.acreage) : null,
       city, state, zip, county,
-      updated_at:    new Date().toISOString(),
+      updated_at:    now,
     };
 
     if (existing) {
       const linked: string[] = Array.isArray(existing.linked_contact_ids) ? existing.linked_contact_ids : [];
       const mergedLinked = linked.includes(contactId) ? linked : [...linked, contactId];
+      const updateWith    = { ...basePayload, linked_contact_ids: mergedLinked };
 
-      // Two-phase UPDATE: try with area_keys, fall back without if column is missing.
+      // Phase 1: try with area_keys
       let { error } = await supabaseAdmin
         .from('properties')
-        .update({ ...basePayload, linked_contact_ids: mergedLinked, area_keys: areaKeys })
+        .update({ ...updateWith, area_keys: areaKeys })
         .eq('id', existing.id);
 
-      let syncError: string | undefined;
-      if (error && isColumnMissingError(error)) {
+      let propertySyncError: string | undefined;
+      if (error && isSchemaError(error)) {
+        // Phase 2: retry without area_keys
+        console.warn('[triggerSellerSideEffect] update phase 1 failed (schema issue), retrying without area_keys:', error.message);
         ({ error } = await supabaseAdmin
           .from('properties')
-          .update({ ...basePayload, linked_contact_ids: mergedLinked })
+          .update(updateWith)
           .eq('id', existing.id));
-        if (!error) syncError = 'area_keys column missing — run the area keys migration to enable matching';
+        if (!error) propertySyncError = 'area_keys not indexed — run rebuild-area-keys to enable matching';
       }
 
       if (error) {
-        console.error('[triggerSellerSideEffect] property update error:', error.message);
-        return { sideEffect: null, syncError: `Property update failed: ${error.message}` };
+        console.error('[triggerSellerSideEffect] property update FAILED:', { code: error.code, message: error.message, payload: updateWith });
+        return { ...NONE, propertySyncError: `Property update failed (${error.code ?? 'err'}): ${error.message}` };
       }
-      return { sideEffect: 'property_updated', syncError };
+      return { propertyCreated: false, propertyUpdated: true, followUpCreated: false, propertySyncError };
     }
 
-    // ── Two-phase INSERT: try with area_keys, retry without if column missing ──
-    const insertBase = {
+    // ── Three-phase INSERT ───────────────────────────────────────────────────
+    // Phase 1: full insert (with area_keys + all optional fields)
+    // Phase 2: without area_keys (column might be missing)
+    // Phase 3: minimal safe insert (guaranteed columns only)
+    const insertFull = {
       brokerage_id:       brokerageId,
       address_line_1:     addressLine1,
       city, state, zip, county,
-      status:             'prospect',
-      price:              profile.estimatedValue ?? 0,
-      property_type:      profile.propertyType   ?? null,
-      beds:               profile.beds            ?? null,
-      baths:              profile.baths           ?? null,
-      sqft:               profile.sqft            ?? null,
-      acreage:            profile.acreage         ?? null,
+      status:             'prospect' as const,
+      price:              typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
+      property_type:      profile.propertyType ?? null,
+      beds:               profile.beds   != null ? Number(profile.beds)   : null,
+      baths:              profile.baths  != null ? Number(profile.baths)  : null,
+      sqft:               profile.sqft   != null ? Number(profile.sqft)   : null,
+      acreage:            profile.acreage != null ? Number(profile.acreage) : null,
       linked_contact_ids: [contactId],
-      tags:               [],
-      notes:              [],
-      images:             [],
-      listed_at:          new Date().toISOString(),
+      tags:               [] as string[],
+      notes:              [] as unknown[],
+      images:             [] as string[],
+      listed_at:          now,
     };
 
-    let { error } = await supabaseAdmin
-      .from('properties')
-      .insert({ ...insertBase, area_keys: areaKeys });
+    console.log('[triggerSellerSideEffect] attempting property insert:', {
+      address_line_1: addressLine1, city, state, zip, county,
+      status: insertFull.status, price: insertFull.price,
+      areaKeys,
+    });
 
-    let syncError: string | undefined;
-    if (error && isColumnMissingError(error)) {
-      // area_keys column doesn't exist yet — insert without it so the property is still created.
-      const retry = await supabaseAdmin.from('properties').insert(insertBase);
-      if (retry.error) {
-        console.error('[triggerSellerSideEffect] property insert error (retry):', retry.error.message);
-        return { sideEffect: null, syncError: `Property creation failed: ${retry.error.message}` };
-      }
-      syncError = 'area_keys column missing — run the area keys migration to enable matching';
-    } else if (error) {
-      console.error('[triggerSellerSideEffect] property insert error:', error.message);
-      return { sideEffect: null, syncError: `Property creation failed: ${error.message}` };
+    // Phase 1
+    let { error: err1 } = await supabaseAdmin
+      .from('properties')
+      .insert({ ...insertFull, area_keys: areaKeys });
+
+    if (!err1) return { propertyCreated: true, propertyUpdated: false, followUpCreated: false };
+
+    console.warn('[triggerSellerSideEffect] phase 1 failed:', { code: err1.code, message: err1.message });
+
+    // Phase 2: without area_keys
+    let { error: err2 } = await supabaseAdmin
+      .from('properties')
+      .insert(insertFull);
+
+    if (!err2) {
+      return { propertyCreated: true, propertyUpdated: false, followUpCreated: false,
+               propertySyncError: 'area_keys not indexed — run rebuild-area-keys to enable matching' };
     }
 
-    return { sideEffect: 'property_created', syncError };
+    console.warn('[triggerSellerSideEffect] phase 2 failed:', { code: err2.code, message: err2.message });
+
+    // Phase 3: minimal insert — only columns guaranteed to exist in every schema version
+    const insertMinimal = {
+      brokerage_id:       brokerageId,
+      address_line_1:     addressLine1,
+      status:             'active' as const,
+      price:              typeof profile.estimatedValue === 'number' ? profile.estimatedValue : 0,
+      linked_contact_ids: [contactId],
+      tags:               [] as string[],
+      notes:              [] as unknown[],
+      images:             [] as string[],
+      listed_at:          now,
+    };
+
+    const { error: err3 } = await supabaseAdmin
+      .from('properties')
+      .insert(insertMinimal);
+
+    if (!err3) {
+      return { propertyCreated: true, propertyUpdated: false, followUpCreated: false,
+               propertySyncError: `Saved with minimal fields — schema error prevented full insert. Phase 1: ${err1.message}. Phase 2: ${err2.message}` };
+    }
+
+    // All three phases failed — log everything and surface the error
+    console.error('[triggerSellerSideEffect] ALL INSERT PHASES FAILED:', {
+      phase1: { code: err1.code, message: err1.message },
+      phase2: { code: err2.code, message: err2.message },
+      phase3: { code: err3.code, message: err3.message },
+      payload: insertMinimal,
+    });
+    return { ...NONE, propertySyncError: `Property creation failed — ${err1.message} (phase 1); ${err2.message} (phase 2); ${err3.message} (phase 3)` };
+
   } else {
     // ── Create a follow-up task if one doesn't exist yet ─────────────────────
     const taskTitle = `Complete property profile for ${contactName}`;
@@ -190,7 +248,7 @@ async function triggerSellerSideEffect(
       .eq('completed', false)
       .maybeSingle();
 
-    if (existingTask) return { sideEffect: null };
+    if (existingTask) return NONE;
 
     const { error } = await supabaseAdmin
       .from('tasks')
@@ -204,9 +262,9 @@ async function triggerSellerSideEffect(
 
     if (error) {
       console.error('[triggerSellerSideEffect] task insert error:', error.message);
-      return { sideEffect: null, syncError: `Task creation failed: ${error.message}` };
+      return { ...NONE, propertySyncError: `Follow-up task creation failed: ${error.message}` };
     }
-    return { sideEffect: 'task_created' };
+    return { propertyCreated: false, propertyUpdated: false, followUpCreated: true };
   }
 }
 
@@ -322,15 +380,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
-  let syncError: string | undefined;
+  let sideResult: SideEffectResult = { propertyCreated: false, propertyUpdated: false, followUpCreated: false };
   if (body.sellerProfile) {
-    const result = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
-    sideEffect = result.sideEffect;
-    syncError  = result.syncError;
+    sideResult = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
+    if (sideResult.propertySyncError) {
+      console.error('[POST /api/contacts] propertySyncError:', sideResult.propertySyncError);
+    }
   }
 
-  return NextResponse.json({ ok: true, contact: mapContact(data), sideEffect, syncError }, { status: 201 });
+  return NextResponse.json({
+    ok: true,
+    contact:          mapContact(data),
+    propertyCreated:  sideResult.propertyCreated,
+    propertyUpdated:  sideResult.propertyUpdated,
+    followUpCreated:  sideResult.followUpCreated,
+    propertySyncError: sideResult.propertySyncError ?? null,
+  }, { status: 201 });
 }
 
 // ── PATCH /api/contacts ───────────────────────────────────────────────────────
@@ -476,15 +541,21 @@ export async function PATCH(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    let sideEffect: 'property_created' | 'property_updated' | 'task_created' | null = null;
-    let syncError: string | undefined;
+    let sideResult: SideEffectResult = { propertyCreated: false, propertyUpdated: false, followUpCreated: false };
     if (profile && BROKERAGE_ID && contactRow?.full_name) {
-      const result = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
-      sideEffect = result.sideEffect;
-      syncError  = result.syncError;
+      sideResult = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
+      if (sideResult.propertySyncError) {
+        console.error('[PATCH updateSellerProfile] propertySyncError:', sideResult.propertySyncError);
+      }
     }
 
-    return NextResponse.json({ ok: true, sideEffect, syncError });
+    return NextResponse.json({
+      ok: true,
+      propertyCreated:  sideResult.propertyCreated,
+      propertyUpdated:  sideResult.propertyUpdated,
+      followUpCreated:  sideResult.followUpCreated,
+      propertySyncError: sideResult.propertySyncError ?? null,
+    });
   }
 
   // ── updateContact ─────────────────────────────────────────────────────────
