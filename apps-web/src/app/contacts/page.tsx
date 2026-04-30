@@ -853,7 +853,7 @@ export default function ContactsPage() {
     setAddSaving(true);
     setAddError('');
     try {
-      await createContact({
+      const result = await createContact({
         fullName:        addName,
         email:           addEmail  || undefined,
         phone:           addPhone  || undefined,
@@ -865,10 +865,28 @@ export default function ContactsPage() {
         newsletterTags:  addNewsletter ? addNewsletterTags : [],
       });
       resetAddForm();
+      if (result.propertyCreated) {
+        showToast(`Contact saved — prospect property created from location`);
+      } else if (result.taskCreated) {
+        showToast(`Contact saved — follow-up task created to collect property info`);
+      }
     } catch (e: any) {
       setAddError(e?.message ?? 'Failed to create contact.');
     } finally {
       setAddSaving(false);
+    }
+  }
+
+  async function handleUpdateSellerProfile(
+    contactId: string,
+    profile:   SellerProfile | null,
+    role:      ContactRole,
+  ) {
+    const result = await updateSellerProfile(contactId, profile, role);
+    if (result.propertyCreated) {
+      showToast(`Seller profile saved — prospect property created`);
+    } else if (result.taskCreated) {
+      showToast(`Seller profile saved — follow-up task created`);
     }
   }
 
@@ -1102,7 +1120,7 @@ export default function ContactsPage() {
               onAddTask={handleAddContactTask}
               onPushToOpportunities={pushContactToOpportunities}
               onUpdateBuyerProfile={updateBuyerProfile}
-              onUpdateSellerProfile={updateSellerProfile}
+              onUpdateSellerProfile={handleUpdateSellerProfile}
               onUpdateContact={updateContact}
               onArchiveContact={archiveContact}
               onUnarchiveContact={unarchiveContact}

@@ -94,7 +94,7 @@ export function useContacts() {
     sellerProfile?:   SellerProfile;
     newsletterOptIn?: boolean;
     newsletterTags?:  string[];
-  }) {
+  }): Promise<{ propertyCreated?: boolean; taskCreated?: boolean }> {
     const res = await fetch('/api/contacts', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,6 +104,10 @@ export function useContacts() {
     if (!res.ok) throw new Error(json.error ?? 'Create contact failed');
     router.refresh();
     await reload();
+    return {
+      propertyCreated: json.sideEffect === 'property_created',
+      taskCreated:     json.sideEffect === 'task_created',
+    };
   }
 
   // ── Profile mutations ─────────────────────────────────────────────────────────
@@ -120,8 +124,20 @@ export function useContacts() {
     contactId: string,
     profile:   SellerProfile | null,
     role:      ContactRole,
-  ) {
-    await patchApi({ action: 'updateSellerProfile', contactId, profile, role });
+  ): Promise<{ propertyCreated?: boolean; taskCreated?: boolean }> {
+    const res = await fetch('/api/contacts', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action: 'updateSellerProfile', contactId, profile, role }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? 'Contact mutation failed');
+    router.refresh();
+    await reload();
+    return {
+      propertyCreated: json.sideEffect === 'property_created',
+      taskCreated:     json.sideEffect === 'task_created',
+    };
   }
 
   // ── Edit core fields ──────────────────────────────────────────────────────────

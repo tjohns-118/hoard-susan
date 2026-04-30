@@ -65,6 +65,7 @@ export function useProperties() {
     county?:          string;
     city?:            string;
     state?:           string;
+    zip?:             string;
     acreage?:         number;
     beds?:            number;
     baths?:           number;

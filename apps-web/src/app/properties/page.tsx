@@ -532,7 +532,7 @@ export default function PropertiesPage() {
   const tasks = useAppStore((s) => s.tasks);
   const currentRole = useAppStore((s) => s.currentRole);
   const memberId    = useAppStore((s) => s.memberId);
-  const { properties, addNote: addPropertyNote, updateStatus: updatePropertyStatus } = useProperties();
+  const { properties, addNote: addPropertyNote, updateStatus: updatePropertyStatus, createProperty } = useProperties();
   const { createTask } = useTasks();
 
   // Agent context: which properties are tied to this agent's assigned opportunities?
@@ -567,6 +567,61 @@ export default function PropertiesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
+
+  // ── Add Property form state ──
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addAddress,  setAddAddress]  = useState('');
+  const [addCity,     setAddCity]     = useState('');
+  const [addState,    setAddState]    = useState('');
+  const [addZip,      setAddZip]      = useState('');
+  const [addCounty,   setAddCounty]   = useState('');
+  const [addPrice,    setAddPrice]    = useState('');
+  const [addBeds,     setAddBeds]     = useState('');
+  const [addBaths,    setAddBaths]    = useState('');
+  const [addSqft,     setAddSqft]     = useState('');
+  const [addType,     setAddType]     = useState('');
+  const [addStatus,   setAddStatus]   = useState<PropertyStatus>('prospect');
+  const [addSaving,   setAddSaving]   = useState(false);
+  const [addError,    setAddError]    = useState('');
+
+  function resetAddForm() {
+    setShowAddForm(false);
+    setAddAddress(''); setAddCity(''); setAddState(''); setAddZip('');
+    setAddCounty(''); setAddPrice(''); setAddBeds(''); setAddBaths('');
+    setAddSqft(''); setAddType(''); setAddStatus('prospect');
+    setAddError('');
+  }
+
+  async function handleAddProperty() {
+    if (!addAddress.trim()) { setAddError('Address is required.'); return; }
+    if (!addCity.trim())    { setAddError('City is required.'); return; }
+    if (!addState.trim())   { setAddError('State is required.'); return; }
+    if (!addZip.trim())     { setAddError('Zip code is required.'); return; }
+    setAddSaving(true);
+    setAddError('');
+    try {
+      await createProperty({
+        address:  addAddress,
+        city:     addCity     || undefined,
+        state:    addState    || undefined,
+        zip:      addZip      || undefined,
+        county:   addCounty   || undefined,
+        price:    addPrice    ? parseFloat(addPrice)   : undefined,
+        beds:     addBeds     ? parseFloat(addBeds)    : undefined,
+        baths:    addBaths    ? parseFloat(addBaths)   : undefined,
+        sqft:     addSqft     ? parseFloat(addSqft)    : undefined,
+        type:     addType     || undefined,
+        status:   addStatus,
+        source:   'manual',
+      });
+      resetAddForm();
+      showToast('Property added', true);
+    } catch (e: any) {
+      setAddError(e?.message ?? 'Failed to create property.');
+    } finally {
+      setAddSaving(false);
+    }
+  }
 
   // ── Sync state ──
   const [syncing, setSyncing]   = useState(false);
@@ -785,7 +840,103 @@ export default function PropertiesPage() {
             );
           })}
         </div>
+        <button
+          onClick={() => setShowAddForm((v) => !v)}
+          style={{
+            padding: '7px 15px', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            border: '1px solid rgba(200,164,92,0.35)',
+            background: showAddForm ? 'rgba(200,164,92,0.16)' : 'rgba(200,164,92,0.08)',
+            color: 'var(--r-gold-bright)', whiteSpace: 'nowrap', letterSpacing: '0.01em',
+          }}
+        >
+          + Add Property
+        </button>
       </div>
+
+      {/* ── Add Property inline form ── */}
+      {showAddForm && (
+        <div style={{ marginBottom: 18, borderRadius: 14, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.09)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)', padding: '20px 22px' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 16, letterSpacing: '-0.01em' }}>New Property</div>
+
+          {/* Required fields */}
+          <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Required</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Address *</div>
+              <input value={addAddress} onChange={(e) => setAddAddress(e.target.value)} placeholder="123 Ranch Rd" style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>City *</div>
+              <input value={addCity} onChange={(e) => setAddCity(e.target.value)} placeholder="Kerrville" style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>State *</div>
+              <input value={addState} onChange={(e) => setAddState(e.target.value)} placeholder="TX" maxLength={2} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Zip *</div>
+              <input value={addZip} onChange={(e) => setAddZip(e.target.value)} placeholder="78028" style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          {/* Optional fields */}
+          <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Optional</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>County</div>
+              <input value={addCounty} onChange={(e) => setAddCounty(e.target.value)} placeholder="Kerr" style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Price</div>
+              <input value={addPrice} onChange={(e) => setAddPrice(e.target.value)} placeholder="1500000" type="number" min={0} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Beds</div>
+              <input value={addBeds} onChange={(e) => setAddBeds(e.target.value)} placeholder="3" type="number" min={0} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Baths</div>
+              <input value={addBaths} onChange={(e) => setAddBaths(e.target.value)} placeholder="2" type="number" min={0} step={0.5} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Sqft</div>
+              <input value={addSqft} onChange={(e) => setAddSqft(e.target.value)} placeholder="2400" type="number" min={0} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Type</div>
+              <select value={addType} onChange={(e) => setAddType(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(30,20,10,0.9)', color: addType ? '#fff' : 'rgba(255,255,255,0.38)', fontSize: 13, outline: 'none', boxSizing: 'border-box', cursor: 'pointer' }}>
+                <option value="">Select type…</option>
+                <option value="ranch">Ranch</option>
+                <option value="single_family">Single Family</option>
+                <option value="land">Land</option>
+                <option value="condo">Condo</option>
+                <option value="townhouse">Townhouse</option>
+                <option value="cabin">Cabin</option>
+                <option value="multi_family">Multi Family</option>
+                <option value="waterfront">Waterfront</option>
+                <option value="commercial">Commercial</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Status</div>
+              <select value={addStatus} onChange={(e) => setAddStatus(e.target.value as PropertyStatus)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(30,20,10,0.9)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box', cursor: 'pointer' }}>
+                <option value="prospect">Prospect</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="sold">Sold</option>
+              </select>
+            </div>
+          </div>
+
+          {addError && <div style={{ fontSize: 12, color: '#fca5a5', marginBottom: 10 }}>{addError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn tone="success" onClick={handleAddProperty} disabled={addSaving}>
+              {addSaving ? 'Saving…' : 'Save Property'}
+            </ActionBtn>
+            <ActionBtn onClick={resetAddForm}>Cancel</ActionBtn>
+          </div>
+        </div>
+      )}
 
       {/* ── C/D/E/F. Split pane ── */}
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', marginBottom: 28 }}>

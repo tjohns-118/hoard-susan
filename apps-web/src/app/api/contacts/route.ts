@@ -33,12 +33,91 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
-import { normalizeToAreaKeys } from '@/lib/areaUtils';
+import { normalizeToAreaKeys, inferAreaKeys } from '@/lib/areaUtils';
 import type {
   Contact, ContactNote, ContactRole,
   BuyerProfile, SellerProfile,
   BuyerTag, SellerTag, PropertyType, SellerCondition,
 } from '@/features/contacts/types';
+
+// ── Seller side-effect helper ─────────────────────────────────────────────────
+// After a seller profile is saved, we either auto-create a prospect property
+// or create a follow-up task to collect missing property data.
+
+async function triggerSellerSideEffect(
+  brokerageId: string,
+  contactId:   string,
+  contactName: string,
+  profile:     SellerProfile,
+): Promise<'property_created' | 'task_created' | null> {
+  const location = profile.propertyLocation?.trim() ?? '';
+
+  if (location.length >= 3) {
+    // ── Try to upsert a prospect property ────────────────────────────────────
+    const { data: existing } = await supabaseAdmin
+      .from('properties')
+      .select('id')
+      .eq('brokerage_id', brokerageId)
+      .ilike('address_line_1', location)
+      .maybeSingle();
+
+    if (existing) return null; // already exists — no-op
+
+    const { error } = await supabaseAdmin
+      .from('properties')
+      .insert({
+        brokerage_id:       brokerageId,
+        address_line_1:     location,
+        status:             'prospect',
+        price:              profile.estimatedValue ?? 0,
+        property_type:      profile.propertyType   ?? null,
+        beds:               profile.beds            ?? null,
+        baths:              profile.baths           ?? null,
+        sqft:               profile.sqft            ?? null,
+        linked_contact_ids: [contactId],
+        tags:               [],
+        notes:              [],
+        images:             [],
+        area_keys:          inferAreaKeys(undefined, undefined, undefined),
+        listed_at:          new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error('[triggerSellerSideEffect] property insert error:', error.message);
+      return null;
+    }
+    return 'property_created';
+  } else {
+    // ── Create a follow-up task if one doesn't exist yet ─────────────────────
+    const taskTitle = `Complete property profile for ${contactName}`;
+    const { data: existingTask } = await supabaseAdmin
+      .from('tasks')
+      .select('id')
+      .eq('brokerage_id', brokerageId)
+      .eq('contact_id', contactId)
+      .eq('title', taskTitle)
+      .eq('completed', false)
+      .maybeSingle();
+
+    if (existingTask) return null; // already open — skip
+
+    const { error } = await supabaseAdmin
+      .from('tasks')
+      .insert({
+        brokerage_id: brokerageId,
+        title:        taskTitle,
+        priority:     'medium',
+        completed:    false,
+        contact_id:   contactId,
+      });
+
+    if (error) {
+      console.error('[triggerSellerSideEffect] task insert error:', error.message);
+      return null;
+    }
+    return 'task_created';
+  }
+}
 
 // ── GET /api/contacts ─────────────────────────────────────────────────────────
 
@@ -152,7 +231,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, contact: mapContact(data) }, { status: 201 });
+  let sideEffect: 'property_created' | 'task_created' | null = null;
+  if (body.sellerProfile) {
+    sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, data.id, data.full_name, body.sellerProfile);
+  }
+
+  return NextResponse.json({ ok: true, contact: mapContact(data), sideEffect }, { status: 201 });
 }
 
 // ── PATCH /api/contacts ───────────────────────────────────────────────────────
@@ -273,9 +357,17 @@ export async function PATCH(req: NextRequest) {
   // ── updateSellerProfile ───────────────────────────────────────────────────
 
   if (action === 'updateSellerProfile') {
+    const BROKERAGE_ID = await getBrokerageId();
     const newRole = body.role ?? 'seller';
     const contactType = newRole;
     const profile = body.profile as SellerProfile | null | undefined;
+
+    // Fetch contact name for task title (needed for side effect).
+    const { data: contactRow } = await supabaseAdmin
+      .from('contacts')
+      .select('full_name')
+      .eq('id', contactId)
+      .single();
 
     const { error } = await supabaseAdmin
       .from('contacts')
@@ -289,7 +381,13 @@ export async function PATCH(req: NextRequest) {
       .eq('id', contactId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
+
+    let sideEffect: 'property_created' | 'task_created' | null = null;
+    if (profile && BROKERAGE_ID && contactRow?.full_name) {
+      sideEffect = await triggerSellerSideEffect(BROKERAGE_ID, contactId, contactRow.full_name, profile);
+    }
+
+    return NextResponse.json({ ok: true, sideEffect });
   }
 
   // ── updateContact ─────────────────────────────────────────────────────────
