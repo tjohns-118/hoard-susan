@@ -35,7 +35,7 @@ import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
 import { normalizeToAreaKeys, inferAreaKeys } from '@/lib/areaUtils';
 import {
-  safeInsertProperty, safeUpdateProperty, buildSyncWarning,
+  safeInsertProperty, safeUpdateProperty, buildSyncWarning, generatePropertyName,
   type PropertyDbInsert, type PropertyDbUpdate,
 } from '@/lib/propertyDb';
 import type {
@@ -134,6 +134,7 @@ async function triggerSellerSideEffect(
     const insertPayload: PropertyDbInsert = {
       brokerage_id:       brokerageId,
       address_line_1:     addressLine1,
+      name:               generatePropertyName(addressLine1, contactName),
       city, state, zip, county,
       status:             'prospect',
       price,

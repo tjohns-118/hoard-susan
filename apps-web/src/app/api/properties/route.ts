@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { inferAreaKeys } from '@/lib/areaUtils';
-import { safeInsertProperty, safeUpdateProperty, type PropertyDbInsert, type PropertyDbUpdate } from '@/lib/propertyDb';
+import { safeInsertProperty, safeUpdateProperty, generatePropertyName, type PropertyDbInsert, type PropertyDbUpdate } from '@/lib/propertyDb';
 import type { PropertyRecord, PropertyStatus } from '@/features/properties/types';
 
 // ── GET /api/properties ───────────────────────────────────────────────────────
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
     zip?:             string;
     // Legacy single-field address (accepted for backward compat — mapped to address_line_1)
     address?:         string;
+    name?:            string;
     status?:          PropertyStatus;
     price?:           number;
     type?:            string;
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
   const insertPayload: PropertyDbInsert = {
     brokerage_id:       BROKERAGE_ID,
     address_line_1:     line1,
+    name:               body.name?.trim() || generatePropertyName(line1),
     address_line_2:     body.addressLine2?.trim() || null,
     zip:                body.zip?.trim()          || null,
     status:             body.status               ?? 'active',
@@ -230,6 +232,7 @@ export async function PUT(req: NextRequest) {
       const insertPayload: PropertyDbInsert = {
         brokerage_id:       BROKERAGE_ID,
         address_line_1:     line1,
+        name:               generatePropertyName(line1),
         city:               city   ?? null,
         state:              state  ?? null,
         county:             county ?? null,

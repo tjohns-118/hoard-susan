@@ -26,6 +26,7 @@ export interface PropertyDbInsert {
   // ── Required (base migration) ─────────────────────────────────────────────
   brokerage_id:       string;
   address_line_1:     string;
+  name:               string;
   status:             'active' | 'pending' | 'sold' | 'prospect';
   price:              number;
   linked_contact_ids: string[];
@@ -137,6 +138,19 @@ export async function safeUpdateProperty(
   }
 
   return { ok: false, strippedColumns: stripped, error: 'Too many missing columns — update aborted' };
+}
+
+/**
+ * Generate a display name for a property.
+ * Prefers the street address, falls back to "<Contact> Property", then "New Property".
+ */
+export function generatePropertyName(
+  addressLine1?: string | null,
+  contactName?: string | null,
+): string {
+  if (addressLine1?.trim()) return addressLine1.trim();
+  if (contactName?.trim()) return `${contactName.trim()} Property`;
+  return 'New Property';
 }
 
 /** Build a human-readable syncError from stripped columns. Returns undefined if nothing was stripped. */
