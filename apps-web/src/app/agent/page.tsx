@@ -17,6 +17,8 @@ import {
   Panel, SectionHeader, UrgencyRow, AlertRow, TaskRow, EventRow,
   fmtValue, daysSince, daysUntil,
 } from '@/components/dashboard/shared';
+import { useAgentSummary } from '@/hooks/useAgentSummary';
+import type { AgentSummary } from '@/app/api/ai/agent-summary/route';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,7 @@ export default function AgentDashboardPage() {
   useTasks();
   useAgents();
   const { events } = useEvents();
+  const { summary: aiSummary, loading: aiLoading } = useAgentSummary();
 
   const leads        = useAppStore((s) => s.leads);
   const contacts     = useAppStore((s) => s.contacts);
@@ -225,6 +228,9 @@ export default function AgentDashboardPage() {
         <StatCard label="My Pipeline" value={fmtValue(myPipelineValue)} subtext="open deal value" accent />
         <StatCard label="Open Tasks"  value={myTasks.length}      subtext={myOverdueTasks.length > 0 ? `${myOverdueTasks.length} overdue` : 'in queue'} accent={myOverdueTasks.length > 0} />
       </div>
+
+      {/* ── AI Daily Focus ── */}
+      <AgentAiPanel summary={aiSummary} loading={aiLoading} />
 
       {/* ── Today's Focus ── */}
       <AgentFocusPanel
@@ -431,6 +437,117 @@ export default function AgentDashboardPage() {
         </Panel>
       )}
     </AppShell>
+  );
+}
+
+// ── Agent AI Panel ────────────────────────────────────────────────────────────
+
+function AgentAiPanel({ summary, loading }: { summary: AgentSummary | null; loading: boolean }) {
+  const panelStyle: React.CSSProperties = {
+    marginBottom: 24, padding: '18px 22px', borderRadius: 14,
+    border: '1px solid rgba(139,92,246,0.22)',
+    background: 'linear-gradient(135deg, rgba(139,92,246,0.05) 0%, rgba(255,255,255,0.01) 100%)',
+  };
+
+  const headerRow = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+        AI Daily Focus
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: 4, border: '1px solid var(--r-border)', background: 'rgba(255,255,255,0.02)' }}>
+        gpt-4o-mini · Live pipeline
+      </span>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div style={panelStyle}>
+        {headerRow}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[80, 65, 72].map((w, i) => (
+            <div key={i} style={{ height: 13, borderRadius: 6, width: `${w}%`, background: 'rgba(139,92,246,0.10)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <div style={panelStyle}>
+        {headerRow}
+        <div style={{ fontSize: 13, color: 'var(--r-text-3)', fontStyle: 'italic' }}>
+          No AI insights available yet — continue working your pipeline.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={panelStyle}>
+      {headerRow}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18, alignItems: 'start' }}>
+
+        {/* Focus list */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Action Items
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {summary.today_focus.map((item, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ color: '#a78bfa', fontSize: 12, lineHeight: 1.6, flexShrink: 0 }}>→</span>
+                <span style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6 }}>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* At-risk deals */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-warning)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            At-Risk Deals
+          </div>
+          {summary.at_risk_deals.length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>None flagged.</div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {summary.at_risk_deals.map((d, i) => (
+                  <div key={i} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(200,130,60,0.05)', border: '1px solid rgba(200,130,60,0.18)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)', marginBottom: 2 }}>{d.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>{d.reason}</div>
+                    {d.value > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--r-warning)', fontWeight: 600, marginTop: 3 }}>{fmtValue(d.value)}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+
+        {/* Quick wins */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-success)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Quick Wins
+          </div>
+          {summary.quick_wins.length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>None identified.</div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {summary.quick_wins.map((w, i) => (
+                  <div key={i} style={{ padding: '9px 11px', borderRadius: 9, background: 'rgba(90,140,94,0.05)', border: '1px solid rgba(90,140,94,0.18)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)', marginBottom: 2 }}>{w.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>{w.reason}</div>
+                    {w.value && (
+                      <div style={{ fontSize: 11, color: 'var(--r-success)', fontWeight: 600, marginTop: 3 }}>{w.value}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+
+      </div>
+    </div>
   );
 }
 
