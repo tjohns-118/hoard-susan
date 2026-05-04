@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useSupportTickets } from '@/hooks/useSupportTickets';
 import type { SupportTicket, TicketCategory, TicketPriority, TicketStatus } from '@/features/support/types';
-import { CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS } from '@/features/support/types';
+import { CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS, parseAiFixBrief } from '@/features/support/types';
 
 const SUPPORT_EMAIL = 'support@builtonhoard.com';
 const SUPPORT_PHONE = '+1 (888) 467-2730';
@@ -49,6 +49,21 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, display: 'block',
 };
 
+// ── Triage field row helper ───────────────────────────────────────────────────
+
+function TriageField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.7)', marginBottom: 3 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 // ── TicketRow ─────────────────────────────────────────────────────────────────
 
 function TicketRow({
@@ -71,6 +86,9 @@ function TicketRow({
   const canReopen         = isBroker && ticket.status === 'resolved';
   const hasActions        = canMarkInProgress || canResolve || canReopen;
 
+  const hasAi   = !!(ticket.aiSummary || ticket.aiSeverity || ticket.aiSuggestedResponse);
+  const fixBrief = isBroker ? parseAiFixBrief(ticket.aiFixBrief) : null;
+
   return (
     <div style={{
       borderRadius: 12, border: '1px solid var(--r-border)',
@@ -88,6 +106,11 @@ function TicketRow({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ticket.title}
+            {isBroker && ticket.needsHumanReview && (
+              <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c06060', verticalAlign: 'middle' }}>
+                Review needed
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
             {fmtDate(ticket.createdAt)}
@@ -98,6 +121,9 @@ function TicketRow({
         </div>
 
         <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {isBroker && ticket.aiSeverity && ticket.aiSeverity !== ticket.priority && (
+            <Badge tone={priorityTone(ticket.aiSeverity as any)}>AI: {ticket.aiSeverity}</Badge>
+          )}
           <Badge tone={statusTone(ticket.status)}>{STATUS_LABELS[ticket.status]}</Badge>
           <Badge tone={priorityTone(ticket.priority)}>{PRIORITY_LABELS[ticket.priority]}</Badge>
           <Badge tone="default">{CATEGORY_LABELS[ticket.category]}</Badge>
@@ -106,7 +132,9 @@ function TicketRow({
 
       {/* Expanded detail */}
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--r-border)', padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ borderTop: '1px solid var(--r-border)', padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Description */}
           <div>
             <div style={labelStyle}>Description</div>
             <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
@@ -137,8 +165,61 @@ function TicketRow({
             </div>
           )}
 
+          {/* AI triage — broker only ──────────────────────────────────────── */}
+          {isBroker && hasAi && (
+            <div style={{
+              borderRadius: 10, border: '1px solid rgba(155,138,180,0.25)',
+              background: 'rgba(155,138,180,0.05)', padding: '12px 14px',
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.8)' }}>
+                  AI Triage — Internal
+                </div>
+                {ticket.needsHumanReview && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                    padding: '2px 8px', borderRadius: 5,
+                    background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', color: 'var(--r-danger)',
+                  }}>
+                    Human Review Needed
+                  </span>
+                )}
+              </div>
+
+              {ticket.aiSummary && <TriageField label="Summary" value={ticket.aiSummary} />}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {ticket.aiSeverity  && <TriageField label="Severity"  value={ticket.aiSeverity} />}
+                {ticket.aiCategory  && <TriageField label="Category"  value={ticket.aiCategory} />}
+              </div>
+
+              {ticket.aiSuggestedResponse && (
+                <TriageField label="Suggested Response (draft)" value={ticket.aiSuggestedResponse} />
+              )}
+
+              {/* Fix brief — broker only, never shown to agents */}
+              {fixBrief && (
+                <div style={{
+                  borderRadius: 8, border: '1px solid rgba(155,138,180,0.2)',
+                  background: 'rgba(155,138,180,0.06)', padding: '10px 12px',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.6)' }}>
+                    Fix Brief (dev/support)
+                  </div>
+                  {fixBrief.suspected_area      && <TriageField label="Suspected Area"     value={fixBrief.suspected_area} />}
+                  {fixBrief.reproduction_steps  && <TriageField label="Repro Steps"        value={fixBrief.reproduction_steps} />}
+                  {fixBrief.likely_files_routes && <TriageField label="Likely Files/Routes" value={fixBrief.likely_files_routes} />}
+                  {fixBrief.recommended_next_action && <TriageField label="Next Action" value={fixBrief.recommended_next_action} />}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Status actions */}
           {hasActions && (
-            <div style={{ display: 'flex', gap: 7, paddingTop: 4 }}>
+            <div style={{ display: 'flex', gap: 7, paddingTop: 2 }}>
               {canMarkInProgress && (
                 <button
                   onClick={() => handleStatus('in_progress')}
