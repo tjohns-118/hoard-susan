@@ -461,29 +461,38 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── updateValue ───────────────────────────────────────────────────────────────
-  // Manual value override — used during offer/contract stages when actual offer
-  // price is known.  Persists to value_min + value_max (+ legacy value column).
+  // Two-step write:
+  //   1. Always write `value` (confirmed column) — fail hard if this errors.
+  //   2. Attempt to write `value_min` / `value_max` — silently skip if the
+  //      columns don't exist yet (migration pending).  The mapper reads
+  //      value_min ?? value, so `value` alone is sufficient for correct display.
 
   if (action === 'updateValue') {
     const min = typeof body.valueMin === 'number' ? body.valueMin : 0;
     const max = (typeof body.valueMax === 'number' && body.valueMax > min) ? body.valueMax : null;
-    const { error } = await supabaseAdmin
+
+    // Step 1: write to the confirmed `value` column.
+    const { error: baseErr } = await supabaseAdmin
       .from('opportunities')
-      .update({ value: min, value_min: min, value_max: max, updated_at: now })
+      .update({ value: min, updated_at: now })
       .eq('id', oppId);
-    if (error) {
-      const missingColumn = /column .*(value_min|value_max).* does not exist/i.test(error.message)
-        || error.message.includes('value_min') || error.message.includes('value_max');
-      if (missingColumn) {
-        const { error: fallbackErr } = await supabaseAdmin
-          .from('opportunities')
-          .update({ value: min, updated_at: now })
-          .eq('id', oppId);
-        if (fallbackErr) return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
-        return NextResponse.json({ ok: true });
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+
+    if (baseErr) {
+      console.error('[updateValue] base write failed | oppId:', oppId, '|', baseErr.message);
+      return NextResponse.json({ error: baseErr.message }, { status: 500 });
     }
+
+    // Step 2: attempt range columns — non-fatal.
+    const { error: rangeErr } = await supabaseAdmin
+      .from('opportunities')
+      .update({ value_min: min, value_max: max })
+      .eq('id', oppId);
+
+    if (rangeErr) {
+      console.warn('[updateValue] range columns not written (migration pending?) | oppId:', oppId, '|', rangeErr.message);
+    }
+
+    console.log(`[updateValue] success | oppId=${oppId} value=${min}${max != null ? ` max=${max}` : ''}`);
     return NextResponse.json({ ok: true });
   }
 

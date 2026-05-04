@@ -21,6 +21,8 @@ import type { OpportunityPriority } from '@/features/opportunities/types';
 import type { PipelineType, PipelineStage, DocumentStatus } from '@/features/pipeline/types';
 import { getNextStage } from '@/features/pipeline/definitions';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function fetchOpportunities() {
   try {
     const res = await fetch('/api/opportunities', { cache: 'no-store' });
@@ -38,8 +40,9 @@ async function fetchOpportunities() {
 
 export function useOpportunities() {
   const router           = useRouter();
-  const opportunities    = useAppStore((s) => s.opportunities);
-  const setOpportunities = useAppStore((s) => s.setOpportunities);
+  const opportunities         = useAppStore((s) => s.opportunities);
+  const setOpportunities      = useAppStore((s) => s.setOpportunities);
+  const updateOpportunityValue = useAppStore((s) => s.updateOpportunityValue);
 
   const reload = useCallback(async () => {
     const data = await fetchOpportunities();
@@ -131,7 +134,16 @@ export function useOpportunities() {
   }
 
   async function updateValue(oppId: string, valueMin: number, valueMax?: number) {
-    await patchApi({ action: 'updateValue', oppId, valueMin, valueMax });
+    if (!UUID_RE.test(oppId)) throw new Error('Opportunity not yet saved — cannot update value');
+    // Optimistic: update store immediately so the card reflects the new value at once.
+    updateOpportunityValue(oppId, valueMin, valueMax);
+    try {
+      await patchApi({ action: 'updateValue', oppId, valueMin, valueMax });
+    } catch (err) {
+      // Revert optimistic update on failure.
+      await reload();
+      throw err;
+    }
   }
 
   /** Update the status of a document on a deal ('not_sent' → 'sent' → 'signed'). */

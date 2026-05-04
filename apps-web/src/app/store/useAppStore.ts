@@ -63,7 +63,8 @@ type AppState = {
     opportunityId?: string;
     propertyId?: string;
   }) => void;
-  assignOpportunityToAgent: (oppId: string, agentId?: string) => void;
+  assignOpportunityToAgent:  (oppId: string, agentId?: string) => void;
+  updateOpportunityValue:    (oppId: string, valueMin: number, valueMax?: number) => void;
   scheduleTask:  (taskId: string, dueAt: string) => void;
 
   // ── Template mutations (delegated to useTemplates hook; kept for compat) ──────
@@ -336,6 +337,15 @@ assignOpportunityToAgent: (oppId, agentId) =>
 set((state) => ({
 opportunities: state.opportunities.map((o) =>
 o.id === oppId ? { ...o, assignedAgentId: agentId, updatedAt: nowIso() } : o
+),
+})),
+
+updateOpportunityValue: (oppId, valueMin, valueMax) =>
+set((state) => ({
+opportunities: state.opportunities.map((o) =>
+o.id === oppId
+? { ...o, value: valueMin, valueMin, valueMax, updatedAt: nowIso() }
+: o
 ),
 })),
 
