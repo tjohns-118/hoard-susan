@@ -33,6 +33,7 @@ import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
 import type { SupportTicket, TicketStatus, TicketCategory, TicketPriority } from '@/features/support/types';
+import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
 
 const VALID_STATUSES   = new Set<string>(['open', 'in_progress', 'resolved']);
 const VALID_CATEGORIES = new Set<string>(['bug', 'question', 'feature_request', 'billing', 'account_access', 'data_issue', 'other']);
@@ -53,34 +54,6 @@ interface AiTriageResult {
   needs_human_review:    boolean;
 }
 
-const TRIAGE_SYSTEM_PROMPT = `\
-You are a support triage assistant for Hoard, a real-estate brokerage CRM platform. \
-Analyze incoming support tickets and return structured triage data for internal support staff.
-
-Critical rules — violating these is a hard failure:
-1. NEVER claim a bug has been fixed or that any action has been taken.
-2. NEVER promise timelines, ETAs, or specific resolutions.
-3. NEVER include internal file paths, route names, or database details in suggested_response — that field is shown to the end user.
-4. NEVER suggest destructive database commands or code changes.
-5. Respond ONLY with a valid JSON object. No markdown, no prose, no code fences.
-
-The fix_brief field is INTERNAL ONLY. Reference likely code areas, routes, and files freely there.
-
-Required JSON schema (every field must be present):
-{
-  "summary": "<1–2 sentence plain-English summary of the issue>",
-  "category": "<bug|question|feature_request|billing|account_access|data_issue|other>",
-  "severity": "<low|normal|high|urgent>",
-  "suggested_response": "<2–3 sentence professional, empathetic response to send to the user. No internal details, no timelines, no fix claims.>",
-  "fix_brief": {
-    "suspected_area": "<contacts|pipeline|properties|matches|tasks|calendar|billing|auth|settings|imports|other>",
-    "reproduction_steps": "<numbered steps if inferable from the description, else 'Not inferable from description'>",
-    "likely_files_routes": "<comma-separated likely API routes or source areas if inferable, else 'Unknown'>",
-    "severity": "<low|normal|high|urgent>",
-    "recommended_next_action": "<one sentence internal action for the dev or support team>"
-  },
-  "needs_human_review": <true if billing, account_access, severity high/urgent, or clearly a broken core flow — false otherwise>
-}`;
 
 async function runAiTriage(ticket: {
   title:       string;
@@ -89,9 +62,6 @@ async function runAiTriage(ticket: {
   description: string;
   pageUrl?:    string;
 }): Promise<AiTriageResult | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-
   const userContent =
     `Hoard support ticket:\n\n` +
     `Title: ${ticket.title}\n` +
@@ -101,31 +71,19 @@ async function runAiTriage(ticket: {
     `Description:\n${ticket.description.slice(0, 2000)}`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model:           'gpt-4o-mini',
-        max_tokens:      900,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
-          { role: 'user',   content: userContent },
-        ],
-      }),
-      signal: AbortSignal.timeout(12000),
+    const text = await callOpenAI({
+      systemPrompt: SYSTEM_PROMPTS.supportTriage,
+      userPrompt:   userContent,
+      json:         true,
+      maxTokens:    900,
+      timeoutMs:    12_000,
     });
 
-    if (!res.ok) {
-      console.warn(`[support/triage] OpenAI HTTP ${res.status}`);
+    if (!text) {
+      console.warn('[support/triage] callOpenAI returned null');
       return null;
     }
 
-    const data   = await res.json();
-    const text   = data?.choices?.[0]?.message?.content ?? '';
     const parsed = JSON.parse(text);
 
     return {

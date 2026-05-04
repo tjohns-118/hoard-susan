@@ -26,6 +26,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
+import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -206,49 +207,20 @@ export async function GET() {
   ].filter(Boolean).join('\n');
 
   // ── Call OpenAI ─────────────────────────────────────────────────────────────
-  const systemPrompt = `You are a concise real-estate brokerage analyst. You analyse a broker's live brokerage data and return a JSON object with exactly these four keys:
-
-"broker_briefing"     — array of 3–5 short sentences summarising the brokerage's current state. Include pipeline value, agent workload, and any standout risks. Use real numbers from the data.
-"agent_attention"     — array of 0–3 objects: { agent, reason, severity }. Only agents that genuinely need the broker's attention (no pipeline, high overdue tasks, stale workload). severity is "high" or "normal".
-"deal_risks"          — array of 0–3 objects: { name, reason, value, severity }. Only truly at-risk deals (stale > 7 days, close < 14 days with low probability). value is a string (e.g. "$450k"). severity is "high" or "normal".
-"recommended_actions" — array of 3–5 short, specific action strings. Each must name a real agent, deal, or metric from the data. No generic advice.
-
-Rules:
-- Use the exact names from the data. Never invent names or values.
-- Keep every string under 120 characters.
-- Do not explain yourself. Return only the JSON object.
-- If a section is empty, return an empty array.
-- Do not include markdown fences.`;
-
   const userPrompt = `Here is my brokerage data:\n\n${contextBlock}\n\nReturn the JSON summary.`;
 
   try {
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model:           'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        temperature:     0.3,
-        max_tokens:      700,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt   },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const raw = await callOpenAI({
+      systemPrompt: SYSTEM_PROMPTS.brokerSummary,
+      userPrompt,
+      json:      true,
+      maxTokens: 700,
     });
 
-    if (!aiRes.ok) {
-      console.warn(`[broker-summary] OpenAI error ${aiRes.status}`);
+    if (!raw) {
+      console.warn('[broker-summary] callOpenAI returned null');
       return NextResponse.json({ error: 'unavailable' });
     }
-
-    const aiJson = await aiRes.json();
-    const raw    = aiJson?.choices?.[0]?.message?.content ?? '';
 
     let parsed: BrokerSummary;
     try {
@@ -279,8 +251,7 @@ Rules:
     };
 
     return NextResponse.json(summary);
-  } catch (err: any) {
-    console.warn('[broker-summary] AI call failed:', err?.message ?? err);
+  } catch {
     return NextResponse.json({ error: 'unavailable' });
   }
 }

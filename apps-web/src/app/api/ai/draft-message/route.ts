@@ -32,6 +32,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
+import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,9 +164,6 @@ export async function POST(req: NextRequest) {
   if (!membership)
     return NextResponse.json({ error: 'unavailable' }, { status: 403 });
 
-  if (!process.env.OPENAI_API_KEY)
-    return NextResponse.json({ error: 'unavailable' });
-
   // ── Parse + validate body ───────────────────────────────────────────────────
   let body: {
     channel?:           unknown;
@@ -222,53 +220,17 @@ export async function POST(req: NextRequest) {
   const context = buildContext(target, targetType as TargetType);
   const purposeLabel = PURPOSE_LABEL[purpose as Purpose] ?? purpose;
 
-  const systemPrompt = isSms
-    ? `You are a concise real-estate agent assistant drafting a professional SMS message.
-Rules:
-- Write in first-person as the agent.
-- Keep the message to 1–2 sentences, under 160 characters total.
-- Sound warm, professional, and real-estate appropriate.
-- Never invent property listings, prices, or facts not in the data.
-- No promises you can't keep.
-- Return ONLY the message body as a plain string — no JSON, no labels, no quotes.`
-    : `You are a concise real-estate agent assistant drafting a professional email.
-Rules:
-- Write in first-person as the agent.
-- 2–4 short paragraphs. Conversational but professional.
-- Real-estate appropriate language. No invented listings or false claims.
-- Return a JSON object with exactly two keys: "subject" (short email subject line) and "body" (the email body as plain text with \\n for line breaks).
-- No markdown fences. No extra keys.`;
-
   const userPrompt = `Recipient context:\n${context}\n\nPurpose: ${purposeLabel}${customInstruction ? `\nAdditional instructions: ${customInstruction}` : ''}\n\n${isSms ? 'Write the SMS message.' : 'Write the email draft.'}`;
 
   // ── Call OpenAI ─────────────────────────────────────────────────────────────
   try {
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model:           'gpt-4o-mini',
-        ...(isSms ? {} : { response_format: { type: 'json_object' } }),
-        temperature:     0.5,
-        max_tokens:      isSms ? 120 : 500,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt   },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const raw = await callOpenAI({
+      systemPrompt: isSms ? SYSTEM_PROMPTS.draftSms : SYSTEM_PROMPTS.draftEmail,
+      userPrompt,
+      json:        !isSms,
+      maxTokens:   isSms ? 120 : 500,
+      temperature: 0.5,
     });
-
-    if (!aiRes.ok) {
-      console.warn(`[draft-message] OpenAI error ${aiRes.status}`);
-      return NextResponse.json({ error: 'unavailable' });
-    }
-
-    const aiJson = await aiRes.json();
-    const raw    = aiJson?.choices?.[0]?.message?.content?.trim() ?? '';
 
     if (!raw) return NextResponse.json({ error: 'unavailable' });
 

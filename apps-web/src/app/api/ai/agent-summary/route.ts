@@ -24,6 +24,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
+import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -186,48 +187,20 @@ export async function GET() {
   ].filter(Boolean).join('\n');
 
   // ── Call OpenAI ─────────────────────────────────────────────────────────────
-  const systemPrompt = `You are a concise real-estate sales assistant. You analyse an agent's live pipeline data and return a JSON object with exactly these three keys:
-
-"today_focus"   — array of 3–5 short, specific action strings. Each must name a real person or deal. No generic advice.
-"at_risk_deals" — array of 0–3 objects: { name, reason, value }. Only include truly at-risk items (stale > 5 days, close < 7 days with low probability, overdue tasks). value is a number (dollars).
-"quick_wins"    — array of 0–3 objects: { name, reason, value }. Deals with high probability or motivated leads close to decision. value is a string (e.g. "$450k–$550k").
-
-Rules:
-- Use the exact names from the data. Never invent names or values.
-- Keep every string under 100 characters.
-- Do not explain yourself. Return only the JSON object.
-- If a section is empty, return an empty array.
-- Do not include markdown fences.`;
-
   const userPrompt = `Here is my pipeline data:\n\n${contextBlock}\n\nReturn the JSON summary.`;
 
   try {
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model:           'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        temperature:     0.3,
-        max_tokens:      600,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt   },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const raw = await callOpenAI({
+      systemPrompt: SYSTEM_PROMPTS.agentSummary,
+      userPrompt,
+      json:      true,
+      maxTokens: 600,
     });
 
-    if (!aiRes.ok) {
-      console.warn(`[agent-summary] OpenAI error ${aiRes.status}`);
+    if (!raw) {
+      console.warn('[agent-summary] callOpenAI returned null');
       return NextResponse.json({ error: 'unavailable' });
     }
-
-    const aiJson = await aiRes.json();
-    const raw    = aiJson?.choices?.[0]?.message?.content ?? '';
 
     let parsed: AgentSummary;
     try {
@@ -249,8 +222,7 @@ Rules:
     };
 
     return NextResponse.json(summary);
-  } catch (err: any) {
-    console.warn('[agent-summary] AI call failed:', err?.message ?? err);
+  } catch {
     return NextResponse.json({ error: 'unavailable' });
   }
 }
