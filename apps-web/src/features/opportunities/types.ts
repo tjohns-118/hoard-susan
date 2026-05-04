@@ -90,8 +90,12 @@ export interface Opportunity {
   stageHistory:      StageHistoryEntry[];
 
   // ── Deal metadata ──────────────────────────────────────────────────────────
-  /** Full deal value in USD */
+  /** Full deal value in USD — kept in sync with valueMin for backward compat */
   value:             number;
+  /** Value range lower bound (seller: estimated price; buyer: priceMin) */
+  valueMin:          number;
+  /** Value range upper bound — undefined = single value (buyer: priceMax) */
+  valueMax?:         number;
   /** Close probability 0–100 */
   probability:       number;
   expectedCloseDate: string;

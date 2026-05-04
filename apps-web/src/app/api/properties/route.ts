@@ -103,8 +103,6 @@ export async function POST(req: NextRequest) {
     assigned_agent_id:  body.assignedAgentId      ?? null,
     linked_contact_ids: [],
     tags:               body.tags                 ?? [],
-    notes:              [],
-    images:             [],
     listed_at:          body.listedAt             ?? new Date().toISOString(),
     area_keys:          inferAreaKeys(body.city, body.county, body.state),
   };
@@ -248,8 +246,6 @@ export async function PUT(req: NextRequest) {
         area_keys:          inferAreaKeys(city, county, state),
         linked_contact_ids: [],
         tags:               [],
-        notes:              [],
-        images:             [],
         listed_at:          now,
       };
       const res = await safeInsertProperty(insertPayload);
@@ -293,11 +289,12 @@ export async function PATCH(req: NextRequest) {
     if (!body.noteBody) return NextResponse.json({ error: 'noteBody required' }, { status: 400 });
     const { data: cur } = await supabaseAdmin
       .from('properties').select('notes').eq('id', propertyId).single();
-    const existing = Array.isArray(cur?.notes) ? cur.notes : [];
+    // notes column is text — parse the JSON-encoded PropertyNote[] string.
+    const existing = parsePropertyNotes(cur?.notes);
     const newNote  = { id: `pnote_${Date.now()}`, body: body.noteBody, createdAt: now };
     const { error } = await supabaseAdmin
       .from('properties')
-      .update({ notes: [...existing, newNote], updated_at: now })
+      .update({ notes: JSON.stringify([...existing, newNote]), updated_at: now })
       .eq('id', propertyId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -354,6 +351,15 @@ function buildAddress(row: any): string {
   return parts.length > 0 ? parts.join(', ') : 'No address';
 }
 
+// notes column is text — stores a JSON-serialised PropertyNote[] string.
+function parsePropertyNotes(raw: unknown): import('@/features/properties/types').PropertyNote[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw) {
+    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
+
 function mapProperty(row: any): PropertyRecord {
   const validStatuses: PropertyStatus[] = ['active', 'pending', 'sold', 'prospect'];
 
@@ -386,7 +392,7 @@ function mapProperty(row: any): PropertyRecord {
     assignedAgentId:  row.assigned_agent_id   ?? undefined,
     linkedContactIds: Array.isArray(row.linked_contact_ids) ? row.linked_contact_ids : [],
     tags:             Array.isArray(row.tags)      ? row.tags      : [],
-    notes:            Array.isArray(row.notes)     ? row.notes     : [],
+    notes:            parsePropertyNotes(row.notes),
     areaKeys:         Array.isArray(row.area_keys) ? row.area_keys : [],
     listedAt:         row.listed_at      ?? undefined,
     contractedAt:     row.contracted_at  ?? undefined,

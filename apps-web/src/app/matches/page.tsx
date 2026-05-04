@@ -798,6 +798,10 @@ export default function MatchesPage() {
 
   async function handleCreateOpp(match: ComputedMatch) {
     const { person, property } = match;
+    // Derive value from buyer profile; fall back to property list price.
+    const bp = person.buyerProfile;
+    const matchValueMin = bp?.priceMin ?? (property.price > 0 ? property.price : 0);
+    const matchValueMax = (bp?.priceMax != null && bp.priceMax > matchValueMin) ? bp.priceMax : undefined;
     try {
       await createOpportunity({
         contactName:     person.fullName,
@@ -805,7 +809,8 @@ export default function MatchesPage() {
         propertyId:      property.id,
         assignedAgentId: person.assignedAgentId,
         stage:           'lead_received',
-        value:           property.price > 0 ? property.price : 0,
+        valueMin:        matchValueMin,
+        valueMax:        matchValueMax,
         probability:     20,
         priority:        person.tags.includes('hot') ? 'high' : 'medium',
         nextStep:        'Initial qualification — review profile and schedule intro call.',

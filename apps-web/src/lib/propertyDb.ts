@@ -29,10 +29,12 @@ export interface PropertyDbInsert {
   name:               string;
   status:             'active' | 'pending' | 'sold' | 'prospect';
   price:              number;
-  linked_contact_ids: string[];
+  linked_contact_ids: string[];    // uuid[] default '{}' — always send explicitly
   tags:               string[];
-  notes:              unknown[];    // JSONB — array of { id, body, createdAt }
   listed_at:          string;      // ISO timestamp
+
+  // ── Notes (text column — stores JSON-serialised PropertyNote[] or null) ───
+  notes?:             string | null;
 
   // ── Location (migration 20260415) ─────────────────────────────────────────
   address_line_2?:    string | null;

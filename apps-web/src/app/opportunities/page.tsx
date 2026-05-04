@@ -51,6 +51,11 @@ function fmtValue(v: number) {
   return `$${(v / 1_000).toFixed(0)}k`;
 }
 
+function fmtRange(min: number, max?: number): string {
+  if (!max || max <= min) return fmtValue(min);
+  return `${fmtValue(min)}–${fmtValue(max)}`;
+}
+
 function isTerminal(stage: string) {
   return stage === 'closed' || stage === 'lost' || stage === 'post_close_followup';
 }
@@ -127,21 +132,22 @@ const SOCIAL_PLATFORMS = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'X (Twi
 // ── Opportunity Card ──────────────────────────────────────────────────────────
 
 function OpportunityCard({
-  opp, agents, onAdvance, onGoBack, onMarkLost, createTask, onToast, isDragging, onDragStart, onDragEnd,
+  opp, agents, onAdvance, onGoBack, onMarkLost, createTask, onUpdateValue, onToast, isDragging, onDragStart, onDragEnd,
 }: {
-  opp:          Opportunity;
-  agents:       { id: string; name: string }[];
-  onAdvance:    (id: string) => void;
-  onGoBack:     (id: string) => void;
-  onMarkLost:   (id: string) => void;
-  createTask:   (fields: {
+  opp:           Opportunity;
+  agents:        { id: string; name: string }[];
+  onAdvance:     (id: string) => void;
+  onGoBack:      (id: string) => void;
+  onMarkLost:    (id: string) => void;
+  createTask:    (fields: {
     title: string; priority?: 'high' | 'medium' | 'low';
     dueAt?: string; opportunityId?: string;
   }) => Promise<void>;
-  onToast:      (msg: string, ok: boolean) => void;
-  isDragging?:  boolean;
-  onDragStart?: () => void;
-  onDragEnd?:   () => void;
+  onUpdateValue: (id: string, valueMin: number, valueMax?: number) => Promise<void>;
+  onToast:       (msg: string, ok: boolean) => void;
+  isDragging?:   boolean;
+  onDragStart?:  () => void;
+  onDragEnd?:    () => void;
 }) {
   const agent       = agents.find((a) => a.id === opp.assignedAgentId);
   const nextStage   = getNextStage(opp.stage, opp.pipelineType);
@@ -153,6 +159,42 @@ function OpportunityCard({
   const unsignedBlocking = opp.documents.some(
     (d) => d.blockingNextStage && d.requiredForStage === opp.stage && d.status !== 'signed'
   );
+
+  const oppStageDef  = getStageDefinition(opp.stage, opp.pipelineType);
+  const canEditValue = oppStageDef?.phase === 'Offer' || oppStageDef?.phase === 'Contract';
+
+  // ── Inline value edit state ─────────────────────────────────────────
+  const [showValueEdit, setShowValueEdit] = useState(false);
+  const [editMin,       setEditMin]       = useState('');
+  const [editMax,       setEditMax]       = useState('');
+  const [valueSaving,   setValueSaving]   = useState(false);
+  const [valueErr,      setValueErr]      = useState('');
+
+  useEffect(() => {
+    if (showValueEdit) {
+      setEditMin(opp.valueMin > 0 ? String(opp.valueMin) : '');
+      setEditMax(opp.valueMax ? String(opp.valueMax) : '');
+      setValueErr('');
+    }
+  }, [showValueEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSaveValue(e: React.FormEvent) {
+    e.preventDefault();
+    const min = Number(editMin);
+    if (!editMin || isNaN(min) || min <= 0) { setValueErr('Enter a positive value.'); return; }
+    const max = editMax ? Number(editMax) : undefined;
+    if (editMax && (isNaN(max!) || max! <= min)) { setValueErr('Max must exceed min.'); return; }
+    setValueSaving(true); setValueErr('');
+    try {
+      await onUpdateValue(opp.id, min, max);
+      onToast('Value updated', true);
+      setShowValueEdit(false);
+    } catch (err: any) {
+      setValueErr(err?.message ?? 'Update failed.');
+    } finally {
+      setValueSaving(false);
+    }
+  }
 
   // ── Inline task form state ──────────────────────────────────────────
   const [showTask,    setShowTask]    = useState(false);
@@ -258,13 +300,13 @@ function OpportunityCard({
         </div>
       )}
 
-      {/* Value + probability */}
+      {/* Value + probability + optional edit button */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <span style={{
           fontFamily: 'var(--r-font-serif)', fontSize: 19, fontWeight: 700,
           letterSpacing: '-0.02em', color: 'var(--r-text)',
         }}>
-          {fmtValue(opp.value)}
+          {fmtRange(opp.valueMin, opp.valueMax)}
         </span>
         <span style={{
           fontSize: 11, fontWeight: 700, color: 'var(--r-text-3)',
@@ -272,7 +314,69 @@ function OpportunityCard({
         }}>
           {opp.probability}%
         </span>
+        {canEditValue && (
+          <button
+            onClick={() => setShowValueEdit((v) => !v)}
+            style={{
+              fontSize: 10, color: showValueEdit ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+              background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+              fontWeight: 700, letterSpacing: '0.03em',
+            }}
+          >
+            {showValueEdit ? '× value' : '✎ edit'}
+          </button>
+        )}
       </div>
+
+      {/* Inline value editor — offer/contract stages only */}
+      {showValueEdit && (
+        <form
+          onSubmit={handleSaveValue}
+          style={{
+            padding: '10px', borderRadius: 9, background: 'rgba(200,164,92,0.04)',
+            border: '1px solid var(--r-border)', display: 'flex', flexDirection: 'column', gap: 7,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+            <div>
+              <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3, display: 'block' }}>
+                Value *
+              </label>
+              <input
+                type="number" min={0} step={1000}
+                value={editMin}
+                onChange={(e) => setEditMin(e.target.value)}
+                placeholder="e.g. 500000"
+                disabled={valueSaving}
+                style={{ width: '100%', padding: '5px 8px', borderRadius: 5, fontSize: 11, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3, display: 'block' }}>
+                Max (optional)
+              </label>
+              <input
+                type="number" min={0} step={1000}
+                value={editMax}
+                onChange={(e) => setEditMax(e.target.value)}
+                placeholder="e.g. 750000"
+                disabled={valueSaving}
+                style={{ width: '100%', padding: '5px 8px', borderRadius: 5, fontSize: 11, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          {valueErr && <div style={{ fontSize: 10, color: 'var(--r-danger)' }}>{valueErr}</div>}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="submit" disabled={valueSaving} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)', color: 'var(--r-gold-bright)', cursor: valueSaving ? 'default' : 'pointer', opacity: valueSaving ? 0.6 : 1 }}>
+              {valueSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" onClick={() => setShowValueEdit(false)} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-3)', cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Close date + agent + days in stage */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -477,7 +581,7 @@ export default function OpportunitiesPage() {
   const moveOpportunityStage  = useAppStore((s) => s.moveOpportunityStage);
   const currentRole           = useAppStore((s) => s.currentRole);
   const memberId              = useAppStore((s) => s.memberId);
-  const { opportunities, advanceStage, markLost, moveStage, reload } = useOpportunities();
+  const { opportunities, advanceStage, markLost, moveStage, updateValue, reload } = useOpportunities();
   const { createTask } = useTasks();
 
   // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -575,9 +679,16 @@ export default function OpportunitiesPage() {
   const closedOpps = visible.filter((o) => o.stage === 'closed' || o.stage === 'post_close_followup');
   const lostOpps   = visible.filter((o) => o.stage === 'lost');
 
-  const pipelineValue  = openOpps.reduce((s, o) => s + o.value, 0);
-  const weightedValue  = openOpps.reduce((s, o) => s + o.value * (o.probability / 100), 0);
-  const closedValue    = closedOpps.reduce((s, o) => s + o.value, 0);
+  const pipelineMin    = openOpps.reduce((s, o) => s + o.valueMin, 0);
+  const pipelineMax    = openOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0);
+  const weightedMin    = openOpps.reduce((s, o) => s + o.valueMin * (o.probability / 100), 0);
+  const weightedMax    = openOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin) * (o.probability / 100), 0);
+  const closedMin      = closedOpps.reduce((s, o) => s + o.valueMin, 0);
+  const closedMax      = closedOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0);
+  // Keep pipelineValue for any remaining legacy references
+  const pipelineValue  = pipelineMin;
+  const weightedValue  = weightedMin;
+  const closedValue    = closedMin;
 
   // Under-contract / compliance risk: broker-owned stages
   const brokerStages   = visible.filter((o) => o.stageOwner === 'broker' && o.stage !== 'closed' && o.stage !== 'lost');
@@ -605,8 +716,11 @@ export default function OpportunitiesPage() {
     });
   }
 
-  function phaseValue(phase: string): number {
-    return dealsInPhase(phase).reduce((s, o) => s + o.value, 0);
+  function phaseRange(phase: string): [number, number | undefined] {
+    const deals = dealsInPhase(phase);
+    const min = deals.reduce((s, o) => s + o.valueMin, 0);
+    const max = deals.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0);
+    return [min, max > min ? max : undefined];
   }
 
   function phaseMeta(phase: string) {
@@ -667,10 +781,10 @@ export default function OpportunitiesPage() {
 
       {/* ── Stats row ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-        <StatCard label="Open Pipeline"    value={fmtValue(pipelineValue)} subtext={`${openOpps.length} active deal${openOpps.length !== 1 ? 's' : ''}`} />
-        <StatCard label="Weighted Value"   value={fmtValue(weightedValue)} subtext="Probability-adjusted" />
-        <StatCard label="Closed"           value={fmtValue(closedValue)}   subtext={`${closedOpps.length} deal${closedOpps.length !== 1 ? 's' : ''} closed`} />
-        <StatCard label="Lost"             value={String(lostOpps.length)} subtext={lostOpps.length > 0 ? `${fmtValue(lostOpps.reduce((s,o)=>s+o.value,0))} total` : 'No losses'} />
+        <StatCard label="Open Pipeline"    value={fmtRange(pipelineMin, pipelineMax > pipelineMin ? pipelineMax : undefined)} subtext={`${openOpps.length} active deal${openOpps.length !== 1 ? 's' : ''}`} />
+        <StatCard label="Weighted Value"   value={fmtRange(weightedMin,  weightedMax  > weightedMin  ? weightedMax  : undefined)} subtext="Probability-adjusted" />
+        <StatCard label="Closed"           value={fmtRange(closedMin,    closedMax    > closedMin    ? closedMax    : undefined)} subtext={`${closedOpps.length} deal${closedOpps.length !== 1 ? 's' : ''} closed`} />
+        <StatCard label="Lost"             value={String(lostOpps.length)} subtext={lostOpps.length > 0 ? `${fmtRange(lostOpps.reduce((s,o)=>s+o.valueMin,0), (() => { const mx = lostOpps.reduce((s,o)=>s+(o.valueMax??o.valueMin),0); const mn = lostOpps.reduce((s,o)=>s+o.valueMin,0); return mx > mn ? mx : undefined; })())} total` : 'No losses'} />
       </div>
 
       {/* ── Active pipeline kanban ── */}
@@ -691,7 +805,7 @@ export default function OpportunitiesPage() {
             .map((phase) => {
             const meta      = phaseMeta(phase);
             const deals     = dealsInPhase(phase);
-            const val       = phaseValue(phase);
+            const [phaseMin, phaseMaxVal] = phaseRange(phase);
             const isDropTarget = dragOverPhase === phase;
             return (
               <div
@@ -764,7 +878,7 @@ export default function OpportunitiesPage() {
                       {phase}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 2 }}>
-                      {val > 0 ? fmtValue(val) : 'No deals'}
+                      {phaseMin > 0 ? fmtRange(phaseMin, phaseMaxVal) : 'No deals'}
                     </div>
                   </div>
                   <div style={{
@@ -798,6 +912,10 @@ export default function OpportunitiesPage() {
                         onGoBack={handleGoBack}
                         onMarkLost={handleMarkLost}
                         createTask={createTask}
+                        onUpdateValue={async (id, min, max) => {
+                          try { await updateValue(id, min, max); showToast('Value updated', true); }
+                          catch (err: any) { showToast(`Update failed: ${err.message}`, false); reload(); }
+                        }}
                         onToast={showToast}
                         isDragging={draggingOppId === opp.id}
                         onDragStart={() => setDraggingOppId(opp.id)}
@@ -864,7 +982,7 @@ export default function OpportunitiesPage() {
               Closed
             </div>
             <div style={{ fontFamily: 'var(--r-font-serif)', fontSize: 14, fontWeight: 700, color: 'var(--r-success)' }}>
-              {fmtValue(closedValue)}
+              {fmtRange(closedMin, closedMax > closedMin ? closedMax : undefined)}
             </div>
           </div>
           <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -882,7 +1000,7 @@ export default function OpportunitiesPage() {
                     )}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-success)', whiteSpace: 'nowrap' }}>
-                    {fmtValue(opp.value)}
+                    {fmtRange(opp.valueMin, opp.valueMax)}
                   </div>
                 </div>
               ))
@@ -920,7 +1038,7 @@ export default function OpportunitiesPage() {
                     )}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-danger)', whiteSpace: 'nowrap' }}>
-                    {fmtValue(opp.value)}
+                    {fmtRange(opp.valueMin, opp.valueMax)}
                   </div>
                 </div>
               ))

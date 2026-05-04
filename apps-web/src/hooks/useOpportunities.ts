@@ -72,7 +72,9 @@ export function useOpportunities() {
     assignedAgentId?:    string;
     pipelineType?:       PipelineType;
     stage?:              string;
-    value?:              number;
+    value?:              number;   // legacy — prefer valueMin/valueMax
+    valueMin?:           number;
+    valueMax?:           number;
     probability?:        number;
     expectedCloseDate?:  string;
     priority?:           OpportunityPriority;
@@ -128,6 +130,10 @@ export function useOpportunities() {
     await patchApi({ action: 'setNextStep', oppId, nextStep });
   }
 
+  async function updateValue(oppId: string, valueMin: number, valueMax?: number) {
+    await patchApi({ action: 'updateValue', oppId, valueMin, valueMax });
+  }
+
   /** Update the status of a document on a deal ('not_sent' → 'sent' → 'signed'). */
   async function updateDocument(
     oppId:     string,
@@ -147,6 +153,7 @@ export function useOpportunities() {
     assignAgent,
     addNote,
     setNextStep,
+    updateValue,
     updateDocument,
   };
 }

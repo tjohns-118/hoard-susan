@@ -804,6 +804,18 @@ export default function ContactsPage() {
       : 'buyer' as const;
     // Agents assign to themselves; brokers carry the contact's stored assignment.
     const agentId = (currentRole === 'agent' && memberId) ? memberId : (c.assignedAgentId ?? undefined);
+
+    // Derive value range from profile — seller uses estimated value, buyer uses price range.
+    let valueMin = 0;
+    let valueMax: number | undefined;
+    if (pipelineType === 'seller') {
+      valueMin = c.sellerProfile?.estimatedValue ?? firstProp?.price ?? 0;
+    } else {
+      const bp = c.buyerProfile;
+      valueMin = bp?.priceMin ?? 0;
+      valueMax = (bp?.priceMax != null && bp.priceMax > valueMin) ? bp.priceMax : undefined;
+    }
+
     setPushingId(contactId);
     try {
       await createOpportunity({
@@ -813,7 +825,8 @@ export default function ContactsPage() {
         assignedAgentId:    agentId,
         pipelineType,
         stage:              'lead_received',
-        value:              0,
+        valueMin,
+        valueMax,
         probability:        15,
         priority:           'medium',
         nextStep:           'Initial qualification — review profile and schedule intro call.',

@@ -61,7 +61,9 @@ interface OpportunityInsert {
   stage:               string;
   stage_updated_at:    string;
   stage_owner:         string | null;
-  value:               number;
+  value:               number;   // kept in sync with value_min
+  value_min:           number;
+  value_max:           number | null;
   probability:         number;
   expected_close_date: string;
   priority:            string;
@@ -127,7 +129,9 @@ export async function POST(req: NextRequest) {
     assignedAgentId?:    string;
     pipelineType?:       PipelineType;
     stage?:              string;
-    value?:              number;
+    value?:              number;   // legacy — use valueMin/valueMax instead
+    valueMin?:           number;
+    valueMax?:           number;
     probability?:        number;
     expectedCloseDate?:  string;
     priority?:           OpportunityPriority;
@@ -186,6 +190,10 @@ export async function POST(req: NextRequest) {
 
   console.log(`[opportunities POST] creating deal | title="${title}" stage=${stage} pipeline=${pipelineType}`);
 
+  // Resolve value range — prefer explicit valueMin/valueMax, fall back to legacy value field.
+  const resolvedMin = body.valueMin ?? body.value ?? 0;
+  const resolvedMax = (body.valueMax != null && body.valueMax > resolvedMin) ? body.valueMax : null;
+
   const insertRow: OpportunityInsert = {
     brokerage_id:        BROKERAGE_ID,
     title,
@@ -196,7 +204,9 @@ export async function POST(req: NextRequest) {
     stage,
     stage_updated_at:    now,
     stage_owner:         stageOwnerUUID,
-    value:               body.value             ?? 0,
+    value:               resolvedMin,
+    value_min:           resolvedMin,
+    value_max:           resolvedMax,
     probability:         body.probability        ?? 15,
     expected_close_date: closeDate,
     priority:            body.priority           ?? 'medium',
@@ -237,7 +247,7 @@ async function fetchOpp(oppId: string) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json() as {
-    action:     'moveStage' | 'markLost' | 'assignAgent' | 'addNote' | 'setNextStep' | 'updateDocument';
+    action:     'moveStage' | 'markLost' | 'assignAgent' | 'addNote' | 'setNextStep' | 'updateDocument' | 'updateValue';
     oppId:      string;
     stage?:     string;
     agentId?:   string;
@@ -245,6 +255,8 @@ export async function PATCH(req: NextRequest) {
     nextStep?:  string;
     docKey?:    string;
     docStatus?: 'not_sent' | 'sent' | 'signed';
+    valueMin?:  number;
+    valueMax?:  number;
   };
 
   const { action, oppId } = body;
@@ -448,6 +460,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── updateValue ───────────────────────────────────────────────────────────────
+  // Manual value override — used during offer/contract stages when actual offer
+  // price is known.  Persists to value_min + value_max (+ legacy value column).
+
+  if (action === 'updateValue') {
+    const min = typeof body.valueMin === 'number' ? body.valueMin : 0;
+    const max = (typeof body.valueMax === 'number' && body.valueMax > min) ? body.valueMax : null;
+    const { error } = await supabaseAdmin
+      .from('opportunities')
+      .update({ value: min, value_min: min, value_max: max, updated_at: now })
+      .eq('id', oppId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   // ── updateDocument ────────────────────────────────────────────────────────────
   // documents column was removed from the live DB — no-op until re-added via migration.
 
@@ -581,7 +608,9 @@ function mapOpportunity(row: any): Opportunity {
     stageOwner,
     documents,
     stageHistory,
-    value:             Number(row.value        ?? 0),
+    value:             Number(row.value_min ?? row.value ?? 0),
+    valueMin:          Number(row.value_min ?? row.value ?? 0),
+    valueMax:          row.value_max != null ? Number(row.value_max) : undefined,
     probability:       Number(row.probability  ?? 15),
     expectedCloseDate: row.expected_close_date
       ? String(row.expected_close_date).slice(0, 10)

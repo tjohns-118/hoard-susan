@@ -48,6 +48,21 @@ import type {
 // After a seller profile is saved, we either auto-create a prospect property
 // or create a follow-up task to collect missing property data.
 
+// Serialize seller profile condition + tags into a JSON-encoded PropertyNote[]
+// string for the properties.notes text column. Returns null if nothing to record.
+function buildSellerNotes(profile: SellerProfile): string | null {
+  const parts: string[] = [];
+  if (profile.condition) {
+    parts.push(`Condition: ${profile.condition.replace(/_/g, ' ')}`);
+  }
+  if (profile.tags?.length) {
+    parts.push(`Features: ${profile.tags.map((t) => t.replace(/_/g, ' ')).join(', ')}`);
+  }
+  if (!parts.length) return null;
+  const note = [{ id: `pnote_${Date.now()}`, body: parts.join('. '), createdAt: new Date().toISOString() }];
+  return JSON.stringify(note);
+}
+
 // Compute a display-friendly propertyLocation from structured fields.
 // Stored alongside the structured fields so legacy display code still works.
 function buildPropertyLocation(profile: SellerProfile): SellerProfile {
@@ -145,8 +160,7 @@ async function triggerSellerSideEffect(
       acreage:            profile.acreage != null ? Number(profile.acreage) : null,
       linked_contact_ids: [contactId],
       tags:               [],
-      notes:              [],
-      images:             [],
+      notes:              buildSellerNotes(profile),
       area_keys:          areaKeys,
       listed_at:          now,
     };

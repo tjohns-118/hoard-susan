@@ -36,6 +36,10 @@ const SHARED_NAV_GROUPS = [
       { href: '/imports',    label: 'Imports' },
     ],
   },
+  {
+    label: 'Help',
+    items: [{ href: '/support', label: 'Support' }],
+  },
 ];
 
 const BROKER_ONLY_GROUP = {
