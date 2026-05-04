@@ -18,6 +18,8 @@ import {
   fmtValue, daysSince, daysUntil,
 } from '@/components/dashboard/shared';
 import AgentDashboardPage from './agent/page';
+import { useBrokerSummary } from '@/hooks/useBrokerSummary';
+import type { BrokerSummary } from '@/app/api/ai/broker-summary/route';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,7 @@ export default function HomePage() {
 }
 
 function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['events'] }) {
+  const { summary: aiSummary, loading: aiLoading } = useBrokerSummary();
 
   const leads        = useAppStore((s) => s.leads);
   const contacts     = useAppStore((s) => s.contacts);
@@ -281,7 +284,10 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
         <StatCard label="Weighted"        value={fmtValue(weightedValue)} subtext="Probability-adjusted" />
       </div>
 
-      {/* ── B. Guidance ── */}
+      {/* ── B. AI Intelligence ── */}
+      <BrokerAiPanel summary={aiSummary} loading={aiLoading} />
+
+      {/* ── C. Guidance ── */}
       <BrokerDirectionPanel
         hotLeads={hotLeads}
         unassignedLeads={unassignedLeads}
@@ -294,7 +300,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
         lowActivityAgents={lowActivityAgents}
       />
 
-      {/* ── C. Action Center + Risk Panel ── */}
+      {/* ── D. Action Center + Risk Panel ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
         {/* Action Center */}
         <Panel>
@@ -584,6 +590,139 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
         </Panel>
       </div>
     </AppShell>
+  );
+}
+
+// ── Broker AI Panel ───────────────────────────────────────────────────────────
+
+function BrokerAiPanel({ summary, loading }: { summary: BrokerSummary | null; loading: boolean }) {
+  const panelStyle: React.CSSProperties = {
+    marginBottom: 24, padding: '18px 22px', borderRadius: 14,
+    border: '1px solid rgba(99,102,241,0.22)',
+    background: 'linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(255,255,255,0.01) 100%)',
+  };
+
+  const headerRow = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+        AI Intelligence
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: 4, border: '1px solid var(--r-border)', background: 'rgba(255,255,255,0.02)' }}>
+        gpt-4o-mini · Brokerage-wide
+      </span>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div style={panelStyle}>
+        {headerRow}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[75, 60, 82, 55].map((w, i) => (
+            <div key={i} style={{ height: 13, borderRadius: 6, width: `${w}%`, background: 'rgba(99,102,241,0.10)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <div style={panelStyle}>
+        {headerRow}
+        <div style={{ fontSize: 13, color: 'var(--r-text-3)', fontStyle: 'italic' }}>
+          No AI intelligence available yet — continue building your pipeline.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={panelStyle}>
+      {headerRow}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 20, alignItems: 'start' }}>
+
+        {/* Briefing + Actions */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Brokerage Briefing
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            {summary.broker_briefing.map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ color: '#a5b4fc', fontSize: 12, lineHeight: 1.6, flexShrink: 0 }}>·</span>
+                <span style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6 }}>{line}</span>
+              </div>
+            ))}
+          </div>
+          {summary.recommended_actions.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-gold-bright)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Recommended Actions
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {summary.recommended_actions.map((action, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--r-gold-bright)', fontSize: 11, lineHeight: 1.6, flexShrink: 0, fontWeight: 700 }}>→</span>
+                    <span style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6 }}>{action}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Agent attention */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-warning)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Agent Attention
+          </div>
+          {summary.agent_attention.length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>All agents active.</div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {summary.agent_attention.map((a, i) => (
+                  <div key={i} style={{
+                    padding: '9px 11px', borderRadius: 9,
+                    background: a.severity === 'high' ? 'rgba(239,68,68,0.05)' : 'rgba(200,130,60,0.05)',
+                    border: a.severity === 'high' ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(200,130,60,0.18)',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)', marginBottom: 2 }}>{a.agent}</div>
+                    <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>{a.reason}</div>
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+
+        {/* Deal risks */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-danger)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Deal Risks
+          </div>
+          {summary.deal_risks.length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>No critical risks.</div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {summary.deal_risks.map((d, i) => (
+                  <div key={i} style={{
+                    padding: '9px 11px', borderRadius: 9,
+                    background: d.severity === 'high' ? 'rgba(239,68,68,0.05)' : 'rgba(200,164,92,0.04)',
+                    border: d.severity === 'high' ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(200,164,92,0.15)',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)', marginBottom: 2 }}>{d.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>{d.reason}</div>
+                    {d.value && (
+                      <div style={{ fontSize: 11, color: d.severity === 'high' ? 'var(--r-danger)' : 'var(--r-gold-bright)', fontWeight: 600, marginTop: 3 }}>
+                        {d.value}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+
+      </div>
+    </div>
   );
 }
 
