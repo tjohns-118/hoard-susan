@@ -16,6 +16,7 @@ import {
   RoleBadge, ProfileSummary, ProfilePanel, ProfileFormSection,
   FieldLabel, inputStyle, selectStyle,
 } from '@/components/crm/ProfileUi';
+import { EmailComposer } from '@/components/email/EmailComposer';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -236,7 +237,8 @@ function LeadCard({
   const latestNote = lead.notes.at(-1);
   const linkedProps = properties.filter((p) => lead.linkedPropertyIds.includes(p.id));
   const nextAction = NEXT_ACTION[lead.status];
-  const [showProfile, setShowProfile] = useState(false);
+  const [showProfile,       setShowProfile]       = useState(false);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
 
   // ── Edit state ──────────────────────────────────────────────────────────────
   const [showEdit,   setShowEdit]   = useState(false);
@@ -556,6 +558,14 @@ function LeadCard({
             + Task
           </ActionBtn>
 
+          <ActionBtn
+            tone="default"
+            onClick={() => setShowEmailComposer(true)}
+            disabled={!lead.email}
+          >
+            ✉ Email
+          </ActionBtn>
+
           {lead.status !== 'contacted' && lead.status !== 'lost' && (
             <ActionBtn tone="default" onClick={() => onUpdateStatus(lead.id, 'contacted')}>
               Mark Contacted
@@ -676,6 +686,14 @@ function LeadCard({
           </div>
         )}
       </div>
+
+      <EmailComposer
+        isOpen={showEmailComposer}
+        onClose={() => setShowEmailComposer(false)}
+        toEmail={lead.email ?? ''}
+        toName={lead.fullName}
+        leadId={lead.id}
+      />
     </div>
   );
 }

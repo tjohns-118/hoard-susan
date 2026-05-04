@@ -18,6 +18,7 @@ import {
   FieldLabel, TagPills, RoleBadge, ProfileSummary, ProfilePanel,
   ProfileFormSection,
 } from '@/components/crm/ProfileUi';
+import { EmailComposer } from '@/components/email/EmailComposer';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -329,8 +330,9 @@ function DetailPanel({
   onDeleteContact: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [noteText, setNoteText] = useState('');
-  const [editMode, setEditMode] = useState(false);
+  const [noteText,          setNoteText]          = useState('');
+  const [editMode,          setEditMode]          = useState(false);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [editName,       setEditName]       = useState(contact.fullName);
   const [editEmail,      setEditEmail]      = useState(contact.email  ?? '');
   const [editPhone,      setEditPhone]      = useState(contact.phone  ?? '');
@@ -457,6 +459,12 @@ function DetailPanel({
           {isHot ? '🔥 Hot' : 'Mark Hot'}
         </ActionBtn>
         <ActionBtn onClick={() => onAddTask(contact.id)}>+ Task</ActionBtn>
+        <ActionBtn
+          onClick={() => setShowEmailComposer(true)}
+          disabled={!contact.email}
+        >
+          ✉ Email
+        </ActionBtn>
         <ActionBtn
           tone="success"
           onClick={() => onPushToOpportunities(contact.id)}
@@ -712,6 +720,14 @@ function DetailPanel({
           </a>
         ))}
       </div>
+
+      <EmailComposer
+        isOpen={showEmailComposer}
+        onClose={() => setShowEmailComposer(false)}
+        toEmail={contact.email ?? ''}
+        toName={contact.fullName}
+        contactId={contact.id}
+      />
     </div>
   );
 }
