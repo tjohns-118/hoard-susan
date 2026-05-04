@@ -471,7 +471,19 @@ export async function PATCH(req: NextRequest) {
       .from('opportunities')
       .update({ value: min, value_min: min, value_max: max, updated_at: now })
       .eq('id', oppId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      const missingColumn = /column .*(value_min|value_max).* does not exist/i.test(error.message)
+        || error.message.includes('value_min') || error.message.includes('value_max');
+      if (missingColumn) {
+        const { error: fallbackErr } = await supabaseAdmin
+          .from('opportunities')
+          .update({ value: min, updated_at: now })
+          .eq('id', oppId);
+        if (fallbackErr) return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
+        return NextResponse.json({ ok: true });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
 

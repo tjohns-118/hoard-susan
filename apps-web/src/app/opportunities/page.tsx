@@ -161,7 +161,7 @@ function OpportunityCard({
   );
 
   const oppStageDef  = getStageDefinition(opp.stage, opp.pipelineType);
-  const canEditValue = oppStageDef?.phase === 'Offer' || oppStageDef?.phase === 'Contract';
+  const canEditValue = opp.stage !== 'lost' && opp.stage !== 'closed';
 
   // ── Inline value edit state ─────────────────────────────────────────
   const [showValueEdit, setShowValueEdit] = useState(false);
@@ -913,8 +913,7 @@ export default function OpportunitiesPage() {
                         onMarkLost={handleMarkLost}
                         createTask={createTask}
                         onUpdateValue={async (id, min, max) => {
-                          try { await updateValue(id, min, max); showToast('Value updated', true); }
-                          catch (err: any) { showToast(`Update failed: ${err.message}`, false); reload(); }
+                          await updateValue(id, min, max);
                         }}
                         onToast={showToast}
                         isDragging={draggingOppId === opp.id}
