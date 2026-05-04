@@ -17,6 +17,7 @@ import {
   FieldLabel, inputStyle, selectStyle,
 } from '@/components/crm/ProfileUi';
 import { EmailComposer } from '@/components/email/EmailComposer';
+import { SmsComposer } from '@/components/sms/SmsComposer';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,7 @@ function LeadCard({
   const nextAction = NEXT_ACTION[lead.status];
   const [showProfile,       setShowProfile]       = useState(false);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [showSmsComposer,   setShowSmsComposer]   = useState(false);
 
   // ── Edit state ──────────────────────────────────────────────────────────────
   const [showEdit,   setShowEdit]   = useState(false);
@@ -566,6 +568,14 @@ function LeadCard({
             ✉ Email
           </ActionBtn>
 
+          <ActionBtn
+            tone="default"
+            onClick={() => setShowSmsComposer(true)}
+            disabled={!lead.phone}
+          >
+            💬 SMS
+          </ActionBtn>
+
           {lead.status !== 'contacted' && lead.status !== 'lost' && (
             <ActionBtn tone="default" onClick={() => onUpdateStatus(lead.id, 'contacted')}>
               Mark Contacted
@@ -691,6 +701,14 @@ function LeadCard({
         isOpen={showEmailComposer}
         onClose={() => setShowEmailComposer(false)}
         toEmail={lead.email ?? ''}
+        toName={lead.fullName}
+        leadId={lead.id}
+      />
+
+      <SmsComposer
+        isOpen={showSmsComposer}
+        onClose={() => setShowSmsComposer(false)}
+        toPhone={lead.phone ?? ''}
         toName={lead.fullName}
         leadId={lead.id}
       />

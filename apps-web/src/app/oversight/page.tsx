@@ -9,13 +9,21 @@ import { useAppStore } from '@/app/store/useAppStore';
 import { useLeads } from '@/hooks/useLeads';
 import { useOpportunities } from '@/hooks/useOpportunities';
 import { useProperties } from '@/hooks/useProperties';
+import { useContacts } from '@/hooks/useContacts';
+import { useAgents } from '@/hooks/useAgents';
+import { useTasks } from '@/hooks/useTasks';
 import { getStageDefinition } from '@/features/pipeline/definitions';
 import { useBrokerGuard } from '@/hooks/useBrokerGuard';
 
 function fmtValue(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}k`;
   return `$${v}`;
+}
+
+function fmtRange(min: number, max: number): string {
+  if (max <= min) return fmtValue(min);
+  return `${fmtValue(min)}–${fmtValue(max)}`;
 }
 
 const REF = new Date();
@@ -37,6 +45,9 @@ export default function OversightPage() {
   useLeads();
   useOpportunities();
   useProperties();
+  useContacts();
+  useAgents();
+  useTasks();
 
   const contacts     = useAppStore((s) => s.contacts);
   const leads        = useAppStore((s) => s.leads);
@@ -51,17 +62,18 @@ export default function OversightPage() {
     opportunities.filter((o) => o.stage !== 'closed' && o.stage !== 'lost' && o.stage !== 'post_close_followup'),
   [opportunities]);
 
-  const pipelineValue = useMemo(() =>
-    openOpps.reduce((sum, o) => sum + (o.value ?? 0), 0),
-  [openOpps]);
+  const pipelineMin = useMemo(() => openOpps.reduce((s, o) => s + o.valueMin, 0), [openOpps]);
+  const pipelineMax = useMemo(() => openOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0), [openOpps]);
+  // Legacy alias — used as single value for bar chart sizing
+  const pipelineValue = pipelineMin;
 
   const closedOpps = useMemo(() =>
     opportunities.filter((o) => o.stage === 'closed' || o.stage === 'post_close_followup'),
   [opportunities]);
 
-  const closedValue = useMemo(() =>
-    closedOpps.reduce((sum, o) => sum + (o.value ?? 0), 0),
-  [closedOpps]);
+  const closedMin = useMemo(() => closedOpps.reduce((s, o) => s + o.valueMin, 0), [closedOpps]);
+  const closedMax = useMemo(() => closedOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0), [closedOpps]);
+  const closedValue = closedMin;
 
   // Broker-escalated stages — deals where broker ownership is required
   const brokerStages = useMemo(() =>
@@ -75,15 +87,17 @@ export default function OversightPage() {
         const def = getStageDefinition(o.stage, o.pipelineType);
         return def?.phase === phase;
       });
-      return { phase, count: items.length, value: items.reduce((s, o) => s + (o.value ?? 0), 0) };
+      const min = items.reduce((s, o) => s + o.valueMin, 0);
+      const max = items.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0);
+      return { phase, count: items.length, value: min, valueMax: max };
     }),
   [openOpps]);
 
-  const maxPhaseValue = Math.max(...byPhase.map((p) => p.value), 1);
+  const maxPhaseValue = Math.max(...byPhase.map((p) => p.valueMax), 1);
 
   // Keep backward-compat alias
-  const wonOpps = closedOpps;
-  const wonValue = closedValue;
+  const wonOpps  = closedOpps;
+  const wonValue = closedMin;
 
   // ── Lead & contact health ────────────────────────────────────────────────
   const activeLeads   = leads.filter((l) => l.status !== 'lost').length;
@@ -98,15 +112,12 @@ export default function OversightPage() {
   // ── Agent workload ──────────────────────────────────────────────────────
   const agentWorkload = useMemo(() =>
     agents.map((agent) => {
-      const agentOpps = openOpps.filter((o) => o.assignedAgentId === agent.id);
-      const agentLeads= leads.filter((l) => l.assignedAgentId === agent.id && l.status !== 'lost');
-      return {
-        agent,
-        opps: agentOpps.length,
-        leads: agentLeads.length,
-        value: agentOpps.reduce((s, o) => s + (o.value ?? 0), 0),
-      };
-    }).sort((a, b) => b.value - a.value),
+      const agentOpps  = openOpps.filter((o) => o.assignedAgentId === agent.id);
+      const agentLeads = leads.filter((l) => l.assignedAgentId === agent.id && l.status !== 'lost');
+      const valueMin   = agentOpps.reduce((s, o) => s + o.valueMin, 0);
+      const valueMax   = agentOpps.reduce((s, o) => s + (o.valueMax ?? o.valueMin), 0);
+      return { agent, opps: agentOpps.length, leads: agentLeads.length, valueMin, valueMax };
+    }).sort((a, b) => b.valueMin - a.valueMin),
   [agents, openOpps, leads]);
 
   // ── Alerts ──────────────────────────────────────────────────────────────
@@ -148,8 +159,8 @@ export default function OversightPage() {
 
       {/* ── KPI strip ─────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
-        <StatCard label="Pipeline Value"  value={fmtValue(pipelineValue)} subtext={`${openOpps.length} open deals`} accent />
-        <StatCard label="Closed"          value={fmtValue(closedValue)}   subtext={`${closedOpps.length} closed`} />
+        <StatCard label="Pipeline Value"  value={fmtRange(pipelineMin, pipelineMax)} subtext={`${openOpps.length} open deals`} accent />
+        <StatCard label="Closed"          value={fmtRange(closedMin, closedMax)}     subtext={`${closedOpps.length} closed`} />
         <StatCard label="Conversion"      value={`${conversionRate}%`}    subtext="closed / total" />
         <StatCard label="Active Leads"    value={activeLeads}              subtext={hotLeads > 0 ? `${hotLeads} hot` : 'in funnel'} />
         <StatCard label="Inventory"       value={fmtValue(inventoryValue)} subtext={`${activeProps.length} active listings`} />
@@ -170,15 +181,15 @@ export default function OversightPage() {
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {byPhase.filter((p) => p.count > 0).map(({ phase, count, value }) => {
-              const pct = maxPhaseValue > 0 ? (value / maxPhaseValue) * 100 : 0;
+            {byPhase.filter((p) => p.count > 0).map(({ phase, count, value, valueMax }) => {
+              const pct   = maxPhaseValue > 0 ? (valueMax / maxPhaseValue) * 100 : 0;
               const color = PHASE_COLOR[phase] ?? 'var(--r-text-3)';
               return (
                 <div key={phase}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)' }}>{phase}</span>
                     <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
-                      {count} deal{count !== 1 ? 's' : ''} · {fmtValue(value)}
+                      {count} deal{count !== 1 ? 's' : ''} · {fmtRange(value, valueMax)}
                     </span>
                   </div>
                   <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
@@ -200,7 +211,7 @@ export default function OversightPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
               <span style={{ color: 'var(--r-text-3)' }}>Total open pipeline</span>
               <span style={{ fontFamily: 'var(--r-font-serif)', fontWeight: 700, color: 'var(--r-gold-bright)', fontSize: 15 }}>
-                {fmtValue(pipelineValue)}
+                {fmtRange(pipelineMin, pipelineMax)}
               </span>
             </div>
           </div>
@@ -262,7 +273,7 @@ export default function OversightPage() {
             Agent Workload
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {agentWorkload.map(({ agent, opps, leads: agLeads, value }) => (
+            {agentWorkload.map(({ agent, opps, leads: agLeads, valueMin, valueMax }) => (
               <div
                 key={agent.id}
                 className="r-row"
@@ -286,9 +297,9 @@ export default function OversightPage() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-2)', background: 'var(--r-grad-card)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '2px 8px' }}>
                     {agLeads} lead{agLeads !== 1 ? 's' : ''}
                   </span>
-                  {value > 0 && (
+                  {valueMin > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-gold-bright)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '2px 8px' }}>
-                      {fmtValue(value)}
+                      {fmtRange(valueMin, valueMax)}
                     </span>
                   )}
                 </div>
