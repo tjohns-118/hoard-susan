@@ -2,263 +2,94 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useSupportTickets } from '@/hooks/useSupportTickets';
 import type { SupportTicket, TicketCategory, TicketPriority, TicketStatus } from '@/features/support/types';
-import { CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS, parseAiFixBrief } from '@/features/support/types';
+import { CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS } from '@/features/support/types';
+
+type Tab = 'ai' | 'report' | 'tickets';
+type ReportStep = 'describe' | 'review' | 'success';
+type ChatMsg = { role: 'user' | 'assistant'; content: string; error?: boolean };
+type BadgeTone = 'default' | 'warning' | 'danger' | 'success' | 'gold';
 
 const SUPPORT_EMAIL = 'support@builtonhoard.com';
-const SUPPORT_PHONE = '+1 (888) 467-2730';
-
-const CATEGORY_OPTIONS: TicketCategory[] = [
-  'bug', 'question', 'feature_request', 'billing', 'account_access', 'data_issue', 'other',
-];
+const CATEGORY_OPTIONS: TicketCategory[] = ['bug', 'question', 'feature_request', 'billing', 'account_access', 'data_issue', 'other'];
 const PRIORITY_OPTIONS: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
 
-type BadgeTone = 'default' | 'warning' | 'danger' | 'success' | 'gold';
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
+  border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)',
+  color: 'var(--r-text)', outline: 'none', boxSizing: 'border-box',
+};
+const labelStyle: React.CSSProperties = {
+  fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)',
+  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5, display: 'block',
+};
 
 function statusTone(s: TicketStatus): BadgeTone {
   if (s === 'open')        return 'warning';
   if (s === 'in_progress') return 'gold';
   return 'success';
 }
-
-function priorityTone(p: TicketPriority): BadgeTone {
-  if (p === 'urgent') return 'danger';
-  if (p === 'high')   return 'danger';
-  if (p === 'normal') return 'warning';
+function priorityTone(p: string): BadgeTone {
+  if (p === 'urgent' || p === 'high') return 'danger';
+  if (p === 'normal')                 return 'warning';
   return 'default';
 }
-
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 11px', borderRadius: 7, fontSize: 12,
-  border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)',
-  color: 'var(--r-text)', outline: 'none', boxSizing: 'border-box',
-};
-const labelStyle: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)',
-  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, display: 'block',
-};
+// ── TicketRow (user-facing — no fix brief, no broker controls) ────────────────
 
-// ── Triage field row helper ───────────────────────────────────────────────────
-
-function TriageField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.7)', marginBottom: 3 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-// ── TicketRow ─────────────────────────────────────────────────────────────────
-
-function TicketRow({
-  ticket, isBroker, onUpdateStatus,
-}: {
-  ticket:          SupportTicket;
-  isBroker:        boolean;
-  onUpdateStatus:  (id: string, status: TicketStatus) => Promise<void>;
-}) {
+function TicketRow({ ticket }: { ticket: SupportTicket }) {
   const [expanded, setExpanded] = useState(false);
-  const [updating, setUpdating] = useState(false);
-
-  async function handleStatus(status: TicketStatus) {
-    setUpdating(true);
-    try { await onUpdateStatus(ticket.id, status); } finally { setUpdating(false); }
-  }
-
-  const canMarkInProgress = isBroker && ticket.status === 'open';
-  const canResolve        = isBroker && ticket.status !== 'resolved';
-  const canReopen         = isBroker && ticket.status === 'resolved';
-  const hasActions        = canMarkInProgress || canResolve || canReopen;
-
-  const hasAi   = !!(ticket.aiSummary || ticket.aiSeverity || ticket.aiSuggestedResponse);
-  const fixBrief = isBroker ? parseAiFixBrief(ticket.aiFixBrief) : null;
-
   return (
-    <div style={{
-      borderRadius: 12, border: '1px solid var(--r-border)',
-      background: 'rgba(200,164,92,0.03)', overflow: 'hidden',
-    }}>
-      {/* Summary row */}
+    <div style={{ borderRadius: 12, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.03)', overflow: 'hidden' }}>
       <div
         onClick={() => setExpanded((v) => !v)}
         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}
       >
-        <span style={{ fontSize: 10, color: 'var(--r-text-3)', flexShrink: 0, width: 10 }}>
-          {expanded ? '▾' : '▸'}
-        </span>
-
+        <span style={{ fontSize: 10, color: 'var(--r-text-3)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--r-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ticket.title}
-            {isBroker && ticket.needsHumanReview && (
-              <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c06060', verticalAlign: 'middle' }}>
-                Review needed
-              </span>
-            )}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
-            {fmtDate(ticket.createdAt)}
-            {isBroker && ticket.submittedByMemberId && (
-              <span style={{ marginLeft: 8, opacity: 0.6 }}>#{ticket.submittedByMemberId.slice(0, 8)}</span>
-            )}
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>{fmtDate(ticket.createdAt)}</div>
         </div>
-
         <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {isBroker && ticket.aiSeverity && ticket.aiSeverity !== ticket.priority && (
-            <Badge tone={priorityTone(ticket.aiSeverity as any)}>AI: {ticket.aiSeverity}</Badge>
-          )}
           <Badge tone={statusTone(ticket.status)}>{STATUS_LABELS[ticket.status]}</Badge>
           <Badge tone={priorityTone(ticket.priority)}>{PRIORITY_LABELS[ticket.priority]}</Badge>
           <Badge tone="default">{CATEGORY_LABELS[ticket.category]}</Badge>
         </div>
       </div>
 
-      {/* Expanded detail */}
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--r-border)', padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* Description */}
+        <div style={{ borderTop: '1px solid var(--r-border)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={labelStyle}>Description</div>
-            <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-              {ticket.description}
-            </div>
+            <div style={labelStyle}>Your description</div>
+            <div style={{ fontSize: 13, color: 'var(--r-text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{ticket.description}</div>
           </div>
 
           {ticket.pageUrl && (
             <div>
               <div style={labelStyle}>Page</div>
-              <span style={{ fontSize: 12, color: 'var(--r-text-3)', wordBreak: 'break-all' }}>
-                {ticket.pageUrl}
-              </span>
+              <span style={{ fontSize: 12, color: 'var(--r-text-3)', wordBreak: 'break-all' }}>{ticket.pageUrl}</span>
             </div>
           )}
 
-          {ticket.screenshotUrl && (
-            <div>
-              <div style={labelStyle}>Screenshot / Link</div>
-              <a
-                href={ticket.screenshotUrl.startsWith('http') ? ticket.screenshotUrl : undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 12, color: 'var(--r-gold-bright)', wordBreak: 'break-all' }}
-              >
-                {ticket.screenshotUrl}
-              </a>
-            </div>
-          )}
-
-          {/* AI triage — broker only ──────────────────────────────────────── */}
-          {isBroker && hasAi && (
-            <div style={{
-              borderRadius: 10, border: '1px solid rgba(155,138,180,0.25)',
-              background: 'rgba(155,138,180,0.05)', padding: '12px 14px',
-              display: 'flex', flexDirection: 'column', gap: 10,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.8)' }}>
-                  AI Triage — Internal
-                </div>
-                {ticket.needsHumanReview && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                    padding: '2px 8px', borderRadius: 5,
-                    background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', color: 'var(--r-danger)',
-                  }}>
-                    Human Review Needed
-                  </span>
-                )}
+          {/* AI-generated response — user-facing only, never fix brief */}
+          {ticket.aiSuggestedResponse && (
+            <div style={{ borderRadius: 9, border: '1px solid rgba(155,138,180,0.2)', background: 'rgba(155,138,180,0.05)', padding: '11px 14px' }}>
+              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.7)', marginBottom: 6 }}>
+                Hoard Response
               </div>
-
-              {ticket.aiSummary && <TriageField label="Summary" value={ticket.aiSummary} />}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {ticket.aiSeverity  && <TriageField label="Severity"  value={ticket.aiSeverity} />}
-                {ticket.aiCategory  && <TriageField label="Category"  value={ticket.aiCategory} />}
+              <div style={{ fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.65 }}>
+                {ticket.aiSuggestedResponse}
               </div>
-
-              {ticket.aiSuggestedResponse && (
-                <TriageField label="Suggested Response (draft)" value={ticket.aiSuggestedResponse} />
-              )}
-
-              {/* Fix brief — broker only, never shown to agents */}
-              {fixBrief && (
-                <div style={{
-                  borderRadius: 8, border: '1px solid rgba(155,138,180,0.2)',
-                  background: 'rgba(155,138,180,0.06)', padding: '10px 12px',
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,180,0.6)' }}>
-                    Fix Brief (dev/support)
-                  </div>
-                  {fixBrief.suspected_area      && <TriageField label="Suspected Area"     value={fixBrief.suspected_area} />}
-                  {fixBrief.reproduction_steps  && <TriageField label="Repro Steps"        value={fixBrief.reproduction_steps} />}
-                  {fixBrief.likely_files_routes && <TriageField label="Likely Files/Routes" value={fixBrief.likely_files_routes} />}
-                  {fixBrief.recommended_next_action && <TriageField label="Next Action" value={fixBrief.recommended_next_action} />}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Status actions */}
-          {hasActions && (
-            <div style={{ display: 'flex', gap: 7, paddingTop: 2 }}>
-              {canMarkInProgress && (
-                <button
-                  onClick={() => handleStatus('in_progress')}
-                  disabled={updating}
-                  style={{
-                    padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                    border: '1px solid rgba(124,164,204,0.3)', background: 'rgba(124,164,204,0.08)',
-                    color: '#7ca4cc', cursor: updating ? 'default' : 'pointer', opacity: updating ? 0.6 : 1,
-                  }}
-                >
-                  Mark In Progress
-                </button>
-              )}
-              {canResolve && (
-                <button
-                  onClick={() => handleStatus('resolved')}
-                  disabled={updating}
-                  style={{
-                    padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                    border: '1px solid var(--r-success-border)', background: 'var(--r-success-bg)',
-                    color: 'var(--r-success)', cursor: updating ? 'default' : 'pointer', opacity: updating ? 0.6 : 1,
-                  }}
-                >
-                  Resolve
-                </button>
-              )}
-              {canReopen && (
-                <button
-                  onClick={() => handleStatus('open')}
-                  disabled={updating}
-                  style={{
-                    padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                    border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
-                    color: 'var(--r-text-3)', cursor: updating ? 'default' : 'pointer', opacity: updating ? 0.6 : 1,
-                  }}
-                >
-                  Reopen
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -267,368 +98,513 @@ function TicketRow({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── AI Chat Section ───────────────────────────────────────────────────────────
 
-export default function SupportPage() {
-  const currentRole = useAppStore((s) => s.currentRole);
-  const isBroker    = currentRole === 'broker';
+const GREETING: ChatMsg = {
+  role: 'assistant',
+  content: "Hi! I'm Hoard AI. Ask me anything about using the platform — contacts, pipeline, tasks, calendar, messaging, or anything else. For bugs or account issues, use the Report an Issue tab.",
+};
 
-  const [viewAll, setViewAll] = useState(isBroker);
-  const { tickets, loading, createTicket, updateStatus } = useSupportTickets(viewAll);
+function AiChatSection() {
+  const [messages, setMessages] = useState<ChatMsg[]>([GREETING]);
+  const [input,    setInput]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef  = useRef<HTMLTextAreaElement>(null);
 
-  // ── Toast ──────────────────────────────────────────────────────────────────
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((msg: string, ok = true) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ msg, ok });
-    if (ok) toastTimer.current = setTimeout(() => setToast(null), 4000);
-  }, []);
-
-  // ── New ticket form ────────────────────────────────────────────────────────
-  const [showForm,       setShowForm]       = useState(false);
-  const [fTitle,         setFTitle]         = useState('');
-  const [fCategory,      setFCategory]      = useState<TicketCategory>('bug');
-  const [fPriority,      setFPriority]      = useState<TicketPriority>('normal');
-  const [fDescription,   setFDescription]   = useState('');
-  const [fPageUrl,       setFPageUrl]       = useState('');
-  const [fScreenshotUrl, setFScreenshotUrl] = useState('');
-  const [submitting,     setSubmitting]     = useState(false);
-  const [formError,      setFormError]      = useState('');
-
-  // Pre-fill current page URL when form opens
   useEffect(() => {
-    if (showForm && !fPageUrl && typeof window !== 'undefined') {
-      setFPageUrl(window.location.href);
-    }
-  }, [showForm]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  function resetForm() {
-    setFTitle(''); setFCategory('bug'); setFPriority('normal');
-    setFDescription(''); setFPageUrl(''); setFScreenshotUrl(''); setFormError('');
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const userMsg: ChatMsg = { role: 'user', content: text };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/ai/support-chat', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          messages: next.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setMessages([...next, { role: 'assistant', content: data.error ?? 'AI is temporarily unavailable. Please try the Report an Issue tab.', error: true }]);
+      } else {
+        setMessages([...next, { role: 'assistant', content: data.reply }]);
+      }
+    } catch {
+      setMessages([...next, { role: 'assistant', content: 'Something went wrong. Please try again or use the Report an Issue tab.', error: true }]);
+    } finally {
+      setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!fTitle.trim())       { setFormError('Title is required.'); return; }
-    if (!fDescription.trim()) { setFormError('Description is required.'); return; }
-    setSubmitting(true); setFormError('');
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 680, height: 'calc(100vh - 260px)', minHeight: 400 }}>
+      {/* Thread */}
+      <div style={{
+        flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+        padding: '4px 0 16px',
+      }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{
+            display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+          }}>
+            <div style={{
+              maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+              fontSize: 13, lineHeight: 1.6,
+              background: msg.role === 'user' ? 'var(--r-gold-faint)' : msg.error ? 'var(--r-danger-bg)' : 'rgba(200,164,92,0.05)',
+              border: `1px solid ${msg.role === 'user' ? 'var(--r-border)' : msg.error ? 'var(--r-danger-border)' : 'var(--r-border)'}`,
+              color: msg.role === 'user' ? 'var(--r-gold-bright)' : msg.error ? 'var(--r-danger)' : 'var(--r-text-2)',
+              fontWeight: msg.role === 'user' ? 600 : 400,
+            }}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{ padding: '10px 14px', borderRadius: '14px 14px 14px 4px', border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.05)', fontSize: 13, color: 'var(--r-text-3)', fontStyle: 'italic' }}>
+              Thinking…
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--r-border)' }}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Ask anything about using Hoard… (Enter to send, Shift+Enter for new line)"
+          rows={2}
+          disabled={loading}
+          style={{
+            flex: 1, padding: '10px 12px', borderRadius: 9, border: '1px solid var(--r-border)',
+            background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 13,
+            lineHeight: 1.5, outline: 'none', resize: 'none', fontFamily: 'inherit',
+          }}
+        />
+        <button
+          onClick={send}
+          disabled={!input.trim() || loading}
+          style={{
+            padding: '0 18px', borderRadius: 9, fontSize: 12, fontWeight: 700,
+            border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
+            color: 'var(--r-gold-bright)', cursor: (!input.trim() || loading) ? 'default' : 'pointer',
+            opacity: (!input.trim() || loading) ? 0.4 : 1, whiteSpace: 'nowrap',
+          }}
+        >
+          Send
+        </button>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--r-text-3)', marginTop: 6, paddingLeft: 2 }}>
+        Hoard AI only knows general platform guidance — it can't see your data.
+      </div>
+    </div>
+  );
+}
+
+// ── Report Issue Section ──────────────────────────────────────────────────────
+
+function ReportIssueSection({ onTicketCreated }: { onTicketCreated: () => void }) {
+  const { createTicket } = useSupportTickets(false);
+
+  const [step,        setStep]        = useState<ReportStep>('describe');
+  const [rawDesc,     setRawDesc]     = useState('');
+  const [analyzing,   setAnalyzing]   = useState(false);
+  const [analyzeErr,  setAnalyzeErr]  = useState('');
+
+  // Reviewed / editable fields
+  const [aiTitle,    setAiTitle]    = useState('');
+  const [aiCategory, setAiCategory] = useState<TicketCategory>('bug');
+  const [aiPriority, setAiPriority] = useState<TicketPriority>('normal');
+  const [aiSummary,  setAiSummary]  = useState('');
+  const [pageUrl,    setPageUrl]    = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr,  setSubmitErr]  = useState('');
+
+  // Auto-fill current URL when step opens
+  useEffect(() => {
+    if (typeof window !== 'undefined') setPageUrl(window.location.href);
+  }, []);
+
+  async function analyze() {
+    if (rawDesc.trim().length < 10) { setAnalyzeErr('Please describe the issue in a bit more detail.'); return; }
+    setAnalyzing(true); setAnalyzeErr('');
+    try {
+      const res = await fetch('/api/ai/support-pretriage', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ description: rawDesc.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        // AI unavailable — fall through to manual review with raw description as title
+        setAiTitle(rawDesc.trim().slice(0, 80));
+        setAiCategory('bug');
+        setAiPriority('normal');
+        setAiSummary('');
+        setAnalyzeErr('');
+      } else {
+        setAiTitle(data.title    ?? '');
+        setAiCategory(data.category ?? 'other');
+        setAiPriority(
+          data.severity === 'urgent' ? 'urgent' :
+          data.severity === 'high'   ? 'high'   :
+          data.severity === 'low'    ? 'low'     : 'normal'
+        );
+        setAiSummary(data.summary ?? '');
+      }
+      setStep('review');
+    } catch {
+      setAnalyzeErr('Analysis failed. Please try again or describe the issue manually.');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function submit() {
+    if (!aiTitle.trim()) { setSubmitErr('Title is required.'); return; }
+    setSubmitting(true); setSubmitErr('');
     try {
       await createTicket({
-        title:         fTitle.trim(),
-        category:      fCategory,
-        priority:      fPriority,
-        description:   fDescription.trim(),
-        pageUrl:       fPageUrl.trim()       || undefined,
-        screenshotUrl: fScreenshotUrl.trim() || undefined,
+        title:       aiTitle.trim(),
+        category:    aiCategory,
+        priority:    aiPriority,
+        description: rawDesc.trim(),
+        pageUrl:     pageUrl.trim() || undefined,
       });
-      resetForm();
-      setShowForm(false);
-      showToast("Ticket submitted. We'll be in touch shortly.", true);
+      setStep('success');
+      onTicketCreated();
     } catch (err: any) {
-      setFormError(err?.message ?? 'Failed to submit ticket.');
+      setSubmitErr(err?.message ?? 'Failed to submit. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
-  const openCount       = tickets.filter((t) => t.status === 'open').length;
-  const inProgressCount = tickets.filter((t) => t.status === 'in_progress').length;
-  const resolvedCount   = tickets.filter((t) => t.status === 'resolved').length;
+  function reset() {
+    setStep('describe'); setRawDesc(''); setAiTitle(''); setAiSummary('');
+    setAiCategory('bug'); setAiPriority('normal'); setAnalyzeErr(''); setSubmitErr('');
+  }
 
-  // ── Filter ─────────────────────────────────────────────────────────────────
-  const [statusFilter, setStatusFilter] = useState<TicketStatus | 'all'>('all');
-  const filtered = statusFilter === 'all'
-    ? tickets
-    : tickets.filter((t) => t.status === statusFilter);
+  if (step === 'success') {
+    return (
+      <div style={{ maxWidth: 540 }}>
+        <div style={{ padding: '24px', borderRadius: 16, border: '1px solid var(--r-success-border)', background: 'var(--r-success-bg)' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--r-success)', marginBottom: 8, fontFamily: 'var(--r-font-serif)' }}>Report submitted</div>
+          <div style={{ fontSize: 13, color: 'var(--r-success)', lineHeight: 1.6, marginBottom: 16, opacity: 0.85 }}>
+            Thanks for letting us know. Our team will review your report and follow up shortly. You can track the status in the My Tickets tab.
+          </div>
+          <button onClick={reset} style={{ padding: '7px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1px solid var(--r-success-border)', background: 'transparent', color: 'var(--r-success)', cursor: 'pointer' }}>
+            Report another issue
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <AppShell>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999, maxWidth: 420,
-          padding: '10px 16px', borderRadius: 12,
-          background: toast.ok ? 'var(--r-success-bg)' : 'var(--r-danger-bg)',
-          border: `1px solid ${toast.ok ? 'var(--r-success-border)' : 'var(--r-danger-border)'}`,
-          color: toast.ok ? 'var(--r-success)' : 'var(--r-danger)',
-          fontSize: 13, fontWeight: 600, boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ flex: 1 }}>{toast.msg}</span>
-          <button
-            onClick={() => setToast(null)}
-            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, opacity: 0.7 }}
-          >
-            ×
-          </button>
+    <div style={{ maxWidth: 580, display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* Step indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 24 }}>
+        {(['describe', 'review'] as ReportStep[]).map((s, i) => {
+          const done   = (s === 'describe' && step === 'review');
+          const active = step === s;
+          const labels = ['Describe', 'Review & Submit'];
+          return (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i === 0 ? 1 : undefined }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 10, fontWeight: 700,
+                  background: done || active ? 'var(--r-gold-faint)' : 'transparent',
+                  border: done || active ? '1px solid var(--r-border)' : '1px solid rgba(200,164,92,0.15)',
+                  color: done || active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
+                }}>
+                  {done ? '✓' : i + 1}
+                </div>
+                <span style={{ fontSize: 11, fontWeight: active ? 700 : 500, color: active ? 'var(--r-gold-bright)' : done ? 'var(--r-text-2)' : 'var(--r-text-3)' }}>
+                  {labels[i]}
+                </span>
+              </div>
+              {i === 0 && <div style={{ flex: 1, height: 1, background: step === 'review' ? 'var(--r-border)' : 'rgba(200,164,92,0.12)', margin: '0 10px' }} />}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Step 1: Describe */}
+      {step === 'describe' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--r-text)', fontFamily: 'var(--r-font-serif)' }}>
+            Describe the issue
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--r-text-3)', lineHeight: 1.5 }}>
+            Write what happened in your own words — our team will review it. Our AI will help structure it into a ticket.
+          </div>
+          <textarea
+            value={rawDesc}
+            onChange={(e) => setRawDesc(e.target.value)}
+            placeholder="E.g. — I tried to move a contact to a new pipeline stage but the button didn't respond. This started happening after I edited the contact profile."
+            rows={7}
+            disabled={analyzing}
+            style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6, fontSize: 13 }}
+          />
+          {analyzeErr && (
+            <div style={{ fontSize: 12, color: 'var(--r-danger)' }}>{analyzeErr}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={analyze}
+              disabled={rawDesc.trim().length < 10 || analyzing}
+              style={{
+                padding: '10px 24px', borderRadius: 9, fontSize: 13, fontWeight: 700,
+                border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
+                color: 'var(--r-gold-bright)', cursor: (rawDesc.trim().length < 10 || analyzing) ? 'default' : 'pointer',
+                opacity: (rawDesc.trim().length < 10 || analyzing) ? 0.5 : 1,
+              }}
+            >
+              {analyzing ? 'Analyzing…' : 'Analyze & Continue →'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
+            Our AI will read your description and generate a structured ticket for you to review before submitting.
+          </div>
         </div>
       )}
 
-      <PageHeader
-        title="Support"
-        description="Submit a ticket, track your requests, and reach the Hoard team."
-      />
+      {/* Step 2: Review */}
+      {step === 'review' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--r-text)', fontFamily: 'var(--r-font-serif)' }}>
+            Review your report
+          </div>
 
-      {/* Contact card + open ticket button */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 26, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div style={{
-          flex: '1 1 340px', borderRadius: 14, border: '1px solid var(--r-border)',
-          background: 'rgba(200,164,92,0.04)', padding: '16px 20px',
-          display: 'flex', gap: 28, flexWrap: 'wrap',
-        }}>
-          <div>
-            <div style={labelStyle}>Support Email</div>
-            <a href={`mailto:${SUPPORT_EMAIL}`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--r-gold-bright)', textDecoration: 'none' }}>
-              {SUPPORT_EMAIL}
-            </a>
-          </div>
-          <div>
-            <div style={labelStyle}>Support Phone</div>
-            <a href={`tel:${SUPPORT_PHONE.replace(/\D/g, '')}`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--r-gold-bright)', textDecoration: 'none' }}>
-              {SUPPORT_PHONE}
-            </a>
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5, alignSelf: 'center' }}>
-            Mon–Fri, 9 am–6 pm CT
-          </div>
-        </div>
-
-        <button
-          onClick={() => { setShowForm((v) => !v); if (!showForm) resetForm(); }}
-          style={{
-            padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-            border: showForm ? '1px solid var(--r-danger-border)' : '1px solid var(--r-border)',
-            background: showForm ? 'var(--r-danger-bg)' : 'var(--r-gold-faint)',
-            color: showForm ? 'var(--r-danger)' : 'var(--r-gold-bright)',
-            cursor: 'pointer', whiteSpace: 'nowrap',
-          }}
-        >
-          {showForm ? '× Cancel' : '+ Open a Ticket'}
-        </button>
-      </div>
-
-      {/* New ticket form */}
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            borderRadius: 16, border: '1px solid var(--r-border)',
-            background: 'rgba(200,164,92,0.03)', padding: '20px 22px',
-            marginBottom: 26, display: 'flex', flexDirection: 'column', gap: 14,
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)', marginBottom: 2 }}>
-            New Support Ticket
-          </div>
+          {aiSummary && (
+            <div style={{ padding: '11px 14px', borderRadius: 9, border: '1px solid rgba(155,138,180,0.2)', background: 'rgba(155,138,180,0.05)', fontSize: 12, color: 'var(--r-text-2)', lineHeight: 1.6 }}>
+              <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(155,138,180,0.7)', display: 'block', marginBottom: 4 }}>AI Summary</span>
+              {aiSummary}
+            </div>
+          )}
 
           <div>
             <label style={labelStyle}>Title *</label>
-            <input
-              value={fTitle}
-              onChange={(e) => setFTitle(e.target.value)}
-              placeholder="Brief summary of the issue"
-              disabled={submitting}
-              style={inputStyle}
-            />
+            <input value={aiTitle} onChange={(e) => setAiTitle(e.target.value)} disabled={submitting} style={inputStyle} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Category *</label>
-              <select
-                value={fCategory}
-                onChange={(e) => setFCategory(e.target.value as TicketCategory)}
-                disabled={submitting}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-                ))}
+              <label style={labelStyle}>Category</label>
+              <select value={aiCategory} onChange={(e) => setAiCategory(e.target.value as TicketCategory)} disabled={submitting} style={{ ...inputStyle, cursor: 'pointer' }}>
+                {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Priority *</label>
-              <select
-                value={fPriority}
-                onChange={(e) => setFPriority(e.target.value as TicketPriority)}
-                disabled={submitting}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
-                ))}
+              <label style={labelStyle}>Priority</label>
+              <select value={aiPriority} onChange={(e) => setAiPriority(e.target.value as TicketPriority)} disabled={submitting} style={{ ...inputStyle, cursor: 'pointer' }}>
+                {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}
               </select>
             </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>Description *</label>
-            <textarea
-              value={fDescription}
-              onChange={(e) => setFDescription(e.target.value)}
-              placeholder="Describe the issue — what you expected, what happened, steps to reproduce."
-              disabled={submitting}
-              rows={5}
-              style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.55 }}
-            />
           </div>
 
           <div>
             <label style={labelStyle}>Page URL</label>
-            <input
-              value={fPageUrl}
-              onChange={(e) => setFPageUrl(e.target.value)}
-              placeholder="Page where the issue occurred"
-              disabled={submitting}
-              style={inputStyle}
-            />
+            <input value={pageUrl} onChange={(e) => setPageUrl(e.target.value)} disabled={submitting} style={inputStyle} />
           </div>
 
-          <div>
-            <label style={labelStyle}>Screenshot or Link (optional)</label>
-            <input
-              value={fScreenshotUrl}
-              onChange={(e) => setFScreenshotUrl(e.target.value)}
-              placeholder="https://…"
-              disabled={submitting}
-              style={inputStyle}
-            />
-          </div>
-
-          {formError && (
-            <div style={{ fontSize: 12, color: 'var(--r-danger)', padding: '4px 0' }}>
-              {formError}
+          {submitErr && (
+            <div style={{ fontSize: 12, color: 'var(--r-danger)', background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', borderRadius: 8, padding: '8px 12px' }}>
+              {submitErr}
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 10, paddingTop: 2 }}>
-            <button
-              type="submit"
-              disabled={submitting}
-              style={{
-                padding: '9px 24px', borderRadius: 9, fontSize: 12, fontWeight: 700,
-                border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
-                color: 'var(--r-gold-bright)', cursor: submitting ? 'default' : 'pointer',
-                opacity: submitting ? 0.6 : 1,
-              }}
-            >
-              {submitting ? 'Submitting…' : 'Submit Ticket'}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { setStep('describe'); setSubmitErr(''); }} disabled={submitting} style={{
+              padding: '9px 18px', borderRadius: 9, fontSize: 12, fontWeight: 600,
+              border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', color: 'var(--r-text-3)', cursor: 'pointer',
+            }}>
+              ← Revise
             </button>
-            <button
-              type="button"
-              onClick={() => { setShowForm(false); resetForm(); }}
-              style={{
-                padding: '9px 18px', borderRadius: 9, fontSize: 12, fontWeight: 600,
-                border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
-                color: 'var(--r-text-3)', cursor: 'pointer',
-              }}
-            >
-              Cancel
+            <button onClick={submit} disabled={submitting || !aiTitle.trim()} style={{
+              padding: '9px 24px', borderRadius: 9, fontSize: 12, fontWeight: 700,
+              border: '1px solid var(--r-border)', background: 'var(--r-gold-faint)',
+              color: 'var(--r-gold-bright)', cursor: (submitting || !aiTitle.trim()) ? 'default' : 'pointer',
+              opacity: (submitting || !aiTitle.trim()) ? 0.5 : 1,
+            }}>
+              {submitting ? 'Submitting…' : 'Submit Report'}
             </button>
           </div>
-        </form>
-      )}
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-        <StatCard label="Open"        value={String(openCount)}       subtext="Awaiting response" />
-        <StatCard label="In Progress" value={String(inProgressCount)} subtext="Being worked on" />
-        <StatCard label="Resolved"    value={String(resolvedCount)}   subtext="Closed tickets" />
-        <StatCard label="Total"       value={String(tickets.length)}  subtext={isBroker && viewAll ? 'All brokerage tickets' : 'Your tickets'} />
-      </div>
-
-      {/* Ticket list */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-          {/* Status filter */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['all', 'open', 'in_progress', 'resolved'] as const).map((f) => {
-              const active = statusFilter === f;
-              const label  = f === 'all' ? 'All' : STATUS_LABELS[f as TicketStatus];
-              return (
-                <button
-                  key={f}
-                  onClick={() => setStatusFilter(f)}
-                  style={{
-                    padding: '5px 13px', borderRadius: 7, fontSize: 11, fontWeight: active ? 700 : 500,
-                    border: '1px solid var(--r-border)',
-                    background: active ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
-                    color: active ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
+          <div style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
+            Our team will review your report and get back to you. You can track progress in My Tickets.
           </div>
-
-          {/* Broker view toggle */}
-          {isBroker && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              {([false, true] as const).map((all) => {
-                const active = viewAll === all;
-                return (
-                  <button
-                    key={String(all)}
-                    onClick={() => setViewAll(all)}
-                    style={{
-                      padding: '5px 13px', borderRadius: 7, fontSize: 11, fontWeight: active ? 700 : 500,
-                      border: '1px solid var(--r-border)',
-                      background: active ? 'rgba(155,138,180,0.12)' : 'var(--r-grad-card)',
-                      color: active ? '#b8a8d0' : 'var(--r-text-3)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {all ? 'Brokerage Tickets' : 'My Tickets'}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
+      )}
+    </div>
+  );
+}
 
-        {loading ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>
-            Loading tickets…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{
-            borderRadius: 14, border: '1px dashed var(--r-border)',
-            padding: '48px 32px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 22, marginBottom: 10, opacity: 0.35 }}>—</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--r-text-3)', marginBottom: 6 }}>
-              {statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_LABELS[statusFilter as TicketStatus].toLowerCase()} tickets`}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--r-text-3)' }}>
-              {statusFilter === 'all'
-                ? 'Open a ticket above or reach us by email or phone.'
-                : 'Try a different status filter.'}
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filtered.map((ticket) => (
-              <TicketRow
-                key={ticket.id}
-                ticket={ticket}
-                isBroker={isBroker}
-                onUpdateStatus={async (id, status) => {
-                  try {
-                    await updateStatus(id, status);
-                    showToast(`Ticket marked ${STATUS_LABELS[status].toLowerCase()}`, true);
-                  } catch (err: any) {
-                    showToast(err?.message ?? 'Failed to update status', false);
-                  }
-                }}
-              />
-            ))}
-          </div>
+// ── My Tickets Section ────────────────────────────────────────────────────────
+
+function MyTicketsSection() {
+  const { tickets, loading } = useSupportTickets(false);
+  const [statusFilter, setStatusFilter] = useState<TicketStatus | 'all'>('all');
+
+  const filtered = statusFilter === 'all' ? tickets : tickets.filter((t) => t.status === statusFilter);
+  const openCount    = tickets.filter((t) => t.status === 'open').length;
+  const resolvedCount= tickets.filter((t) => t.status === 'resolved').length;
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['all', 'open', 'in_progress', 'resolved'] as const).map((f) => {
+            const active = statusFilter === f;
+            const label  = f === 'all' ? `All (${tickets.length})` : STATUS_LABELS[f as TicketStatus];
+            return (
+              <button key={f} onClick={() => setStatusFilter(f)} style={{
+                padding: '5px 13px', borderRadius: 7, fontSize: 11, fontWeight: active ? 700 : 500,
+                border: '1px solid var(--r-border)',
+                background: active ? 'var(--r-gold-faint)' : 'var(--r-grad-card)',
+                color: active ? 'var(--r-gold-bright)' : 'var(--r-text-3)', cursor: 'pointer',
+              }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {openCount > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--r-text-3)', marginLeft: 4 }}>
+            {openCount} open · {resolvedCount} resolved
+          </span>
         )}
       </div>
+
+      {loading ? (
+        <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--r-text-3)', fontSize: 13 }}>Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ borderRadius: 14, border: '1px dashed var(--r-border)', padding: '48px 32px', textAlign: 'center' }}>
+          <div style={{ fontSize: 13, color: 'var(--r-text-3)', marginBottom: 6 }}>
+            {statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_LABELS[statusFilter as TicketStatus].toLowerCase()} tickets`}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--r-text-3)', opacity: 0.7 }}>
+            {statusFilter === 'all' ? 'Use Report an Issue to get help from the Hoard team.' : 'Try a different filter.'}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function SupportPage() {
+  const [tab,        setTab]        = useState<Tab>('ai');
+  const [ticketsKey, setTicketsKey] = useState(0); // force ticket reload
+
+  // Toast
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(msg);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const TABS: { key: Tab; label: string; sub?: string }[] = [
+    { key: 'ai',      label: 'Ask Hoard AI', sub: 'Platform guidance' },
+    { key: 'report',  label: 'Report an Issue', sub: 'Bugs & problems' },
+    { key: 'tickets', label: 'My Tickets', sub: 'Track your reports' },
+  ];
+
+  return (
+    <AppShell>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999, maxWidth: 400,
+          padding: '10px 16px', borderRadius: 12,
+          background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)',
+          color: 'var(--r-success)', fontSize: 13, fontWeight: 600,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{ flex: 1 }}>{toast}</span>
+          <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, padding: 0, opacity: 0.7 }}>×</button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ margin: 0, fontSize: 34, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--r-text)', lineHeight: 1.05, fontFamily: 'var(--r-font-serif)' }}>
+          Support
+        </h1>
+        <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--r-text-3)' }}>
+          Get help using Hoard, or report an issue — our team will handle it.
+        </p>
+      </div>
+
+      {/* Contact strip */}
+      <div style={{
+        display: 'flex', gap: 20, marginBottom: 28, padding: '13px 18px',
+        borderRadius: 11, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.03)',
+        flexWrap: 'wrap', alignItems: 'center',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--r-text-3)' }}>Need direct help?</span>
+        <a href={`mailto:${SUPPORT_EMAIL}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-gold-bright)', textDecoration: 'none' }}>
+          {SUPPORT_EMAIL}
+        </a>
+        <span style={{ fontSize: 11, color: 'var(--r-text-3)', opacity: 0.6 }}>Mon–Fri, 9 am–6 pm CT</span>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
+        {TABS.map(({ key, label, sub }) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            padding: '11px 20px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+            border: tab === key ? '1px solid var(--r-border)' : '1px solid transparent',
+            background: tab === key ? 'var(--r-gold-faint)' : 'rgba(200,164,92,0.03)',
+            minWidth: 140,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: tab === key ? 700 : 600, color: tab === key ? 'var(--r-gold-bright)' : 'var(--r-text-2)', marginBottom: 2 }}>
+              {label}
+            </div>
+            {sub && <div style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 500 }}>{sub}</div>}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'ai'      && <AiChatSection />}
+      {tab === 'report'  && (
+        <ReportIssueSection
+          onTicketCreated={() => {
+            showToast("Report submitted — we'll be in touch shortly.");
+            setTimeout(() => setTab('tickets'), 1800);
+          }}
+        />
+      )}
+      {tab === 'tickets' && <MyTicketsSection key={ticketsKey} />}
     </AppShell>
   );
 }

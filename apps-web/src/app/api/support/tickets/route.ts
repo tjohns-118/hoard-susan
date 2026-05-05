@@ -34,6 +34,7 @@ import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
 import type { SupportTicket, TicketStatus, TicketCategory, TicketPriority } from '@/features/support/types';
 import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
+import { sendEmail } from '@/lib/email/provider';
 
 const VALID_STATUSES   = new Set<string>(['open', 'in_progress', 'resolved']);
 const VALID_CATEGORIES = new Set<string>(['bug', 'question', 'feature_request', 'billing', 'account_access', 'data_issue', 'other']);
@@ -223,7 +224,9 @@ export async function POST(req: NextRequest) {
 
   console.log(`[POST /api/support/tickets] ticket created | id=${data.id} | title="${data.title}"`);
 
-  // ── Step 2: AI triage (non-fatal) ──────────────────────────────────────────
+  // ── Step 2: AI triage (non-fatal);
+
+  // ── Step 2: AI triage (non-fatal) ─────────────────────────────────────────
   const aiResult = await runAiTriage({
     title:       body.title.trim(),
     category,
@@ -257,6 +260,23 @@ export async function POST(req: NextRequest) {
     } else if (updateErr) {
       console.warn('[POST /api/support/tickets] triage update failed:', updateErr.message);
     }
+  }
+
+  // ── Step 3: Admin notification (fire-and-forget, non-fatal) ───────────────
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+  if (ADMIN_EMAIL) {
+    const severity = aiResult?.ai_severity ?? ticket.priority;
+    const summary  = aiResult?.ai_summary  ?? ticket.description.slice(0, 200);
+    void sendEmail({
+      to:      ADMIN_EMAIL,
+      subject: `[Hoard Support] ${severity.toUpperCase()} — ${ticket.title}`,
+      html:    `<p><strong>Title:</strong> ${ticket.title}</p>
+                <p><strong>Category:</strong> ${ticket.category} · <strong>Severity:</strong> ${severity}</p>
+                <p><strong>Summary:</strong> ${summary}</p>
+                <p><strong>Page:</strong> ${ticket.pageUrl ?? 'not provided'}</p>
+                ${aiResult?.ai_fix_brief ? `<hr><p><em>Fix brief available in admin dashboard.</em></p>` : ''}`,
+      text:    `New Hoard support ticket\nTitle: ${ticket.title}\nSeverity: ${severity}\n\n${summary}`,
+    }).catch(() => {});
   }
 
   return NextResponse.json({ ok: true, ticket }, { status: 201 });
