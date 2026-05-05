@@ -61,6 +61,24 @@ export async function POST(req: NextRequest) {
 
   const isBroker = membership.role === 'broker';
 
+  // ── Resolve sender identity for token substitution ────────────────────────
+  const [senderResult, brokerageResult] = await Promise.all([
+    supabaseAdmin
+      .from('brokerage_members')
+      .select('name, phone, email')
+      .eq('id', membership.memberId)
+      .single(),
+    supabaseAdmin
+      .from('brokerages')
+      .select('name')
+      .eq('id', BROKERAGE_ID)
+      .single(),
+  ]);
+  const senderName     = senderResult.data?.name    ?? '';
+  const senderPhone    = senderResult.data?.phone   ?? '';
+  const senderEmail    = senderResult.data?.email   ?? sessionUser.email ?? '';
+  const brokerageName  = brokerageResult.data?.name ?? '';
+
   // ── Agent assignment enforcement ──────────────────────────────────────────
   if (!isBroker) {
     if (body.contactId) {
@@ -85,9 +103,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Token substitution ────────────────────────────────────────────────────
+  const resolvedBody = msgBody
+    .replace(/\{\{agent_name\}\}/g,   senderName)
+    .replace(/\{\{broker_name\}\}/g,  brokerageName)
+    .replace(/\{\{agent_phone\}\}/g,  senderPhone)
+    .replace(/\{\{agent_email\}\}/g,  senderEmail);
+
   // ── Send ──────────────────────────────────────────────────────────────────
-  const html = msgBody.replace(/\n/g, '<br>');
-  const result = await sendEmail({ to: toEmail, subject, html, text: msgBody });
+  const html = resolvedBody.replace(/\n/g, '<br>');
+  const result = await sendEmail({ to: toEmail, subject, html, text: resolvedBody });
 
   // ── Log ───────────────────────────────────────────────────────────────────
   const now = new Date().toISOString();
@@ -97,7 +122,7 @@ export async function POST(req: NextRequest) {
     contact_id:           body.contactId ?? null,
     lead_id:              body.leadId    ?? null,
     subject,
-    body:                 msgBody,
+    body:                 resolvedBody,
     to_email:             toEmail,
     provider:             result.provider,
     provider_message_id:  result.messageId ?? null,

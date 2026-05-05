@@ -16,7 +16,7 @@ const sans = DM_Sans({
 });
 
 export const metadata = {
-  title: 'Hoard — Ranch Edition',
+  title: 'Hoard',
   description: 'Brokerage Command Center',
 };
 

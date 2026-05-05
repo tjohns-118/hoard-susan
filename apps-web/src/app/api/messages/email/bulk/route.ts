@@ -108,14 +108,34 @@ export async function POST(req: NextRequest) {
   if (!recipients.length)
     return NextResponse.json({ error: 'No eligible opted-in recipients found for these IDs' }, { status: 422 });
 
+  // ── Resolve sender identity for token substitution ─────────────────────
+  const [senderResult, brokerageResult] = await Promise.all([
+    supabaseAdmin
+      .from('brokerage_members')
+      .select('name, phone, email')
+      .eq('id', membership.memberId)
+      .single(),
+    supabaseAdmin
+      .from('brokerages')
+      .select('name')
+      .eq('id', BROKERAGE_ID)
+      .single(),
+  ]);
+  const senderName    = senderResult.data?.name  ?? '';
+  const brokerageName = brokerageResult.data?.name ?? '';
+
   // ── Send and log each ─────────────────────────────────────────────────────
   let sent   = 0;
   let failed = 0;
-  const html = msgBody.replace(/\n/g, '<br>');
   const now  = new Date().toISOString();
 
   for (const r of recipients) {
-    const result = await sendEmail({ to: r.email, subject, html, text: msgBody });
+    const resolvedBody = msgBody
+      .replace(/\{\{client_name\}\}/g,  r.fullName || 'there')
+      .replace(/\{\{agent_name\}\}/g,   senderName)
+      .replace(/\{\{broker_name\}\}/g,  brokerageName);
+    const html = resolvedBody.replace(/\n/g, '<br>');
+    const result = await sendEmail({ to: r.email, subject, html, text: resolvedBody });
 
     await supabaseAdmin.from('email_logs').insert({
       brokerage_id:         BROKERAGE_ID,
@@ -123,7 +143,7 @@ export async function POST(req: NextRequest) {
       contact_id:           r.kind === 'contact' ? r.id : null,
       lead_id:              r.kind === 'lead'    ? r.id : null,
       subject,
-      body:                 msgBody,
+      body:                 resolvedBody,
       to_email:             r.email,
       provider:             result.provider,
       provider_message_id:  result.messageId ?? null,

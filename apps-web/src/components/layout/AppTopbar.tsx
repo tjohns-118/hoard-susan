@@ -63,7 +63,7 @@ export function AppTopbar() {
               letterSpacing: '0.04em',
             }}
           >
-            Ranch Operations
+            Brokerage Platform
           </div>
         </div>
 

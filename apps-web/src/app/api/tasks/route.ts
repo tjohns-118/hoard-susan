@@ -55,10 +55,29 @@ export async function POST(req: NextRequest) {
     leadId?:        string;
     opportunityId?: string;
     propertyId?:    string;
+    skipIfExists?:  boolean; // skip creation if identical open task already exists
   };
 
   if (!body.title?.trim())
     return NextResponse.json({ error: 'title required' }, { status: 400 });
+
+  // Dedup: if skipIfExists=true, check for an open task with the same title + entity link
+  if (body.skipIfExists) {
+    let dupQuery = supabaseAdmin
+      .from('tasks')
+      .select('id')
+      .eq('brokerage_id', BROKERAGE_ID)
+      .eq('title', body.title.trim())
+      .eq('completed', false);
+    if (body.contactId) {
+      dupQuery = dupQuery.eq('contact_id', body.contactId) as typeof dupQuery;
+    } else if (body.leadId) {
+      dupQuery = dupQuery.eq('lead_id', body.leadId) as typeof dupQuery;
+    }
+    const { data: existing } = await dupQuery.limit(1);
+    if (existing && existing.length > 0)
+      return NextResponse.json({ ok: true, skipped: true }, { status: 200 });
+  }
 
   const { data, error } = await supabaseAdmin
     .from('tasks')

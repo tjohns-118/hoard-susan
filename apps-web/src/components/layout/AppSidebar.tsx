@@ -10,7 +10,12 @@ import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 // ── Nav structure ─────────────────────────────────────────────────────────────
 
 interface NavItem  { href: string; label: string }
-interface NavGroup { label: string; items: NavItem[]; brokerOnly?: boolean }
+interface NavGroup {
+  label:      string;
+  items:      NavItem[];
+  brokerOnly?: boolean;
+  utility?:   boolean; // pinned to bottom, never collapsible
+}
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -24,7 +29,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/agents',    label: 'Agents' },
       { href: '/oversight', label: 'Oversight' },
       { href: '/alerts',    label: 'Alerts' },
-      { href: '/settings',  label: 'Settings' },
     ],
   },
   {
@@ -40,7 +44,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Inventory',
     items: [
       { href: '/properties', label: 'Properties' },
-      { href: '/imports',    label: 'Imports' },
     ],
   },
   {
@@ -55,6 +58,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Help',
     items: [{ href: '/support', label: 'Support' }],
   },
+];
+
+// Utility links — always visible at bottom, no collapse
+const UTILITY_ITEMS: NavItem[] = [
+  { href: '/imports',  label: 'Imports'  },
+  { href: '/settings', label: 'Settings' },
 ];
 
 // ── Collapsed state — localStorage persistence ────────────────────────────────
@@ -107,6 +116,48 @@ export function AppSidebar() {
     (g) => !g.brokerOnly || currentRole === 'broker',
   );
 
+  // Settings is broker-only
+  const visibleUtility = UTILITY_ITEMS.filter(
+    (item) => item.href !== '/settings' || currentRole === 'broker',
+  );
+
+  function NavLink({ href, label }: NavItem) {
+    const active = pathname === href;
+    return (
+      <Link
+        href={href}
+        className={`r-nav-link${active ? ' r-nav-active' : ''}`}
+        style={{
+          textDecoration: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '8px 10px 8px 13px',
+          borderRadius: 9,
+          fontSize: 13,
+          color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
+          border: '1px solid transparent',
+          position: 'relative',
+        }}
+      >
+        {active && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '18%',
+              bottom: '18%',
+              width: 2,
+              borderRadius: 999,
+              background: 'var(--r-grad-gold)',
+              boxShadow: '0 0 6px rgba(200,164,92,0.55)',
+            }}
+          />
+        )}
+        <span style={{ paddingLeft: active ? 5 : 0 }}>{label}</span>
+      </Link>
+    );
+  }
+
   return (
     <aside
       style={{
@@ -150,7 +201,7 @@ export function AppSidebar() {
             color: 'var(--r-text-3)',
           }}
         >
-          Ranch Edition
+          Brokerage CRM
         </div>
       </div>
 
@@ -167,7 +218,7 @@ export function AppSidebar() {
                 title={isCollapsed ? `Expand ${group.label}` : `Collapse ${group.label}`}
               >
                 <span>{group.label}</span>
-                {/* Subtle collapse indicator — a short line that dims when collapsed */}
+                {/* Subtle collapse indicator — dims when collapsed */}
                 <span
                   style={{
                     display: 'block',
@@ -185,44 +236,9 @@ export function AppSidebar() {
               {/* Collapsible items */}
               <div className={`r-nav-section${isCollapsed ? ' is-collapsed' : ''}`}>
                 <div className="r-nav-section-inner">
-                  {group.items.map(({ href, label }) => {
-                    const active = pathname === href;
-                    return (
-                      <Link
-                        key={href}
-                        href={href}
-                        className={`r-nav-link${active ? ' r-nav-active' : ''}`}
-                        style={{
-                          textDecoration: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          padding: '8px 10px 8px 13px',
-                          borderRadius: 9,
-                          fontSize: 13,
-                          color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
-                          border: '1px solid transparent',
-                          position: 'relative',
-                        }}
-                      >
-                        {/* Gold accent bar */}
-                        {active && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: 0,
-                              top: '18%',
-                              bottom: '18%',
-                              width: 2,
-                              borderRadius: 999,
-                              background: 'var(--r-grad-gold)',
-                              boxShadow: '0 0 6px rgba(200,164,92,0.55)',
-                            }}
-                          />
-                        )}
-                        <span style={{ paddingLeft: active ? 5 : 0 }}>{label}</span>
-                      </Link>
-                    );
-                  })}
+                  {group.items.map((item) => (
+                    <NavLink key={item.href} {...item} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -230,23 +246,33 @@ export function AppSidebar() {
         })}
       </nav>
 
+      {/* ── Utility links (Imports, Settings) ── */}
+      <div
+        style={{
+          flexShrink: 0,
+          marginTop: 12,
+          paddingTop: 12,
+          borderTop: '1px solid var(--r-border-soft)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
+        }}
+      >
+        {visibleUtility.map((item) => (
+          <NavLink key={item.href} {...item} />
+        ))}
+      </div>
+
       {/* ── User footer ── */}
       <div
         style={{
           flexShrink: 0,
-          marginTop: 16,
+          marginTop: 12,
           paddingTop: 14,
           borderTop: '1px solid var(--r-border-soft)',
           paddingLeft: 4,
         }}
       >
-        <div style={{
-          fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-          letterSpacing: '0.09em', color: 'var(--r-gold)', marginBottom: 3,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          American Pride Realty
-        </div>
         <div style={{
           fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)', marginBottom: 5,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

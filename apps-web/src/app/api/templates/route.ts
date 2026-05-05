@@ -255,6 +255,440 @@ No agenda — just a genuine check-in. Even a 10-minute call would be great to r
 Looking forward to hearing from you,
 {{agent_name}}`,
   },
+
+  // ── Additional buyer lifecycle ─────────────────────────────────────────────
+
+  {
+    name: 'Buyer Welcome — New Client',
+    category: 'buyer',
+    tags: ['buyer', 'welcome', 'intro'],
+    notes: 'Send after signing a buyer representation agreement — sets the tone for the relationship.',
+    body: `Hi {{client_name}},
+
+Welcome — I'm genuinely excited to help you find the right home.
+
+Here's what to expect as we get started:
+- I'll send curated property matches as they hit the market or come available off-market
+- We'll schedule showings at your pace — no pressure
+- You'll have my direct line for any questions along the way
+
+The best results come from clear communication. If something isn't quite right, tell me — I'd rather redirect early than show you twenty homes that miss the mark.
+
+Let's find you something worth being excited about.
+
+Best,
+{{agent_name}}
+{{broker_name}}`,
+  },
+  {
+    name: 'Property Match — You\'ll Want to See This',
+    category: 'buyer',
+    tags: ['buyer', 'property-match', 'listing'],
+    notes: 'Send when a property closely matches a buyer\'s stated criteria.',
+    body: `Hi {{client_name}},
+
+A property just came across my desk that I think is worth a look.
+
+{{property_name}}
+
+Based on what you've told me — {{county}} area, your price range, and what you're looking for — this one checks several boxes. I'd rather show it to you quickly than risk it going under contract before you've had a chance to consider it.
+
+Can we schedule a showing in the next day or two? Even a quick drive-by first could be worth it.
+
+Talk soon,
+{{agent_name}}`,
+  },
+  {
+    name: 'Offer Submitted — What\'s Next',
+    category: 'buyer',
+    tags: ['buyer', 'offer', 'update'],
+    notes: 'Send immediately after submitting a buyer\'s offer.',
+    body: `Hi {{client_name}},
+
+Your offer on {{property_name}} has been submitted. Here's where things stand:
+
+The listing agent typically has 24–48 hours to respond. We may receive:
+- An acceptance (let's celebrate)
+- A counter-offer (we'll review and respond quickly)
+- A rejection (unlikely, but we'll keep momentum)
+
+In the meantime, avoid making any major financial moves — no new credit lines, large purchases, or job changes — as these can affect your financing.
+
+I'll contact you the moment I hear back.
+
+Standing by,
+{{agent_name}}`,
+  },
+  {
+    name: 'Inspection Reminder',
+    category: 'buyer',
+    tags: ['buyer', 'inspection', 'reminder'],
+    notes: 'Send 24 hours before an inspection appointment.',
+    body: `Hi {{client_name}},
+
+Quick reminder — your inspection for {{property_name}} is scheduled for {{appointment_time}}.
+
+A few things to know:
+- Plan for 2–3 hours depending on the size of the home
+- You're welcome to attend and ask the inspector questions directly (I recommend it)
+- Bring a notepad — inspectors cover a lot and it helps to capture key points
+
+After the inspection, the inspector will provide a written report. We'll review it together and determine next steps — whether that's proceeding as-is, requesting repairs, or negotiating a credit.
+
+See you there,
+{{agent_name}}`,
+  },
+  {
+    name: 'Closing Week Checklist — Buyer',
+    category: 'buyer',
+    tags: ['buyer', 'closing', 'checklist'],
+    notes: 'Send one week before a buyer\'s closing date.',
+    body: `Hi {{client_name}},
+
+Closing day is almost here — congratulations! Here's a checklist to make sure everything goes smoothly:
+
+Before closing:
+- Confirm your wire transfer details directly with the title company (never via email — always call to verify)
+- Complete your final walkthrough (we'll schedule this)
+- Confirm you have a valid photo ID for the closing table
+- Notify your employer, bank, and subscriptions of your new address
+
+On closing day:
+- Bring a certified or cashier's check if not wiring funds
+- Bring your ID
+- Plan for 60–90 minutes at the title office
+
+After closing:
+- Change the locks on the new property
+- Update your homeowner's insurance to your name
+- File the deed with your county if not handled automatically
+
+You're almost there. Let me know if any questions come up before {{close_date}}.
+
+{{agent_name}}`,
+  },
+
+  // ── Additional seller lifecycle ────────────────────────────────────────────
+
+  {
+    name: 'Listing Prep Checklist',
+    category: 'seller',
+    tags: ['seller', 'listing', 'prep'],
+    notes: 'Send after signing a listing agreement — gives sellers a clear action plan.',
+    body: `Hi {{client_name}},
+
+Thank you for trusting me with the sale of {{property_name}}. Here's a preparation checklist to help us present the property in its best light:
+
+Before listing:
+- Declutter interior spaces — buyers need to visualize themselves in the home
+- Deep clean, including baseboards, windows, and appliances
+- Touch up paint in high-traffic areas
+- Address any obvious deferred maintenance (dripping faucets, loose hardware, burned-out bulbs)
+- Curb appeal: lawn, beds, front door, entry
+
+Documents to locate:
+- Survey, deed, and title policy (if available)
+- HOA documents and transfer fees (if applicable)
+- Utility bills (12 months is ideal)
+- Warranties for appliances or recent improvements
+
+I'll coordinate professional photography as soon as we're ready. The goal is to make the listing compelling from the first click.
+
+Questions? I'm always available.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Showing Feedback Request',
+    category: 'seller',
+    tags: ['seller', 'showing', 'feedback'],
+    notes: 'Send after a showing — keeps seller informed and reinforces your value.',
+    body: `Hi {{client_name}},
+
+We had a showing of {{property_name}} earlier today. I'm reaching out to the buyer's agent for their feedback and will share it with you as soon as I hear back.
+
+Buyer feedback — even when it's critical — is valuable data. It tells us how the market perceives the property at the current price and presentation. I'll give you an honest read, not just a filtered version.
+
+If patterns emerge across multiple showings, we'll talk about how to respond — whether that's a staging adjustment, a price conversation, or simply staying the course.
+
+More to come shortly.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Offer Received — Your Options',
+    category: 'seller',
+    tags: ['seller', 'offer', 'update'],
+    notes: 'Send when an offer is received — clearly lays out the seller\'s options.',
+    body: `Hi {{client_name}},
+
+Great news — we've received an offer on {{property_name}}.
+
+I'm reviewing the full terms now and will call you shortly to walk through everything. In general, you have three options:
+
+1. Accept the offer as-is
+2. Counter-offer (price, terms, or both)
+3. Reject and wait for a stronger offer
+
+Each path has tradeoffs depending on market activity, your timeline, and the offer's terms. I'll give you my honest recommendation, but the decision is always yours.
+
+I'll be in touch within the hour.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Inspection & Appraisal Update',
+    category: 'seller',
+    tags: ['seller', 'inspection', 'appraisal', 'update'],
+    notes: 'Send after inspection and/or appraisal results are received.',
+    body: `Hi {{client_name}},
+
+I have an update on the inspection and appraisal for {{property_name}}.
+
+The buyer's inspector has completed their review and submitted a report to the buyer's agent. I'm reviewing the repair request list now and will share my recommendation on how to respond — what's reasonable to address, what we can negotiate, and what to decline.
+
+On the appraisal side: {{property_name}} has been appraised. I'll walk you through the number and what it means for the transaction.
+
+Let's connect today — I'll have a full picture ready for you.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Closing Week Checklist — Seller',
+    category: 'seller',
+    tags: ['seller', 'closing', 'checklist'],
+    notes: 'Send one week before a seller\'s closing date.',
+    body: `Hi {{client_name}},
+
+You're almost at the finish line on {{property_name}}. Here's what to expect and prepare for this week:
+
+Before closing:
+- Complete any agreed-upon repairs (provide receipts if requested)
+- Begin moving out or confirm move-out timeline with the buyer's agent
+- Cancel or transfer utilities to take effect on closing day
+- Return all keys, garage remotes, and any other access items
+
+On closing day:
+- Bring a valid photo ID
+- Your proceeds will be wired to your account — confirm wire instructions directly with the title company
+- Closing typically takes 30–60 minutes for the seller
+
+After closing:
+- File your forwarding address with the post office
+- Notify your bank, insurance, and subscriptions
+
+Proceeds will typically arrive within 1–2 business days of closing. I'll be at the table with you every step of the way.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Post-Close — Review & Referral Request',
+    category: 'seller',
+    tags: ['seller', 'closing', 'review', 'referral'],
+    notes: 'Send 1–2 weeks after closing — builds long-term relationship and generates referrals.',
+    body: `Hi {{client_name}},
+
+I hope you're settling in well and that the sale of {{property_name}} has closed out smoothly on your end.
+
+It was a genuine pleasure working with you through this process, and I'm proud of the result we achieved together.
+
+If you have a moment, I'd be very grateful if you could leave a brief review — it makes a real difference for clients who are evaluating agents and trying to determine who they can trust.
+
+And if you know anyone — a colleague, neighbor, or friend — who is thinking about buying or selling, I'd be honored to help them the same way I helped you.
+
+Thank you again for putting your trust in me.
+
+Warmly,
+{{agent_name}}
+{{broker_name}}`,
+  },
+
+  // ── Special audience / listing templates ──────────────────────────────────
+
+  {
+    name: 'Investor Opportunity Alert',
+    category: 'custom',
+    tags: ['investor', 'opportunity', 'listing'],
+    notes: 'For investor-focused buyers — lead with numbers and ROI potential.',
+    body: `Hi {{client_name}},
+
+I wanted to bring a property to your attention before it hits the general market.
+
+{{property_name}} — {{county}}
+
+Key details: {{price}} | {{beds}} beds / {{baths}} baths | {{sqft}} sq ft
+
+From an investment standpoint, this property warrants a look. I can pull comps, rental rate benchmarks, and a rough cap rate estimate before you invest time in a showing.
+
+Interested? Reply or call me and we can review the numbers together.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Waterfront Property — Featured',
+    category: 'custom',
+    tags: ['waterfront', 'listing', 'feature'],
+    notes: 'For waterfront or lakefront listings — emphasize the lifestyle.',
+    body: `Hi {{client_name}},
+
+I have a waterfront property I think is worth your attention.
+
+{{property_name}} — {{county}}
+{{price}} | {{beds}} beds | {{baths}} baths
+
+Waterfront properties at this price point don't stay available long in this market. Whether you're looking for a primary residence, a weekend retreat, or an investment, the lifestyle this property offers is genuinely difficult to replicate.
+
+I'd be happy to schedule a showing or share more details. Just say the word.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Land Listing — Acreage Available',
+    category: 'custom',
+    tags: ['land', 'acreage', 'listing'],
+    notes: 'For raw land or acreage listings — buyers are often developers or lifestyle buyers.',
+    body: `Hi {{client_name}},
+
+I wanted to flag a land opportunity that may be of interest.
+
+{{property_name}} — {{county}}
+{{price}} | Acreage available
+
+Whether you're looking to build, invest, or simply secure a piece of land in this area, this parcel has strong characteristics worth reviewing. I can share survey details, zoning information, and access specifics.
+
+Land moves differently than homes — when the right parcel comes up in a desirable area, it tends to go quickly. Let me know if you'd like more information.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Ranch Property — Featured',
+    category: 'custom',
+    tags: ['ranch', 'listing', 'acreage', 'feature'],
+    notes: 'For ranch property listings — emphasize land, improvements, and use cases.',
+    body: `Hi {{client_name}},
+
+A ranch property worth your attention has become available.
+
+{{property_name}} — {{county}}
+{{price}} | {{beds}} beds / {{baths}} baths | Acreage
+
+This property offers working or lifestyle ranch potential — [describe land features, improvements, water access]. Ranch properties with this profile are increasingly difficult to find in the current market at this price point.
+
+I'm happy to schedule a tour and walk the land with you. These properties are best understood in person.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Metro Listing — Featured',
+    category: 'custom',
+    tags: ['metro', 'urban', 'listing', 'feature'],
+    notes: 'For urban or metro listings — buyers who value proximity and walkability.',
+    body: `Hi {{client_name}},
+
+A property just became available in the area you've been watching.
+
+{{property_name}}
+{{price}} | {{beds}} beds / {{baths}} baths | {{sqft}} sq ft
+
+Location-wise, this checks the boxes: [proximity to key areas, walkability, commute access]. At this price point and in this market, well-located inventory doesn't stay available long.
+
+Want to schedule a showing? I can usually make something work within 24–48 hours.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Luxury Property — Exclusive',
+    category: 'custom',
+    tags: ['luxury', 'listing', 'feature'],
+    notes: 'For luxury listings — focus on quality, exclusivity, and discretion.',
+    body: `Hi {{client_name}},
+
+I'm reaching out about a distinguished property that has recently become available.
+
+{{property_name}} — {{county}}
+{{price}} | {{beds}} beds / {{baths}} baths | {{sqft}} sq ft
+
+This is the kind of property that rarely comes to market, and when it does, it moves quietly. I wanted to make sure you had the opportunity to consider it before it reaches broader exposure.
+
+I'd be happy to arrange a private showing at your convenience. No pressure — just an opportunity to see what's available at this level.
+
+{{agent_name}}
+{{broker_name}}`,
+  },
+  {
+    name: 'Open House Announcement',
+    category: 'custom',
+    tags: ['open-house', 'listing', 'announcement'],
+    notes: 'Announce an open house to your contact list or a targeted audience.',
+    body: `Hi {{client_name}},
+
+You're invited to an open house this weekend.
+
+{{property_name}}
+{{appointment_time}}
+
+This is a great opportunity to see the property without the pressure of a formal showing. I'll be on-site and happy to answer any questions about the home, the area, or the market in general.
+
+Feel free to bring family or friends — the more eyes, the better the conversation.
+
+Hope to see you there.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'New Listing Alert',
+    category: 'custom',
+    tags: ['new-listing', 'alert', 'newsletter'],
+    notes: 'General new listing announcement — for newsletter or targeted outreach.',
+    body: `Hi {{client_name}},
+
+A new listing has just hit the market that I wanted to bring to your attention.
+
+{{property_name}} — {{county}}
+Listed at {{price}} | {{beds}} beds / {{baths}} baths | {{sqft}} sq ft
+
+[Brief description of standout features or why this property is worth a look.]
+
+If this sounds like something worth exploring, I'm happy to arrange a showing or share additional details. These tend to move quickly in the current market.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Price Reduction Alert',
+    category: 'custom',
+    tags: ['price-drop', 'alert', 'newsletter'],
+    notes: 'Notify buyers when a property they may be interested in has had a price reduction.',
+    body: `Hi {{client_name}},
+
+I wanted to let you know that {{property_name}} has had a price adjustment.
+
+Previous price: [old price]
+New price: {{price}}
+
+If this property was on your radar but the original price gave you pause, now may be the right time to take another look. Price reductions often signal a motivated seller and an opportunity to negotiate on favorable terms.
+
+Let me know if you'd like to schedule a showing or revisit the details.
+
+{{agent_name}}`,
+  },
+  {
+    name: 'Off-Market Access — Early Look',
+    category: 'custom',
+    tags: ['off-market', 'early-access', 'exclusive'],
+    notes: 'For off-market or pre-listing opportunities — conveys exclusivity and urgency.',
+    body: `Hi {{client_name}},
+
+I have something that isn't publicly listed yet and I wanted you to see it first.
+
+{{property_name}} — {{county}}
+Estimated value: {{price}} | {{beds}} beds / {{baths}} baths
+
+Off-market opportunities like this are rare. The seller is exploring a quiet sale before committing to a full MLS listing. There's no guarantee this reaches the open market — if the right buyer appears, it may close privately.
+
+If this sounds interesting, let's talk soon. These windows close quickly.
+
+{{agent_name}}`,
+  },
 ];
 
 // ── GET /api/templates ────────────────────────────────────────────────────────

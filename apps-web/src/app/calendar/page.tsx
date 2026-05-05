@@ -69,7 +69,7 @@ interface CalendarItem {
   taskId?: string;
 }
 
-// Ranch Edition earthy event type colors
+// Event type color palette
 const TYPE_META: Record<EventType, { label: string; color: string; bg: string; border: string }> = {
   showing:    { label: 'Showing',   color: '#9b8ab4', bg: 'rgba(155,138,180,0.09)',  border: 'rgba(155,138,180,0.25)' },
   closing:    { label: 'Closing',   color: 'var(--r-success)', bg: 'var(--r-success-bg)', border: 'var(--r-success-border)' },

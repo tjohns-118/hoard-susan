@@ -78,11 +78,15 @@ function normalizePropRows(headers: string[], rows: string[][]): CsvPropertyRow[
 // ── Person (lead / contact) schema ────────────────────────────────────────────
 
 type CsvPersonRow = {
-  fullName: string;
-  email?: string;
-  phone?: string;
-  source?: string;
-  role?: string;
+  fullName:          string;
+  email?:            string;
+  phone?:            string;
+  source?:           string;
+  role?:             string;
+  // AI-enhanced fields (only present after normalization)
+  newsletterTags?:   string[];
+  qualification?:    'complete' | 'needs_followup' | 'missing_housing_info' | 'missing_contact_info';
+  possibleDuplicate?: boolean;
 };
 
 const PERSON_COL_MAP: Record<string, keyof CsvPersonRow> = {
@@ -105,6 +109,46 @@ function normalizePersonRows(headers: string[], rows: string[][]): CsvPersonRow[
     });
     return obj as CsvPersonRow;
   }).filter((r) => r.fullName?.trim());
+}
+
+// ── Completeness helpers ──────────────────────────────────────────────────────
+
+function getPersonQualification(row: CsvPersonRow): CsvPersonRow['qualification'] {
+  if (row.qualification) return row.qualification; // AI-set
+  const hasEmail = !!row.email?.trim();
+  const hasPhone = !!row.phone?.trim();
+  const hasRole  = !!row.role?.trim() && row.role !== 'unknown';
+  if (hasEmail && hasPhone && hasRole) return 'complete';
+  if (!hasEmail && !hasPhone)          return 'missing_contact_info';
+  if (!hasRole)                        return 'missing_housing_info';
+  return 'needs_followup';
+}
+
+function buildFollowUpTasks(row: CsvPersonRow, id: string, idField: 'contactId' | 'leadId'): { title: string; [k: string]: string }[] {
+  const qual = getPersonQualification(row);
+  const tasks: { title: string; [k: string]: string }[] = [];
+  const link = { [idField]: id };
+
+  if (qual === 'missing_contact_info') {
+    tasks.push({ title: `Add missing phone/email for ${row.fullName}`, priority: 'high', ...link });
+  } else if (qual === 'needs_followup') {
+    if (!row.email?.trim()) tasks.push({ title: `Add missing email for ${row.fullName}`, priority: 'medium', ...link });
+    if (!row.phone?.trim()) tasks.push({ title: `Add missing phone for ${row.fullName}`, priority: 'medium', ...link });
+  }
+
+  if (qual === 'missing_housing_info' || !row.role || row.role === 'unknown') {
+    if (row.role === 'buyer' || !row.role || row.role === 'unknown') {
+      tasks.push({ title: `Complete buyer profile for ${row.fullName}`, priority: 'medium', ...link });
+    }
+    if (row.role === 'seller') {
+      tasks.push({ title: `Complete seller property info for ${row.fullName}`, priority: 'medium', ...link });
+    }
+    if (!row.role || row.role === 'unknown') {
+      tasks.push({ title: `Confirm newsletter group for ${row.fullName}`, priority: 'low', ...link });
+    }
+  }
+
+  return tasks;
 }
 
 // ── Micro-components ──────────────────────────────────────────────────────────
@@ -141,7 +185,7 @@ function ActionBtn({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 type Tab = 'leads' | 'contacts' | 'properties';
-type ImportResult = { inserted: number; skipped: number; errors: string[] };
+type ImportResult = { inserted: number; skipped: number; errors: string[]; tasksCreated?: number; aiNormalized?: boolean };
 
 const TAB_META: Record<Tab, { label: string; desc: string; endpoint: string; hint: string }> = {
   leads: {
@@ -167,15 +211,17 @@ const TAB_META: Record<Tab, { label: string; desc: string; endpoint: string; hin
 export default function ImportsPage() {
   const [tab, setTab] = useState<Tab>('leads');
 
-  const [fileName,     setFileName]     = useState<string | null>(null);
-  const [headers,      setHeaders]      = useState<string[]>([]);
-  const [preview,      setPreview]      = useState<string[][]>([]);
-  const [propRows,     setPropRows]     = useState<CsvPropertyRow[]>([]);
-  const [personRows,   setPersonRows]   = useState<CsvPersonRow[]>([]);
-  const [loading,      setLoading]      = useState(false);
-  const [result,       setResult]       = useState<ImportResult | null>(null);
-  const [importError,  setImportError]  = useState<string | null>(null);
-  const [progress,     setProgress]     = useState<{ done: number; total: number } | null>(null);
+  const [fileName,       setFileName]       = useState<string | null>(null);
+  const [headers,        setHeaders]        = useState<string[]>([]);
+  const [preview,        setPreview]        = useState<string[][]>([]);
+  const [propRows,       setPropRows]       = useState<CsvPropertyRow[]>([]);
+  const [personRows,     setPersonRows]     = useState<CsvPersonRow[]>([]);
+  const [loading,        setLoading]        = useState(false);
+  const [normalizing,    setNormalizing]    = useState(false);
+  const [aiNormalized,   setAiNormalized]   = useState(false);
+  const [result,         setResult]         = useState<ImportResult | null>(null);
+  const [importError,    setImportError]    = useState<string | null>(null);
+  const [progress,       setProgress]       = useState<{ done: number; total: number } | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -188,6 +234,7 @@ export default function ImportsPage() {
     setResult(null);
     setImportError(null);
     setProgress(null);
+    setAiNormalized(false);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -215,8 +262,45 @@ export default function ImportsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const rowCount = tab === 'properties' ? propRows.length : personRows.length;
-  const colMap   = tab === 'properties' ? PROP_COL_MAP   : PERSON_COL_MAP;
+  // ── AI normalization ───────────────────────────────────────────────────────
+
+  async function handleAiNormalize() {
+    if (tab === 'properties' && propRows.length === 0) return;
+    if (tab !== 'properties' && personRows.length === 0) return;
+
+    setNormalizing(true);
+    try {
+      const type = tab === 'properties' ? 'property' : 'person';
+      const rows = tab === 'properties' ? propRows : personRows;
+
+      const res = await fetch('/api/imports/normalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, rows }),
+      });
+
+      if (!res.ok) {
+        console.warn('[AI normalize] unavailable, skipping');
+        return;
+      }
+
+      const json = await res.json();
+      if (json.rows && Array.isArray(json.rows)) {
+        if (tab === 'properties') {
+          setPropRows(json.rows as CsvPropertyRow[]);
+        } else {
+          setPersonRows(json.rows as CsvPersonRow[]);
+        }
+        setAiNormalized(true);
+      }
+    } catch {
+      // Non-fatal — proceed with standard import
+    } finally {
+      setNormalizing(false);
+    }
+  }
+
+  // ── Import ─────────────────────────────────────────────────────────────────
 
   async function handleImport() {
     setLoading(true);
@@ -233,10 +317,12 @@ export default function ImportsPage() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? 'Import failed');
-        setResult({ inserted: json.inserted ?? 0, skipped: json.skipped ?? 0, errors: [] });
+        setResult({ inserted: json.inserted ?? 0, skipped: json.skipped ?? 0, errors: [], aiNormalized });
       } else {
         const endpoint = TAB_META[tab].endpoint;
-        let inserted = 0;
+        const idField: 'contactId' | 'leadId' = tab === 'contacts' ? 'contactId' : 'leadId';
+        let inserted     = 0;
+        let tasksCreated = 0;
         const errors: string[] = [];
         setProgress({ done: 0, total: personRows.length });
 
@@ -256,6 +342,29 @@ export default function ImportsPage() {
             });
             if (res.ok) {
               inserted++;
+              const json = await res.json();
+              const entityId: string | undefined =
+                json.lead?.id ?? json.contact?.id ?? json.id ?? undefined;
+
+              // Create follow-up tasks for incomplete records
+              if (entityId) {
+                const followUpTasks = buildFollowUpTasks(row, entityId, idField);
+                for (const task of followUpTasks) {
+                  try {
+                    const tRes = await fetch('/api/tasks', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ ...task, skipIfExists: true }),
+                    });
+                    if (tRes.ok) {
+                      const tJson = await tRes.json();
+                      if (!tJson.skipped) tasksCreated++;
+                    }
+                  } catch {
+                    // Non-fatal — task creation failure doesn't block import
+                  }
+                }
+              }
             } else {
               const j = await res.json();
               errors.push(`Row ${i + 2} (${row.fullName}): ${j.error ?? 'failed'}`);
@@ -266,7 +375,7 @@ export default function ImportsPage() {
           setProgress({ done: i + 1, total: personRows.length });
         }
 
-        setResult({ inserted, skipped: errors.length, errors });
+        setResult({ inserted, skipped: errors.length, errors, tasksCreated, aiNormalized });
       }
     } catch (e: any) {
       setImportError(e.message ?? 'Unknown error');
@@ -276,7 +385,20 @@ export default function ImportsPage() {
     }
   }
 
-  const meta = TAB_META[tab];
+  const rowCount = tab === 'properties' ? propRows.length : personRows.length;
+  const colMap   = tab === 'properties' ? PROP_COL_MAP   : PERSON_COL_MAP;
+  const meta     = TAB_META[tab];
+
+  // Qualification summary for person rows
+  const qualSummary = tab !== 'properties' ? personRows.reduce(
+    (acc, r) => {
+      const q = getPersonQualification(r) ?? 'needs_followup';
+      acc[q] = (acc[q] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  ) : {};
+  const incompleteCount = (qualSummary.needs_followup ?? 0) + (qualSummary.missing_housing_info ?? 0) + (qualSummary.missing_contact_info ?? 0);
 
   return (
     <AppShell>
@@ -433,6 +555,32 @@ export default function ImportsPage() {
           </div>
         )}
 
+        {/* Qualification summary (person tabs only, after file is loaded) */}
+        {tab !== 'properties' && rowCount > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {qualSummary.complete != null && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)', color: 'var(--r-success)' }}>
+                {qualSummary.complete} complete
+              </span>
+            )}
+            {incompleteCount > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'var(--r-warning-bg)', border: '1px solid var(--r-warning-border)', color: 'var(--r-warning)' }}>
+                {incompleteCount} incomplete — follow-up tasks will be created
+              </span>
+            )}
+            {personRows.some((r) => r.possibleDuplicate) && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)', color: 'var(--r-danger)' }}>
+                {personRows.filter((r) => r.possibleDuplicate).length} possible duplicates flagged
+              </span>
+            )}
+            {aiNormalized && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', color: 'var(--r-gold-bright)' }}>
+                AI normalization applied
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Progress bar */}
         {loading && progress && (
           <div>
@@ -458,14 +606,33 @@ export default function ImportsPage() {
           <ActionBtn
             tone="gold"
             onClick={handleImport}
-            disabled={rowCount === 0 || loading}
+            disabled={rowCount === 0 || loading || normalizing}
           >
             {loading ? 'Importing…' : `Import ${rowCount > 0 ? `${rowCount} row${rowCount !== 1 ? 's' : ''}` : 'CSV'}`}
           </ActionBtn>
-          {fileName && !loading && (
+
+          {/* AI Normalize button — only shown for person tabs when file is loaded and not yet normalized */}
+          {tab !== 'properties' && rowCount > 0 && !aiNormalized && !loading && (
+            <ActionBtn
+              onClick={handleAiNormalize}
+              disabled={normalizing}
+              tone="default"
+            >
+              {normalizing ? 'Normalizing…' : 'Normalize with AI'}
+            </ActionBtn>
+          )}
+
+          {fileName && !loading && !normalizing && (
             <ActionBtn onClick={resetFile}>Clear</ActionBtn>
           )}
         </div>
+
+        {/* Normalize info hint */}
+        {tab !== 'properties' && rowCount > 0 && !aiNormalized && !loading && !normalizing && (
+          <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--r-text-2)' }}>Normalize with AI</strong> — cleans names, formats phone numbers, infers roles, flags duplicates, and suggests newsletter tags. Optional. Standard import works without it.
+          </div>
+        )}
 
         {/* Result */}
         {result && (
@@ -476,7 +643,15 @@ export default function ImportsPage() {
               fontSize: 13, color: 'var(--r-success)', fontWeight: 600,
             }}
           >
-            Import complete — {result.inserted} inserted · {result.skipped} skipped
+            <div>
+              Import complete — {result.inserted} inserted · {result.skipped} skipped
+              {result.aiNormalized && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.8 }}>· AI normalization applied</span>}
+            </div>
+            {(result.tasksCreated ?? 0) > 0 && (
+              <div style={{ fontSize: 11, marginTop: 5, color: 'var(--r-warning)', fontWeight: 500 }}>
+                {result.tasksCreated} follow-up task{result.tasksCreated !== 1 ? 's' : ''} created for incomplete records
+              </div>
+            )}
             {result.errors.length > 0 && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {result.errors.slice(0, 5).map((e, i) => (

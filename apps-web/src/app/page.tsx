@@ -108,7 +108,6 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
     [openOpps],
   );
   const pipelineValue = useMemo(() => openOpps.reduce((s, o) => s + o.value, 0), [openOpps]);
-  const weightedValue = useMemo(() => openOpps.reduce((s, o) => s + o.value * (o.probability / 100), 0), [openOpps]);
   const openTasks     = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
 
   // ── Action items ──────────────────────────────────────────────────────────────
@@ -275,13 +274,12 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       </div>
 
       {/* ── A. KPI Strip ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
         <StatCard label="Active Leads"    value={activeLeads.length}    subtext={`${hotLeads.length} hot`} />
         <StatCard label="Hot Leads"       value={hotLeads.length}       subtext="Need immediate action" accent={hotLeads.length > 0} />
         <StatCard label="Open Deals"      value={openOpps.length}       subtext={`${negotiationDeals.length} in negotiation`} />
         <StatCard label="Under Contract"  value={contractOpps.length}   subtext="closing phase" />
         <StatCard label="Pipeline"        value={fmtValue(pipelineValue)} subtext="Total open value" accent />
-        <StatCard label="Weighted"        value={fmtValue(weightedValue)} subtext="Probability-adjusted" />
       </div>
 
       {/* ── B. AI Intelligence ── */}

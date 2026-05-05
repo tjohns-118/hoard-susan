@@ -739,7 +739,7 @@ export default function PropertiesPage() {
             Properties
           </h1>
           <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>
-            Ranch inventory — listing momentum, deal context, and connected relationships.
+            Property inventory — listing momentum, deal context, and connected relationships.
           </p>
         </div>
         {/* Import is the primary/reliable path; direct sync is optional and environment-dependent */}

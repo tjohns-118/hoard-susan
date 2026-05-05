@@ -871,7 +871,7 @@ export default function SettingsPage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {([
-                ['Version',  'Hoard v1.0.0 Ranch Edition'],
+                ['Version',  'Hoard v1.3'],
                 ['Build',    new Date().toISOString().slice(0, 10).replace(/-/g, '.')],
                 ['Region',   'US-Central'],
                 ['Status',   'All systems operational'],
