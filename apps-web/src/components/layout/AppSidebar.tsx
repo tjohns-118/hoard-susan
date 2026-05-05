@@ -1,15 +1,31 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useAgents } from '@/hooks/useAgents';
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 
-const SHARED_NAV_GROUPS = [
+// ── Nav structure ─────────────────────────────────────────────────────────────
+
+interface NavItem  { href: string; label: string }
+interface NavGroup { label: string; items: NavItem[]; brokerOnly?: boolean }
+
+const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Dashboard',
     items: [{ href: '/', label: 'Dashboard' }],
+  },
+  {
+    label: 'Brokerage',
+    brokerOnly: true,
+    items: [
+      { href: '/agents',    label: 'Agents' },
+      { href: '/oversight', label: 'Oversight' },
+      { href: '/alerts',    label: 'Alerts' },
+      { href: '/settings',  label: 'Settings' },
+    ],
   },
   {
     label: 'CRM',
@@ -17,23 +33,22 @@ const SHARED_NAV_GROUPS = [
       { href: '/leads',         label: 'Leads' },
       { href: '/contacts',      label: 'Contacts' },
       { href: '/opportunities', label: 'Opportunities' },
+      { href: '/matches',       label: 'Matches' },
     ],
   },
   {
     label: 'Inventory',
     items: [
       { href: '/properties', label: 'Properties' },
-      { href: '/matches',    label: 'Matches' },
+      { href: '/imports',    label: 'Imports' },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { href: '/tasks',      label: 'Tasks' },
-      { href: '/calendar',   label: 'Calendar' },
-      { href: '/newsletter', label: 'Newsletter' },
-      { href: '/templates',  label: 'Templates' },
-      { href: '/imports',    label: 'Imports' },
+      { href: '/tasks',     label: 'Tasks'     },
+      { href: '/calendar',  label: 'Calendar'  },
+      { href: '/messaging', label: 'Messaging' },
     ],
   },
   {
@@ -42,15 +57,25 @@ const SHARED_NAV_GROUPS = [
   },
 ];
 
-const BROKER_ONLY_GROUP = {
-  label: 'Brokerage',
-  items: [
-    { href: '/agents',    label: 'Agents' },
-    { href: '/alerts',    label: 'Alerts' },
-    { href: '/oversight', label: 'Oversight' },
-    { href: '/settings',  label: 'Settings' },
-  ],
-};
+// ── Collapsed state — localStorage persistence ────────────────────────────────
+
+const LS_KEY = 'hoard_sidebar_collapsed';
+
+function readCollapsed(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsed(set: Set<string>): void {
+  try { localStorage.setItem(LS_KEY, JSON.stringify([...set])); } catch {}
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function AppSidebar() {
   const pathname    = usePathname();
@@ -61,18 +86,32 @@ export function AppSidebar() {
   const memberId    = useAppStore((s) => s.memberId);
   const currentUser = agents.find((a) => a.id === memberId);
 
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
+
+  function toggleSection(label: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      writeCollapsed(next);
+      return next;
+    });
+  }
+
   async function handleLogout() {
     await getSupabaseBrowser().auth.signOut();
     router.push('/login');
     router.refresh();
   }
 
+  const visibleGroups = NAV_GROUPS.filter(
+    (g) => !g.brokerOnly || currentRole === 'broker',
+  );
+
   return (
     <aside
       style={{
-        background: 'var(--r-grad-sidebar)',
         borderRight: '1px solid var(--r-border-soft)',
-        padding: '22px 14px 24px',
+        padding: '22px 12px 24px',
         position: 'sticky',
         top: 0,
         height: '100vh',
@@ -83,7 +122,7 @@ export function AppSidebar() {
       }}
     >
       {/* ── Wordmark ── */}
-      <div style={{ paddingLeft: 6, marginBottom: 28, flexShrink: 0 }}>
+      <div style={{ paddingLeft: 8, marginBottom: 26, flexShrink: 0 }}>
         <Link href="/" style={{ textDecoration: 'none' }}>
           <div
             style={{
@@ -116,67 +155,79 @@ export function AppSidebar() {
       </div>
 
       {/* ── Navigation ── */}
-      <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {[...SHARED_NAV_GROUPS, ...(currentRole === 'broker' ? [BROKER_ONLY_GROUP] : [])].map((group) => (
-          <div key={group.label}>
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: '0.13em',
-                textTransform: 'uppercase',
-                color: 'var(--r-text-3)',
-                paddingLeft: 10,
-                marginBottom: 4,
-              }}
-            >
-              {group.label}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {group.items.map(({ href, label }) => {
-                const active = pathname === href;
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="r-nav-link"
-                    style={{
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '9px 10px 9px 13px',
-                      borderRadius: 9,
-                      fontSize: 13,
-                      fontWeight: active ? 600 : 400,
-                      color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
-                      background: active ? 'var(--r-grad-active-nav)' : 'transparent',
-                      border: active ? '1px solid var(--r-border)' : '1px solid transparent',
-                      boxShadow: active ? '0 0 22px rgba(200,164,92,0.16), 0 2px 8px rgba(0,0,0,0.3)' : 'none',
-                      transition: 'all 140ms ease',
-                      position: 'relative',
-                    }}
-                  >
-                    {/* Active accent bar */}
-                    {active && (
-                      <div
+      <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {visibleGroups.map((group) => {
+          const isCollapsed = collapsed.has(group.label);
+          return (
+            <div key={group.label}>
+              {/* Category header — click to collapse */}
+              <button
+                className="r-nav-category"
+                onClick={() => toggleSection(group.label)}
+                title={isCollapsed ? `Expand ${group.label}` : `Collapse ${group.label}`}
+              >
+                <span>{group.label}</span>
+                {/* Subtle collapse indicator — a short line that dims when collapsed */}
+                <span
+                  style={{
+                    display: 'block',
+                    width: 14,
+                    height: 1,
+                    borderRadius: 999,
+                    background: 'currentColor',
+                    opacity: isCollapsed ? 0.3 : 0,
+                    transition: 'opacity 180ms ease',
+                    flexShrink: 0,
+                  }}
+                />
+              </button>
+
+              {/* Collapsible items */}
+              <div className={`r-nav-section${isCollapsed ? ' is-collapsed' : ''}`}>
+                <div className="r-nav-section-inner">
+                  {group.items.map(({ href, label }) => {
+                    const active = pathname === href;
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={`r-nav-link${active ? ' r-nav-active' : ''}`}
                         style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: '20%',
-                          bottom: '20%',
-                          width: 3,
-                          borderRadius: 999,
-                          background: 'var(--r-grad-gold)',
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '8px 10px 8px 13px',
+                          borderRadius: 9,
+                          fontSize: 13,
+                          color: active ? 'var(--r-gold-bright)' : 'var(--r-text-2)',
+                          border: '1px solid transparent',
+                          position: 'relative',
                         }}
-                      />
-                    )}
-                    <span style={{ paddingLeft: active ? 4 : 0 }}>{label}</span>
-                  </Link>
-                );
-              })}
+                      >
+                        {/* Gold accent bar */}
+                        {active && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: '18%',
+                              bottom: '18%',
+                              width: 2,
+                              borderRadius: 999,
+                              background: 'var(--r-grad-gold)',
+                              boxShadow: '0 0 6px rgba(200,164,92,0.55)',
+                            }}
+                          />
+                        )}
+                        <span style={{ paddingLeft: active ? 5 : 0 }}>{label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* ── User footer ── */}
@@ -184,30 +235,41 @@ export function AppSidebar() {
         style={{
           flexShrink: 0,
           marginTop: 16,
-          paddingTop: 16,
+          paddingTop: 14,
           borderTop: '1px solid var(--r-border-soft)',
           paddingLeft: 4,
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--r-gold)', marginBottom: 2 }}>
+        <div style={{
+          fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+          letterSpacing: '0.09em', color: 'var(--r-gold)', marginBottom: 3,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           American Pride Realty
         </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)', marginBottom: 2 }}>
+        <div style={{
+          fontSize: 12, fontWeight: 600, color: 'var(--r-text-2)', marginBottom: 5,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {currentUser?.name ?? '—'}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <span style={{
             fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
+            padding: '2px 7px', borderRadius: 4,
+            border: '1px solid',
+            borderColor: currentRole === 'broker' ? 'rgba(200,164,92,0.3)' : 'rgba(255,255,255,0.08)',
+            background: currentRole === 'broker' ? 'rgba(200,164,92,0.08)' : 'rgba(255,255,255,0.03)',
             color: currentRole === 'broker' ? 'var(--r-gold-bright)' : 'var(--r-text-3)',
           }}>
-            {currentRole === 'broker' ? 'Broker View' : currentRole === 'agent' ? 'Agent View' : '—'}
+            {currentRole === 'broker' ? 'Broker' : currentRole === 'agent' ? 'Agent' : '—'}
           </span>
           <button
             onClick={handleLogout}
             style={{
-              padding: '2px 8px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+              padding: '3px 9px', borderRadius: 5, fontSize: 9, fontWeight: 800,
               border: '1px solid var(--r-border)', background: 'var(--r-grad-card)',
-              color: 'var(--r-text-3)', cursor: 'pointer', letterSpacing: '0.05em',
+              color: 'var(--r-text-3)', cursor: 'pointer', letterSpacing: '0.06em',
               textTransform: 'uppercase',
             }}
           >

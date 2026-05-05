@@ -8,6 +8,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useEvents } from '@/hooks/useEvents';
 import { useTasks } from '@/hooks/useTasks';
+import { EmailComposer } from '@/components/email/EmailComposer';
 
 function formatTime(iso: string): string {
   const h = parseInt(iso.slice(11, 13), 10);
@@ -119,6 +120,9 @@ export default function CalendarPage() {
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError]   = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [reminderTarget, setReminderTarget] = useState<{
+    email: string; name: string; contactId?: string; leadId?: string;
+  } | null>(null);
 
   const [createForm, setCreateForm]     = useState<CreateEventForm>({
     title: '', type: 'meeting', date: '', startTime: '09:00', endTime: '10:00',
@@ -574,6 +578,7 @@ export default function CalendarPage() {
               onUpdate={updateEvent}
               onDelete={deleteEvent}
               onToast={showToast}
+              onSendReminder={setReminderTarget}
             />
           )}
 
@@ -673,6 +678,15 @@ export default function CalendarPage() {
           {toast.message}
         </div>
       )}
+
+      <EmailComposer
+        isOpen={!!reminderTarget}
+        onClose={() => setReminderTarget(null)}
+        toEmail={reminderTarget?.email ?? ''}
+        toName={reminderTarget?.name ?? ''}
+        contactId={reminderTarget?.contactId}
+        leadId={reminderTarget?.leadId}
+      />
     </AppShell>
   );
 }
@@ -907,10 +921,12 @@ type EditEventForm = {
   contactId: string; opportunityId: string;
 };
 
-function DetailPanel({ item, contacts, leads, opportunities, canEdit, onClose, onToggleTask, onUpdate, onDelete, onToast }: {
+type ReminderTarget = { email: string; name: string; contactId?: string; leadId?: string };
+
+function DetailPanel({ item, contacts, leads, opportunities, canEdit, onClose, onToggleTask, onUpdate, onDelete, onToast, onSendReminder }: {
   item: CalendarItem;
-  contacts: Array<{ id: string; fullName: string }>;
-  leads: Array<{ id: string; fullName: string }>;
+  contacts: Array<{ id: string; fullName: string; email?: string }>;
+  leads: Array<{ id: string; fullName: string; email?: string }>;
   opportunities: Array<{ id: string; contactName: string; propertyAddress?: string }>;
   canEdit: boolean;
   onClose: () => void;
@@ -918,6 +934,7 @@ function DetailPanel({ item, contacts, leads, opportunities, canEdit, onClose, o
   onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToast: (message: string, type: 'success' | 'error') => void;
+  onSendReminder?: (target: ReminderTarget) => void;
 }) {
   const tm = TYPE_META[item.type];
   const [mode, setMode]       = useState<'view' | 'edit' | 'confirm-delete'>('view');
@@ -1103,6 +1120,17 @@ function DetailPanel({ item, contacts, leads, opportunities, canEdit, onClose, o
                 Mark Complete ✓
               </button>
             )}
+            {item.type === 'showing' && item.contactId && onSendReminder && (() => {
+              const person = [...contacts, ...leads].find((p) => p.id === item.contactId);
+              return person?.email ? (
+                <button
+                  onClick={() => onSendReminder({ email: person.email!, name: person.fullName, contactId: contacts.find((c) => c.id === item.contactId) ? item.contactId : undefined, leadId: leads.find((l) => l.id === item.contactId) ? item.contactId : undefined })}
+                  style={{ fontSize: 11, fontWeight: 700, padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-border)', background: 'rgba(155,138,180,0.12)', color: '#9b8ab4', cursor: 'pointer', width: '100%' }}
+                >
+                  ✉ Send Showing Reminder
+                </button>
+              ) : null;
+            })()}
             {canEdit && (
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => setMode('edit')} style={{ flex: 1, padding: '6px 0', borderRadius: 7, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.06)', color: 'var(--r-text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>

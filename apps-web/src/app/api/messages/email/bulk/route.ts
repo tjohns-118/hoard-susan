@@ -15,7 +15,7 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { getBrokerageId } from '@/lib/getBrokerageId';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
-import { sendEmail, detectProvider } from '@/lib/email/provider';
+import { sendEmail, getConfigError, logProviderDiagnostics } from '@/lib/email/provider';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -42,8 +42,12 @@ export async function POST(req: NextRequest) {
   if (membership.role !== 'broker')
     return NextResponse.json({ error: 'Broker access required for bulk send' }, { status: 403 });
 
-  if (detectProvider() === 'none')
-    return NextResponse.json({ error: 'Email provider not configured' }, { status: 503 });
+  const cfgErr = getConfigError();
+  if (cfgErr) {
+    logProviderDiagnostics();
+    console.error('[POST /api/messages/email/bulk] config error:', cfgErr);
+    return NextResponse.json({ error: cfgErr }, { status: 503 });
+  }
 
   const body = await req.json() as {
     subject?:       string;

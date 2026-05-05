@@ -18,8 +18,7 @@ import {
   FieldLabel, TagPills, RoleBadge, ProfileSummary, ProfilePanel,
   ProfileFormSection,
 } from '@/components/crm/ProfileUi';
-import { EmailComposer } from '@/components/email/EmailComposer';
-import { SmsComposer } from '@/components/sms/SmsComposer';
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -333,8 +332,6 @@ function DetailPanel({
 }) {
   const [noteText,          setNoteText]          = useState('');
   const [editMode,          setEditMode]          = useState(false);
-  const [showEmailComposer, setShowEmailComposer] = useState(false);
-  const [showSmsComposer,   setShowSmsComposer]   = useState(false);
   const [editName,       setEditName]       = useState(contact.fullName);
   const [editEmail,      setEditEmail]      = useState(contact.email  ?? '');
   const [editPhone,      setEditPhone]      = useState(contact.phone  ?? '');
@@ -461,18 +458,6 @@ function DetailPanel({
           {isHot ? '🔥 Hot' : 'Mark Hot'}
         </ActionBtn>
         <ActionBtn onClick={() => onAddTask(contact.id)}>+ Task</ActionBtn>
-        <ActionBtn
-          onClick={() => setShowEmailComposer(true)}
-          disabled={!contact.email}
-        >
-          ✉ Email
-        </ActionBtn>
-        <ActionBtn
-          onClick={() => setShowSmsComposer(true)}
-          disabled={!contact.phone}
-        >
-          💬 SMS
-        </ActionBtn>
         <ActionBtn
           tone="success"
           onClick={() => onPushToOpportunities(contact.id)}
@@ -729,21 +714,6 @@ function DetailPanel({
         ))}
       </div>
 
-      <EmailComposer
-        isOpen={showEmailComposer}
-        onClose={() => setShowEmailComposer(false)}
-        toEmail={contact.email ?? ''}
-        toName={contact.fullName}
-        contactId={contact.id}
-      />
-
-      <SmsComposer
-        isOpen={showSmsComposer}
-        onClose={() => setShowSmsComposer(false)}
-        toPhone={contact.phone ?? ''}
-        toName={contact.fullName}
-        contactId={contact.id}
-      />
     </div>
   );
 }

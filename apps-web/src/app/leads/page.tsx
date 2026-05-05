@@ -16,8 +16,7 @@ import {
   RoleBadge, ProfileSummary, ProfilePanel, ProfileFormSection,
   FieldLabel, inputStyle, selectStyle,
 } from '@/components/crm/ProfileUi';
-import { EmailComposer } from '@/components/email/EmailComposer';
-import { SmsComposer } from '@/components/sms/SmsComposer';
+
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -239,8 +238,7 @@ function LeadCard({
   const linkedProps = properties.filter((p) => lead.linkedPropertyIds.includes(p.id));
   const nextAction = NEXT_ACTION[lead.status];
   const [showProfile,       setShowProfile]       = useState(false);
-  const [showEmailComposer, setShowEmailComposer] = useState(false);
-  const [showSmsComposer,   setShowSmsComposer]   = useState(false);
+
 
   // ── Edit state ──────────────────────────────────────────────────────────────
   const [showEdit,   setShowEdit]   = useState(false);
@@ -560,22 +558,6 @@ function LeadCard({
             + Task
           </ActionBtn>
 
-          <ActionBtn
-            tone="default"
-            onClick={() => setShowEmailComposer(true)}
-            disabled={!lead.email}
-          >
-            ✉ Email
-          </ActionBtn>
-
-          <ActionBtn
-            tone="default"
-            onClick={() => setShowSmsComposer(true)}
-            disabled={!lead.phone}
-          >
-            💬 SMS
-          </ActionBtn>
-
           {lead.status !== 'contacted' && lead.status !== 'lost' && (
             <ActionBtn tone="default" onClick={() => onUpdateStatus(lead.id, 'contacted')}>
               Mark Contacted
@@ -697,21 +679,6 @@ function LeadCard({
         )}
       </div>
 
-      <EmailComposer
-        isOpen={showEmailComposer}
-        onClose={() => setShowEmailComposer(false)}
-        toEmail={lead.email ?? ''}
-        toName={lead.fullName}
-        leadId={lead.id}
-      />
-
-      <SmsComposer
-        isOpen={showSmsComposer}
-        onClose={() => setShowSmsComposer(false)}
-        toPhone={lead.phone ?? ''}
-        toName={lead.fullName}
-        leadId={lead.id}
-      />
     </div>
   );
 }

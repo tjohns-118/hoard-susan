@@ -4,7 +4,7 @@
  *
  * Env vars (Resend):
  *   RESEND_API_KEY
- *   RESEND_FROM_EMAIL   (default: noreply@builtonhoard.com)
+ *   RESEND_FROM_EMAIL   (default: noreply@builtonhoard.com) — must be a full email address
  *   RESEND_FROM_NAME    (default: Hoard)
  *
  * Env vars (SendGrid):
@@ -14,6 +14,8 @@
  */
 
 export type EmailProvider = 'resend' | 'sendgrid' | 'none';
+
+const FROM_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface EmailPayload {
   to:      string;
@@ -33,6 +35,46 @@ export function detectProvider(): EmailProvider {
   if (process.env.RESEND_API_KEY)   return 'resend';
   if (process.env.SENDGRID_API_KEY) return 'sendgrid';
   return 'none';
+}
+
+/**
+ * Logs which email-related env vars are present as booleans.
+ * Never logs actual values — safe to call in any server context.
+ */
+export function logProviderDiagnostics(): void {
+  console.log('[email/provider] env check:', {
+    has_RESEND_API_KEY:      !!process.env.RESEND_API_KEY,
+    has_RESEND_FROM_EMAIL:   !!process.env.RESEND_FROM_EMAIL,
+    has_RESEND_FROM_NAME:    !!process.env.RESEND_FROM_NAME,
+    has_SENDGRID_API_KEY:    !!process.env.SENDGRID_API_KEY,
+    has_SENDGRID_FROM_EMAIL: !!process.env.SENDGRID_FROM_EMAIL,
+    has_SENDGRID_FROM_NAME:  !!process.env.SENDGRID_FROM_NAME,
+  });
+}
+
+/**
+ * Returns null if the email configuration is valid.
+ * Returns a human-readable error string if something is wrong —
+ * the string is safe to surface in API error responses (no secrets).
+ */
+export function getConfigError(): string | null {
+  if (process.env.RESEND_API_KEY) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL ?? '';
+    if (fromEmail && !FROM_EMAIL_RE.test(fromEmail)) {
+      return (
+        'RESEND_FROM_EMAIL must be a full email address ' +
+        '(e.g. noreply@newsletter.use-hoard.com) — ' +
+        `"${fromEmail}" is not a valid address`
+      );
+    }
+    return null;
+  }
+
+  if (process.env.SENDGRID_API_KEY) {
+    return null;
+  }
+
+  return 'Email provider not configured — set RESEND_API_KEY or SENDGRID_API_KEY';
 }
 
 async function sendViaResend(payload: EmailPayload): Promise<Omit<SendResult, 'provider'>> {

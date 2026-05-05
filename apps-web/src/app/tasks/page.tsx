@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/app/store/useAppStore';
 import { useTasks } from '@/hooks/useTasks';
 import type { Task, TaskPriority } from '@/features/tasks/types';
+import { EmailComposer } from '@/components/email/EmailComposer';
 
 function getTodayKey()    { return new Date().toISOString().slice(0, 10); }
 function getTomorrowKey() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
@@ -173,6 +174,24 @@ export default function TasksPage() {
       return p
         ? { label: `Property — ${p.address}`, color: '#34d399' }
         : { label: 'Deleted Property', color: 'rgba(150,150,160,0.55)' };
+    }
+    return null;
+  }
+
+  // ── Reminder target for EmailComposer ──
+  const [reminderTarget, setReminderTarget] = useState<{
+    email: string; name: string; contactId?: string; leadId?: string;
+  } | null>(null);
+
+  function getReminderInfo(task: Task): { email: string; name: string; contactId?: string; leadId?: string } | null {
+    if (task.completed) return null;
+    if (task.contactId) {
+      const c = contacts.find((x) => x.id === task.contactId);
+      if (c?.email) return { email: c.email, name: c.fullName, contactId: task.contactId };
+    }
+    if (task.leadId) {
+      const l = leads.find((x) => x.id === task.leadId);
+      if (l?.email) return { email: l.email, name: l.fullName, leadId: task.leadId };
     }
     return null;
   }
@@ -467,6 +486,8 @@ export default function TasksPage() {
               tasks={groupTasks}
               getContext={getContext}
               toggleTask={toggleTask}
+              getReminderInfo={getReminderInfo}
+              onSendReminder={setReminderTarget}
               refToday={REF_TODAY}
               refTomorrow={REF_TOMORROW}
             />
@@ -509,6 +530,8 @@ export default function TasksPage() {
                 tasks={grouped.completed}
                 getContext={getContext}
                 toggleTask={toggleTask}
+                getReminderInfo={getReminderInfo}
+                onSendReminder={setReminderTarget}
                 hideHeader
                 refToday={REF_TODAY}
                 refTomorrow={REF_TOMORROW}
@@ -532,6 +555,15 @@ export default function TasksPage() {
           </a>
         ))}
       </div>
+
+      <EmailComposer
+        isOpen={!!reminderTarget}
+        onClose={() => setReminderTarget(null)}
+        toEmail={reminderTarget?.email ?? ''}
+        toName={reminderTarget?.name ?? ''}
+        contactId={reminderTarget?.contactId}
+        leadId={reminderTarget?.leadId}
+      />
     </AppShell>
   );
 }
@@ -540,12 +572,16 @@ export default function TasksPage() {
 
 type GroupMeta = { label: string; accent: string; bg: string; border: string };
 
+type ReminderInfo = { email: string; name: string; contactId?: string; leadId?: string };
+
 function TaskGroup({
   groupKey,
   meta,
   tasks,
   getContext,
   toggleTask,
+  getReminderInfo,
+  onSendReminder,
   hideHeader = false,
   refToday,
   refTomorrow,
@@ -555,6 +591,8 @@ function TaskGroup({
   tasks: Task[];
   getContext: (t: Task) => { label: string; color: string } | null;
   toggleTask: (id: string) => void;
+  getReminderInfo?: (t: Task) => ReminderInfo | null;
+  onSendReminder?: (info: ReminderInfo) => void;
   hideHeader?: boolean;
   refToday: string;
   refTomorrow: string;
@@ -601,6 +639,8 @@ function TaskGroup({
             meta={meta}
             ctx={getContext(task)}
             onToggle={() => toggleTask(task.id)}
+            reminderInfo={getReminderInfo?.(task) ?? undefined}
+            onSendReminder={onSendReminder}
             refToday={refToday}
             refTomorrow={refTomorrow}
           />
@@ -616,6 +656,8 @@ function TaskRow({
   meta,
   ctx,
   onToggle,
+  reminderInfo,
+  onSendReminder,
   refToday,
   refTomorrow,
 }: {
@@ -624,6 +666,8 @@ function TaskRow({
   meta: GroupMeta;
   ctx: { label: string; color: string } | null;
   onToggle: () => void;
+  reminderInfo?: ReminderInfo;
+  onSendReminder?: (info: ReminderInfo) => void;
   refToday: string;
   refTomorrow: string;
 }) {
@@ -720,6 +764,18 @@ function TaskRow({
           }}>
             Added {new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
+          {!isCompleted && reminderInfo && onSendReminder && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSendReminder(reminderInfo); }}
+              style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
+                border: '1px solid rgba(200,164,92,0.25)', background: 'rgba(200,164,92,0.06)',
+                color: 'var(--r-gold-bright)', whiteSpace: 'nowrap', letterSpacing: '0.02em',
+              }}
+            >
+              ✉ Send Reminder
+            </button>
+          )}
         </div>
       </div>
 
