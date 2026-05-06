@@ -26,9 +26,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Brokerage',
     brokerOnly: true,
     items: [
-      { href: '/agents',    label: 'Agents' },
+      { href: '/agents',    label: 'Agents'   },
       { href: '/oversight', label: 'Oversight' },
-      { href: '/alerts',    label: 'Alerts' },
+      { href: '/alerts',    label: 'Alerts'   },
+      { href: '/billing',   label: 'Billing'  },
     ],
   },
   {
