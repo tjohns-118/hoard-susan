@@ -41,7 +41,8 @@
       "Bash(sed -n '36,70p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/leads/route.ts)",
       "Bash(sed -n '409,470p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/leads/route.ts)",
       "Bash(python3 -c ' *)",
-      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(npm run *)"
     ]
   }
 }
