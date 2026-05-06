@@ -17,6 +17,50 @@ type Theme = 'ranch' | 'sunrise';
 type AgentRole = 'Broker' | 'Agent' | 'Admin';
 
 
+// ── Billing helpers ───────────────────────────────────────────────────────────
+
+type BillingPlan = 'monthly' | 'annual' | 'biweekly';
+
+interface BillingStatus {
+  hasCustomer:      boolean;
+  hasSubscription:  boolean;
+  status:           string | null;
+  currentPeriodEnd: string | null;
+  billingEmail:     string | null;
+  billingPlan:      string | null;
+  activeAgentCount: number;
+}
+
+const BILLING_PLANS: { key: BillingPlan; label: string; description: string }[] = [
+  { key: 'monthly',  label: 'Monthly',   description: '$250 per active agent / month' },
+  { key: 'annual',   label: 'Annual',    description: '$2,550 per active agent / year  (~15% savings)' },
+  { key: 'biweekly', label: 'Bi-weekly', description: '$125 per active agent / every 2 weeks' },
+];
+
+const PLAN_DISPLAY: Record<string, string> = {
+  monthly:  'Monthly ($250/agent/mo)',
+  annual:   'Annual ($2,550/agent/yr)',
+  biweekly: 'Bi-weekly ($125/agent/2 wks)',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  active:             'Active',
+  trialing:           'Trial',
+  past_due:           'Payment Past Due',
+  canceled:           'Canceled',
+  unpaid:             'Unpaid',
+  incomplete:         'Incomplete',
+  incomplete_expired: 'Expired',
+};
+
+function isBillingActive(status: string | null): boolean {
+  return status === 'active' || status === 'trialing';
+}
+
+function formatPeriodEnd(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 // ── Integration data ──────────────────────────────────────────────────────────
 
 const INTEGRATIONS = [
@@ -294,6 +338,70 @@ export default function SettingsPage() {
   const { agents, updateAgentRole, removeAgent } = useAgents();
   const { reload: reloadProperties } = useProperties();
 
+  // ── Billing ───────────────────────────────────────────────────────────────
+  const [billing,             setBilling]             = useState<BillingStatus | null>(null);
+  const [billingLoading,      setBillingLoading]      = useState(true);
+  const [billingError,        setBillingError]        = useState<string | null>(null);
+  const [selectedPlan,        setSelectedPlan]        = useState<BillingPlan>('monthly');
+  const [billingActing,       setBillingActing]       = useState(false);
+  const [billingActionError,  setBillingActionError]  = useState<string | null>(null);
+  const [billingFlash,        setBillingFlash]        = useState<string | null>(null);
+
+  useEffect(() => {
+    // Flash on return from Stripe checkout
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing_success')  === '1') setBillingFlash('Subscription activated — welcome to Hoard.');
+    if (params.get('billing_canceled') === '1') setBillingFlash('Checkout was canceled. No charge was made.');
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/billing/status')
+      .then(async (res) => {
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setBillingError((j as { error?: string }).error ?? 'Failed to load billing status');
+          return;
+        }
+        setBilling(await res.json());
+      })
+      .catch(() => setBillingError('Network error loading billing status'))
+      .finally(() => setBillingLoading(false));
+  }, []);
+
+  async function handleSubscribe() {
+    setBillingActing(true);
+    setBillingActionError(null);
+    try {
+      const res  = await fetch('/api/billing/checkout', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ plan: selectedPlan }),
+      });
+      const json = await res.json() as { url?: string; error?: string };
+      if (!res.ok) { setBillingActionError(json.error ?? 'Checkout failed'); return; }
+      if (json.url) window.location.href = json.url;
+    } catch {
+      setBillingActionError('Network error. Please try again.');
+    } finally {
+      setBillingActing(false);
+    }
+  }
+
+  async function handlePortal() {
+    setBillingActing(true);
+    setBillingActionError(null);
+    try {
+      const res  = await fetch('/api/billing/portal', { method: 'POST' });
+      const json = await res.json() as { url?: string; error?: string };
+      if (!res.ok) { setBillingActionError(json.error ?? 'Portal access failed'); return; }
+      if (json.url) window.location.href = json.url;
+    } catch {
+      setBillingActionError('Network error. Please try again.');
+    } finally {
+      setBillingActing(false);
+    }
+  }
+
   // ── CSV Import ────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvHeaders,  setCsvHeaders]  = useState<string[]>([]);
@@ -421,19 +529,152 @@ export default function SettingsPage() {
         {/* ── Left column ──────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* SECTION A — Account & Billing */}
+          {/* SECTION A — Billing */}
           <SectionCard
-            title="Account & Billing"
+            title="Billing"
             description="Subscription plan and payment details"
           >
-            <div style={{ padding: '14px 0', fontSize: 13, color: 'var(--r-text-3)', lineHeight: 1.6 }}>
-              Billing and subscription management is handled through the customer portal. Contact your account administrator or Hoard support to update payment details, review invoices, or manage your plan.
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <ActionBtn tone="gold" disabled>Open Billing Portal</ActionBtn>
-              <ActionBtn tone="danger" disabled>Cancel Subscription</ActionBtn>
-              <span style={{ fontSize: 11, color: 'var(--r-text-3)', fontStyle: 'italic' }}>Coming soon</span>
-            </div>
+            {/* Stripe redirect flash */}
+            {billingFlash && (
+              <div style={{
+                marginBottom: 14, padding: '10px 14px', borderRadius: 9,
+                background: billingFlash.startsWith('Subscription')
+                  ? 'rgba(90,158,98,0.10)' : 'rgba(255,255,255,0.04)',
+                border: billingFlash.startsWith('Subscription')
+                  ? '1px solid rgba(90,158,98,0.28)' : '1px solid var(--r-border)',
+                fontSize: 12,
+                color: billingFlash.startsWith('Subscription') ? '#5a9e62' : 'var(--r-text-3)',
+              }}>
+                {billingFlash}
+              </div>
+            )}
+
+            {billingLoading ? (
+              <div style={{ padding: '10px 0', fontSize: 13, color: 'var(--r-text-3)' }}>
+                Loading billing status…
+              </div>
+            ) : billingError ? (
+              <div style={{
+                padding: '10px 14px', borderRadius: 9,
+                background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)',
+                fontSize: 12, color: 'var(--r-danger)',
+              }}>
+                {billingError}
+              </div>
+            ) : billing ? (
+              <>
+                {/* Status rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                  <FieldRow
+                    label="Status"
+                    value={billing.status ? (STATUS_LABELS[billing.status] ?? billing.status) : 'No subscription'}
+                    accent={isBillingActive(billing.status)}
+                  />
+                  {billing.billingPlan && (
+                    <FieldRow label="Plan" value={PLAN_DISPLAY[billing.billingPlan] ?? billing.billingPlan} />
+                  )}
+                  {billing.currentPeriodEnd && (
+                    <FieldRow
+                      label={isBillingActive(billing.status) ? 'Renews' : 'Period ends'}
+                      value={formatPeriodEnd(billing.currentPeriodEnd)}
+                    />
+                  )}
+                  <FieldRow
+                    label="Billable agents"
+                    value={`${billing.activeAgentCount} seat${billing.activeAgentCount !== 1 ? 's' : ''}`}
+                  />
+                </div>
+
+                {/* Plan picker — only when not subscribed */}
+                {!isBillingActive(billing.status) && (
+                  <div style={{ marginBottom: 14 }}>
+                    <SettingsLabel>Select Plan</SettingsLabel>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {BILLING_PLANS.map((plan) => {
+                        const active = selectedPlan === plan.key;
+                        return (
+                          <button
+                            key={plan.key}
+                            onClick={() => setSelectedPlan(plan.key)}
+                            style={{
+                              padding: '10px 14px', borderRadius: 10, textAlign: 'left', width: '100%',
+                              border: active ? '1.5px solid var(--r-border-strong)' : '1px solid var(--r-border)',
+                              background: active
+                                ? 'linear-gradient(155deg, rgba(200,164,92,0.10) 0%, rgba(200,164,92,0.02) 100%)'
+                                : 'var(--r-grad-card)',
+                              cursor: 'pointer',
+                              boxShadow: active ? 'var(--r-shadow-gold)' : 'none',
+                              transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                            }}
+                          >
+                            <div style={{
+                              fontSize: 13, fontWeight: 700,
+                              color: active ? 'var(--r-gold-bright)' : 'var(--r-text)',
+                              fontFamily: 'var(--r-font-serif)', marginBottom: 2,
+                            }}>
+                              {plan.label}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
+                              {plan.description}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* past_due warning */}
+                {billing.status === 'past_due' && (
+                  <div style={{
+                    marginBottom: 12, padding: '10px 14px', borderRadius: 9,
+                    background: 'rgba(200,150,76,0.08)', border: '1px solid rgba(200,150,76,0.22)',
+                    fontSize: 12, color: '#c8964c', lineHeight: 1.6,
+                  }}>
+                    A recent payment failed. Open the billing portal to update your payment method.
+                  </div>
+                )}
+
+                {/* Action error */}
+                {billingActionError && (
+                  <div style={{
+                    marginBottom: 10, padding: '9px 12px', borderRadius: 9,
+                    background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)',
+                    fontSize: 12, color: 'var(--r-danger)',
+                  }}>
+                    {billingActionError}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {!isBillingActive(billing.status) && (
+                    <ActionBtn tone="gold" onClick={handleSubscribe} disabled={billingActing}>
+                      {billingActing ? 'Loading…' : 'Subscribe'}
+                    </ActionBtn>
+                  )}
+                  {billing.hasCustomer && (
+                    <ActionBtn
+                      tone={isBillingActive(billing.status) ? 'gold' : 'default'}
+                      onClick={handlePortal}
+                      disabled={billingActing}
+                    >
+                      {billingActing ? 'Loading…' : 'Open Billing Portal'}
+                    </ActionBtn>
+                  )}
+                </div>
+
+                <div style={{
+                  marginTop: 12, fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.6,
+                }}>
+                  Billed per active agent seat, minimum 1. Contact{' '}
+                  <a href="mailto:support@use-hoard.com" style={{ color: 'var(--r-gold)', textDecoration: 'none' }}>
+                    support@use-hoard.com
+                  </a>{' '}
+                  for manual invoicing or enterprise pricing.
+                </div>
+              </>
+            ) : null}
           </SectionCard>
 
           {/* SECTION B — Team Management */}

@@ -29,7 +29,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/agents',    label: 'Agents'   },
       { href: '/oversight', label: 'Oversight' },
       { href: '/alerts',    label: 'Alerts'   },
-      { href: '/billing',   label: 'Billing'  },
     ],
   },
   {

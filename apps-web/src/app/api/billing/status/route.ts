@@ -24,22 +24,34 @@ export async function GET() {
   if (!brokerageId)
     return NextResponse.json({ error: 'Brokerage not configured' }, { status: 503 });
 
-  const { data, error } = await supabaseAdmin
-    .from('brokerages')
-    .select('stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, billing_email')
-    .eq('id', brokerageId)
-    .maybeSingle();
+  const [billingResult, agentCountResult] = await Promise.all([
+    supabaseAdmin
+      .from('brokerages')
+      .select('stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, billing_email, billing_plan')
+      .eq('id', brokerageId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('brokerage_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('brokerage_id', brokerageId)
+      .eq('is_active', true)
+      .neq('role', 'broker'),
+  ]);
 
-  if (error) {
-    console.error('[GET /api/billing/status]', error.message);
+  if (billingResult.error) {
+    console.error('[GET /api/billing/status]', billingResult.error.message);
     return NextResponse.json({ error: 'Failed to load billing status' }, { status: 500 });
   }
+
+  const data = billingResult.data;
 
   return NextResponse.json({
     hasCustomer:      Boolean(data?.stripe_customer_id),
     hasSubscription:  Boolean(data?.stripe_subscription_id),
-    status:           data?.subscription_status           ?? null,
-    currentPeriodEnd: data?.subscription_current_period_end ?? null,
-    billingEmail:     data?.billing_email                 ?? null,
+    status:           data?.subscription_status              ?? null,
+    currentPeriodEnd: data?.subscription_current_period_end  ?? null,
+    billingEmail:     data?.billing_email                    ?? null,
+    billingPlan:      data?.billing_plan                     ?? null,
+    activeAgentCount: agentCountResult.count ?? 0,
   });
 }

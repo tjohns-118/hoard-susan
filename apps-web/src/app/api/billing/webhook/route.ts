@@ -6,8 +6,8 @@
  *
  * Handles:
  *   checkout.session.completed         → persist customer + subscription IDs
- *   customer.subscription.created      → set status + period end
- *   customer.subscription.updated      → update status + period end
+ *   customer.subscription.created      → set status, period end, billing_plan
+ *   customer.subscription.updated      → update status, period end, billing_plan
  *   customer.subscription.deleted      → mark canceled
  *   invoice.payment_failed             → mark past_due
  */
@@ -18,23 +18,24 @@ import { verifyStripeWebhook } from '@/lib/stripe';
 
 export const dynamic = 'force-dynamic';
 
-// ── Stripe event shape (minimal typing) ──────────────────────────────────────
+// ── Stripe event shapes (minimal) ─────────────────────────────────────────────
 
 interface StripeCheckoutSession {
-  customer?:      string;
-  subscription?:  string;
+  customer?:       string;
+  subscription?:   string;
   customer_email?: string;
 }
 
 interface StripeSubscription {
-  id:                  string;
-  customer:            string;
-  status:              string;
-  current_period_end:  number; // unix timestamp
+  id:                 string;
+  customer:           string;
+  status:             string;
+  current_period_end: number; // unix timestamp
+  metadata?:          Record<string, string>;
 }
 
 interface StripeInvoice {
-  customer:     string;
+  customer:      string;
   subscription?: string;
 }
 
@@ -63,6 +64,7 @@ async function updateBilling(
     subscription_current_period_end?:  string | null;
     stripe_customer_id?:               string;
     billing_email?:                    string;
+    billing_plan?:                     string | null;
   },
 ) {
   const { error } = await supabaseAdmin
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
   }
 
-  const rawBody  = await req.text();
+  const rawBody   = await req.text();
   const sigHeader = req.headers.get('stripe-signature') ?? '';
 
   if (!verifyStripeWebhook(rawBody, sigHeader, secret)) {
@@ -102,19 +104,14 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
 
       case 'checkout.session.completed': {
-        const session = event.data.object as StripeCheckoutSession;
+        const session        = event.data.object as unknown as StripeCheckoutSession;
         const customerId     = session.customer;
         const subscriptionId = session.subscription;
         if (!customerId) break;
 
-        // The checkout session may arrive before the subscription.created event.
-        // We persist what we have; subscription events will fill in the rest.
         const brokerageId = await brokerageByCustomer(customerId);
-        if (!brokerageId) {
-          // Customer was just created — update by ID directly using stripe_customer_id
-          // (already saved at checkout session creation time).
-          break;
-        }
+        if (!brokerageId) break; // customer_id already saved; subscription events will follow
+
         await updateBilling(brokerageId, {
           stripe_subscription_id: subscriptionId ?? null,
           subscription_status:    'active',
@@ -125,25 +122,27 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
-        const sub        = event.data.object as unknown as StripeSubscription;
+        const sub         = event.data.object as unknown as StripeSubscription;
         const brokerageId = await brokerageByCustomer(sub.customer);
         if (!brokerageId) {
           console.warn(`[webhook] ${event.type}: no brokerage for customer ${sub.customer}`);
           break;
         }
-        const periodEnd = sub.current_period_end
+        const periodEnd   = sub.current_period_end
           ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
+        const billingPlan = sub.metadata?.billing_plan ?? null;
         await updateBilling(brokerageId, {
           stripe_subscription_id:          sub.id,
           subscription_status:             sub.status,
           subscription_current_period_end: periodEnd,
+          ...(billingPlan ? { billing_plan: billingPlan } : {}),
         });
         break;
       }
 
       case 'customer.subscription.deleted': {
-        const sub        = event.data.object as unknown as StripeSubscription;
+        const sub         = event.data.object as unknown as StripeSubscription;
         const brokerageId = await brokerageByCustomer(sub.customer);
         if (!brokerageId) break;
         await updateBilling(brokerageId, {
@@ -154,7 +153,7 @@ export async function POST(req: NextRequest) {
       }
 
       case 'invoice.payment_failed': {
-        const invoice    = event.data.object as unknown as StripeInvoice;
+        const invoice     = event.data.object as unknown as StripeInvoice;
         const brokerageId = await brokerageByCustomer(invoice.customer);
         if (!brokerageId) break;
         await updateBilling(brokerageId, { subscription_status: 'past_due' });
@@ -162,13 +161,12 @@ export async function POST(req: NextRequest) {
       }
 
       default:
-        // Unhandled event types are silently acknowledged.
         break;
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[webhook] Error handling ${event.type}:`, msg);
-    // Return 200 so Stripe doesn't retry — the error is ours to investigate.
+    // Return 200 — error is ours to investigate; Stripe should not retry.
   }
 
   return NextResponse.json({ received: true });

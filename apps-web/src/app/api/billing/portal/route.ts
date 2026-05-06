@@ -43,9 +43,9 @@ export async function POST() {
   if (!customerId)
     return NextResponse.json({ error: 'No billing account found. Please subscribe first.' }, { status: 400 });
 
-  const appUrl     = process.env.NEXT_PUBLIC_APP_URL?.trim() ?? '';
-  const returnUrl  = process.env.STRIPE_CUSTOMER_PORTAL_RETURN_URL?.trim()
-    || `${appUrl}/billing`;
+  const appUrl    = process.env.NEXT_PUBLIC_APP_URL?.trim() ?? '';
+  const returnUrl = process.env.STRIPE_CUSTOMER_PORTAL_RETURN_URL?.trim()
+    || `${appUrl}/settings`;
 
   try {
     const portal = await stripePost<StripeBillingPortalSession>('billing_portal/sessions', {
