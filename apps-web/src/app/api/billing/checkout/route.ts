@@ -1,7 +1,7 @@
 /**
  * POST /api/billing/checkout — create a Stripe Checkout session.
  *
- * Body: { plan?: 'monthly' | 'annual' | 'biweekly' }
+ * Body: { plan?: 'brokerage_monthly' | 'brokerage_annual' | 'brokerage_biweekly' }
  *
  * Broker-only. Creates or reuses a Stripe customer, counts active non-broker
  * agents for quantity, then creates a subscription checkout session.
@@ -20,9 +20,9 @@ interface StripeCheckoutSession { id: string; url: string }
 
 // Server-side plan → env var mapping. Client never sends a raw price ID.
 const PLAN_ENV: Record<string, string> = {
-  monthly:  'STRIPE_PRICE_BROKERAGE_MONTHLY',
-  annual:   'STRIPE_PRICE_BROKERAGE_ANNUAL',
-  biweekly: 'STRIPE_PRICE_BROKERAGE_BIWEEKLY',
+  brokerage_monthly:  'STRIPE_PRICE_BROKERAGE_MONTHLY',
+  brokerage_annual:   'STRIPE_PRICE_BROKERAGE_ANNUAL',
+  brokerage_biweekly: 'STRIPE_PRICE_BROKERAGE_BIWEEKLY',
 };
 
 function resolvePriceId(plan: string): string | null {
@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
   if (!appUrl)
     return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL is not configured' }, { status: 503 });
 
-  // Parse plan from body; default to monthly.
-  let plan = 'monthly';
+  // Parse plan from body; default to brokerage_monthly.
+  let plan = 'brokerage_monthly';
   try {
     const body = await req.json() as { plan?: string };
     if (body.plan && PLAN_ENV[body.plan]) plan = body.plan;

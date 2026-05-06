@@ -19,28 +19,30 @@ type AgentRole = 'Broker' | 'Agent' | 'Admin';
 
 // ── Billing helpers ───────────────────────────────────────────────────────────
 
-type BillingPlan = 'monthly' | 'annual' | 'biweekly';
+type BillingPlan = 'brokerage_monthly' | 'brokerage_annual' | 'brokerage_biweekly';
 
 interface BillingStatus {
-  hasCustomer:      boolean;
-  hasSubscription:  boolean;
-  status:           string | null;
-  currentPeriodEnd: string | null;
-  billingEmail:     string | null;
-  billingPlan:      string | null;
-  activeAgentCount: number;
+  status:               string | null;
+  plan:                 string | null;
+  stripeCustomerId:     string | null;
+  stripeSubscriptionId: string | null;
+  currentPeriodEnd:     string | null;
+  billingEmail:         string | null;
+  billableAgentCount:   number;
+  stripeConfigured:     boolean;
+  portalAvailable:      boolean;
 }
 
 const BILLING_PLANS: { key: BillingPlan; label: string; description: string }[] = [
-  { key: 'monthly',  label: 'Monthly',   description: '$250 per active agent / month' },
-  { key: 'annual',   label: 'Annual',    description: '$2,550 per active agent / year  (~15% savings)' },
-  { key: 'biweekly', label: 'Bi-weekly', description: '$125 per active agent / every 2 weeks' },
+  { key: 'brokerage_monthly',  label: 'Monthly',   description: '$250 per active agent / month' },
+  { key: 'brokerage_annual',   label: 'Annual',    description: '$2,550 per active agent / year  (~15% savings)' },
+  { key: 'brokerage_biweekly', label: 'Bi-weekly', description: '$125 per active agent / every 2 weeks' },
 ];
 
 const PLAN_DISPLAY: Record<string, string> = {
-  monthly:  'Monthly ($250/agent/mo)',
-  annual:   'Annual ($2,550/agent/yr)',
-  biweekly: 'Bi-weekly ($125/agent/2 wks)',
+  brokerage_monthly:  'Monthly ($250/agent/mo)',
+  brokerage_annual:   'Annual ($2,550/agent/yr)',
+  brokerage_biweekly: 'Bi-weekly ($125/agent/2 wks)',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -342,7 +344,7 @@ export default function SettingsPage() {
   const [billing,             setBilling]             = useState<BillingStatus | null>(null);
   const [billingLoading,      setBillingLoading]      = useState(true);
   const [billingError,        setBillingError]        = useState<string | null>(null);
-  const [selectedPlan,        setSelectedPlan]        = useState<BillingPlan>('monthly');
+  const [selectedPlan,        setSelectedPlan]        = useState<BillingPlan>('brokerage_monthly');
   const [billingActing,       setBillingActing]       = useState(false);
   const [billingActionError,  setBillingActionError]  = useState<string | null>(null);
   const [billingFlash,        setBillingFlash]        = useState<string | null>(null);
@@ -570,8 +572,8 @@ export default function SettingsPage() {
                     value={billing.status ? (STATUS_LABELS[billing.status] ?? billing.status) : 'No subscription'}
                     accent={isBillingActive(billing.status)}
                   />
-                  {billing.billingPlan && (
-                    <FieldRow label="Plan" value={PLAN_DISPLAY[billing.billingPlan] ?? billing.billingPlan} />
+                  {billing.plan && (
+                    <FieldRow label="Plan" value={PLAN_DISPLAY[billing.plan] ?? billing.plan} />
                   )}
                   {billing.currentPeriodEnd && (
                     <FieldRow
@@ -581,9 +583,20 @@ export default function SettingsPage() {
                   )}
                   <FieldRow
                     label="Billable agents"
-                    value={`${billing.activeAgentCount} seat${billing.activeAgentCount !== 1 ? 's' : ''}`}
+                    value={`${billing.billableAgentCount} seat${billing.billableAgentCount !== 1 ? 's' : ''}`}
                   />
                 </div>
+
+                {/* Stripe not configured notice */}
+                {!billing.stripeConfigured && !isBillingActive(billing.status) && (
+                  <div style={{
+                    marginBottom: 12, padding: '10px 14px', borderRadius: 9,
+                    background: 'rgba(200,150,76,0.06)', border: '1px solid rgba(200,150,76,0.18)',
+                    fontSize: 12, color: 'var(--r-text-3)', lineHeight: 1.6,
+                  }}>
+                    Stripe is not fully configured yet. Contact your administrator to set up billing.
+                  </div>
+                )}
 
                 {/* Plan picker — only when not subscribed */}
                 {!isBillingActive(billing.status) && (
@@ -653,7 +666,7 @@ export default function SettingsPage() {
                       {billingActing ? 'Loading…' : 'Subscribe'}
                     </ActionBtn>
                   )}
-                  {billing.hasCustomer && (
+                  {billing.portalAvailable && (
                     <ActionBtn
                       tone={isBillingActive(billing.status) ? 'gold' : 'default'}
                       onClick={handlePortal}
