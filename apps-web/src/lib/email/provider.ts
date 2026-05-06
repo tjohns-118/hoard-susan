@@ -4,12 +4,12 @@
  *
  * Env vars (Resend):
  *   RESEND_API_KEY
- *   RESEND_FROM_EMAIL   (default: noreply@builtonhoard.com) — must be a full email address
+ *   RESEND_FROM_EMAIL   (default: noreply@use-hoard.com) — must be a full email address
  *   RESEND_FROM_NAME    (default: Hoard)
  *
  * Env vars (SendGrid):
  *   SENDGRID_API_KEY
- *   SENDGRID_FROM_EMAIL (default: noreply@builtonhoard.com)
+ *   SENDGRID_FROM_EMAIL (default: noreply@use-hoard.com)
  *   SENDGRID_FROM_NAME  (default: Hoard)
  */
 
@@ -79,7 +79,7 @@ export function getConfigError(): string | null {
 
 async function sendViaResend(payload: EmailPayload): Promise<Omit<SendResult, 'provider'>> {
   const apiKey    = process.env.RESEND_API_KEY!;
-  const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'noreply@builtonhoard.com';
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'noreply@use-hoard.com';
   const fromName  = process.env.RESEND_FROM_NAME  ?? 'Hoard';
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -108,7 +108,7 @@ async function sendViaResend(payload: EmailPayload): Promise<Omit<SendResult, 'p
 
 async function sendViaSendGrid(payload: EmailPayload): Promise<Omit<SendResult, 'provider'>> {
   const apiKey    = process.env.SENDGRID_API_KEY!;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@builtonhoard.com';
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@use-hoard.com';
   const fromName  = process.env.SENDGRID_FROM_NAME  ?? 'Hoard';
 
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {

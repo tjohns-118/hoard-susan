@@ -851,7 +851,8 @@ export default function SettingsPage() {
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 12, color: 'var(--r-text-3)', lineHeight: 1.6, marginBottom: 4 }}>
-                Export a full copy of your CRM data, or submit a deletion request for inactive records.
+                Export a full copy of your CRM data, or submit a deletion request for inactive records. For data requests or privacy concerns, contact{' '}
+                <a href="mailto:support@use-hoard.com" style={{ color: 'var(--r-gold)', textDecoration: 'none' }}>support@use-hoard.com</a>.
               </div>
               <ActionBtn>Export All Data</ActionBtn>
               <ActionBtn tone="danger" disabled>Request Account Deletion</ActionBtn>

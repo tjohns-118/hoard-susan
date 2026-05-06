@@ -15,7 +15,8 @@ type ReportStep = 'describe' | 'review' | 'success';
 type ChatMsg = { role: 'user' | 'assistant'; content: string; error?: boolean };
 type BadgeTone = 'default' | 'warning' | 'danger' | 'success' | 'gold';
 
-const SUPPORT_EMAIL = 'support@builtonhoard.com';
+const SUPPORT_EMAIL = 'support@use-hoard.com';
+const SUPPORT_PHONE = '702-355-7823';
 const CATEGORY_OPTIONS: TicketCategory[] = ['bug', 'question', 'feature_request', 'billing', 'account_access', 'data_issue', 'other'];
 const PRIORITY_OPTIONS: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
 
@@ -575,7 +576,11 @@ export default function SupportPage() {
         <a href={`mailto:${SUPPORT_EMAIL}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-gold-bright)', textDecoration: 'none' }}>
           {SUPPORT_EMAIL}
         </a>
-        <span style={{ fontSize: 11, color: 'var(--r-text-3)', opacity: 0.6 }}>Mon–Fri, 9 am–6 pm CT</span>
+        <span style={{ fontSize: 11, color: 'var(--r-text-3)', opacity: 0.4 }}>·</span>
+        <a href={`tel:${SUPPORT_PHONE}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--r-gold-bright)', textDecoration: 'none' }}>
+          {SUPPORT_PHONE}
+        </a>
+        <span style={{ fontSize: 11, color: 'var(--r-text-3)', opacity: 0.6 }}>Mon–Fri, 9 am–6 pm PT</span>
       </div>
 
       {/* Tabs */}

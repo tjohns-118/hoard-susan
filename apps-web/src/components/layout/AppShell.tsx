@@ -1,12 +1,36 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { AppTopbar } from './AppTopbar';
 import { useAuth } from '@/hooks/useAuth';
+import { ComplianceGate } from '@/components/compliance/ComplianceGate';
+
+type ComplianceState = 'checking' | 'required' | 'accepted';
 
 export function AppShell({ children }: { children: ReactNode }) {
   useAuth();
+
+  const [compliance, setCompliance] = useState<ComplianceState>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/compliance/status')
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) return; // useAuth will redirect to /login
+        if (!res.ok) { setCompliance('accepted'); return; } // fail open on server error
+        const data = await res.json();
+        if (!cancelled) {
+          setCompliance(data.accepted ? 'accepted' : 'required');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCompliance('accepted'); // network error — fail open
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div
       style={{
@@ -39,6 +63,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Compliance gate — renders over dashboard, dismissed once accepted */}
+      {compliance === 'required' && (
+        <ComplianceGate onAccepted={() => setCompliance('accepted')} />
+      )}
     </div>
   );
 }

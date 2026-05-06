@@ -187,7 +187,7 @@ export function SmsComposer({
           background: 'rgba(200,164,92,0.06)', border: '1px solid rgba(200,164,92,0.15)',
           fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.5,
         }}>
-          Manual one-off message only. Ensure recipient has given SMS consent before sending.
+          Manual one-off message only. Recipient must have provided prior SMS consent (TCPA). Include opt-out language where appropriate: <em>"Reply STOP to opt out. HELP: 702-355-7823"</em>
         </div>
 
         {/* AI Draft Panel */}
