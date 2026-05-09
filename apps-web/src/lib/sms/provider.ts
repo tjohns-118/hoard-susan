@@ -2,18 +2,17 @@
  * SMS provider abstraction — Twilio only for V1.
  * All Twilio credentials are read server-side; none are returned to the client.
  *
- * Env vars (all required together):
- *   TWILIO_ACCOUNT_SID
- *   TWILIO_AUTH_TOKEN
- *   TWILIO_MESSAGING_SERVICE_SID   (preferred — handles number pooling & compliance)
- *   TWILIO_PHONE_NUMBER            (fallback if no messaging service SID)
+ * Credential modes (checked in order):
+ *   API Key  — TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET
+ *   Auth Token — TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN
  *
- * Preference order: MessagingServiceSid > From number.
- * If neither TWILIO_MESSAGING_SERVICE_SID nor TWILIO_PHONE_NUMBER is set,
- * sendSms() returns a failure — it never sends without a known sender.
+ * Sender (required regardless of credential mode):
+ *   TWILIO_MESSAGING_SERVICE_SID   (preferred — handles number pooling & 10DLC compliance)
+ *   TWILIO_PHONE_NUMBER            (fallback for simple setups)
  */
 
-export type SmsProvider = 'twilio' | 'none';
+export type SmsProvider      = 'twilio' | 'none';
+export type CredentialMode   = 'api_key' | 'auth_token' | 'none';
 
 export interface SmsPayload {
   to:   string;
@@ -21,28 +20,43 @@ export interface SmsPayload {
 }
 
 export interface SmsSendResult {
-  provider:    SmsProvider;
-  success:     boolean;
-  messageId?:  string;
-  error?:      string;
+  provider:       SmsProvider;
+  success:        boolean;
+  messageId?:     string;
+  error?:         string;
+  credentialMode?: CredentialMode;
+}
+
+export function detectCredentialMode(): CredentialMode {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  if (!accountSid) return 'none';
+  if (process.env.TWILIO_API_KEY_SID?.trim() && process.env.TWILIO_API_KEY_SECRET?.trim()) return 'api_key';
+  if (process.env.TWILIO_AUTH_TOKEN?.trim()) return 'auth_token';
+  return 'none';
 }
 
 export function detectSmsProvider(): SmsProvider {
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) return 'twilio';
-  return 'none';
+  return detectCredentialMode() !== 'none' ? 'twilio' : 'none';
 }
 
 async function sendViaTwilio(payload: SmsPayload): Promise<Omit<SmsSendResult, 'provider'>> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-  const authToken  = process.env.TWILIO_AUTH_TOKEN!;
+  const mode       = detectCredentialMode();
 
-  // Prefer MessagingServiceSid (supports number pooling and 10DLC compliance).
-  // Fall back to a specific From number for development/simple setups.
+  if (mode === 'none') {
+    return { success: false, error: 'No Twilio credentials configured' };
+  }
+
+  // Build Basic auth: API Key mode uses apiKeySid:apiKeySecret; Auth Token mode uses accountSid:authToken.
+  const authUser   = mode === 'api_key' ? process.env.TWILIO_API_KEY_SID!    : accountSid;
+  const authPass   = mode === 'api_key' ? process.env.TWILIO_API_KEY_SECRET! : process.env.TWILIO_AUTH_TOKEN!;
+
+  // Prefer MessagingServiceSid (number pooling + 10DLC compliance).
   const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID?.trim();
   const fromNumber          = process.env.TWILIO_PHONE_NUMBER?.trim();
 
   if (!messagingServiceSid && !fromNumber) {
-    return { success: false, error: 'Set TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER' };
+    return { success: false, error: 'Set TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER', credentialMode: mode };
   }
 
   const params = new URLSearchParams({
@@ -59,7 +73,7 @@ async function sendViaTwilio(payload: SmsPayload): Promise<Omit<SmsSendResult, '
       {
         method:  'POST',
         headers: {
-          'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+          'Authorization': `Basic ${Buffer.from(`${authUser}:${authPass}`).toString('base64')}`,
           'Content-Type':  'application/x-www-form-urlencoded',
         },
         body:   params.toString(),
@@ -71,12 +85,12 @@ async function sendViaTwilio(payload: SmsPayload): Promise<Omit<SmsSendResult, '
 
     if (!res.ok) {
       const msg = data?.message ?? `Twilio error ${res.status} (code ${data?.code ?? 'unknown'})`;
-      return { success: false, error: msg };
+      return { success: false, error: msg, credentialMode: mode };
     }
 
-    return { success: true, messageId: data?.sid };
+    return { success: true, messageId: data?.sid, credentialMode: mode };
   } catch (err: any) {
-    return { success: false, error: err?.message ?? 'SMS provider request failed' };
+    return { success: false, error: err?.message ?? 'SMS provider request failed', credentialMode: mode };
   }
 }
 
@@ -84,9 +98,10 @@ export async function sendSms(payload: SmsPayload): Promise<SmsSendResult> {
   const provider = detectSmsProvider();
   if (provider === 'none') {
     return {
-      provider: 'none',
-      success:  false,
-      error:    'No SMS provider configured (set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN)',
+      provider:       'none',
+      success:        false,
+      credentialMode: 'none',
+      error:          'No SMS provider configured — set TWILIO_ACCOUNT_SID with TWILIO_API_KEY_SID/SECRET or TWILIO_AUTH_TOKEN',
     };
   }
   const result = await sendViaTwilio(payload);

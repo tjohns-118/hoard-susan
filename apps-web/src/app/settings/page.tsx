@@ -404,6 +404,50 @@ export default function SettingsPage() {
     }
   }
 
+  // ── Profile / Phone ───────────────────────────────────────────────────────
+  const [profilePhone,       setProfilePhone]       = useState('');
+  const [profileSmsEnabled,  setProfileSmsEnabled]  = useState(true);
+  const [profileEmail,       setProfileEmail]       = useState('');
+  const [profileLoading,     setProfileLoading]     = useState(true);
+  const [profileSaving,      setProfileSaving]      = useState(false);
+  const [profileError,       setProfileError]       = useState<string | null>(null);
+  const [profileSaved,       setProfileSaved]       = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(async (res) => {
+        if (!res.ok) return;
+        const d = await res.json();
+        setProfilePhone(d.phone ?? '');
+        setProfileSmsEnabled(d.smsRemindersEnabled ?? true);
+        setProfileEmail(d.email ?? '');
+      })
+      .catch(() => {})
+      .finally(() => setProfileLoading(false));
+  }, []);
+
+  async function handleSaveProfile() {
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileSaved(false);
+    try {
+      const res  = await fetch('/api/user/phone', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ phone: profilePhone.trim(), sms_reminders_enabled: profileSmsEnabled }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setProfileError(json.error ?? 'Failed to save.'); return; }
+      if (json.phone) setProfilePhone(json.phone as string);
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
+    } catch {
+      setProfileError('Network error. Please try again.');
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
   // ── CSV Import ────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvHeaders,  setCsvHeaders]  = useState<string[]>([]);
@@ -1063,39 +1107,85 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          {/* Broker profile */}
+          {/* Profile / Phone */}
           <SectionCard
-            title="Broker Profile"
-            description="Your identity in Hoard"
+            title="Profile & SMS"
+            description="Phone number and reminder preferences"
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-                  background: 'linear-gradient(135deg, var(--r-gold-muted), var(--r-gold-bright))',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18, fontWeight: 800, color: '#09090e',
-                  fontFamily: 'var(--r-font-serif)',
-                  border: '2px solid var(--r-border-strong)',
-                  boxShadow: 'var(--r-shadow-gold)',
-                }}>
-                  —
-                </div>
+            {profileLoading ? (
+              <div style={{ padding: '6px 0', fontSize: 13, color: 'var(--r-text-3)' }}>Loading profile…</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                {/* Email (read-only) */}
+                <FieldRow label="Email" value={profileEmail || '—'} />
+
+                {/* Phone */}
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--r-text-3)', fontFamily: 'var(--r-font-serif)' }}>
-                    Broker profile not configured
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--r-text-3)', marginTop: 1 }}>
-                    Principal Broker
-                  </div>
+                  <SettingsLabel>Mobile Phone</SettingsLabel>
+                  <input
+                    type="tel"
+                    value={profilePhone}
+                    onChange={(e) => { setProfilePhone(e.target.value); setProfileError(null); setProfileSaved(false); }}
+                    placeholder="(702) 355-7823 or +17023557823"
+                    autoComplete="tel"
+                    disabled={profileSaving}
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      padding: '10px 13px', borderRadius: 9, fontSize: 13,
+                      background: 'rgba(255,255,255,0.04)', color: 'var(--r-text)',
+                      border: '1px solid rgba(200,164,92,0.22)', outline: 'none',
+                    }}
+                  />
                 </div>
+
+                {/* SMS reminders toggle */}
+                <Toggle
+                  checked={profileSmsEnabled}
+                  onChange={() => { setProfileSmsEnabled((v) => !v); setProfileSaved(false); }}
+                  label="SMS reminders"
+                  sublabel="Receive Hoard text reminders for events, pipeline activity, and daily focus"
+                />
+
+                {/* Consent copy */}
+                <div style={{
+                  padding: '9px 12px', borderRadius: 9,
+                  background: 'rgba(200,164,92,0.04)', border: '1px solid rgba(200,164,92,0.10)',
+                  fontSize: 10, color: 'var(--r-text-3)', lineHeight: 1.6,
+                }}>
+                  By adding your phone, you agree to receive operational Hoard text reminders. Msg/data rates may apply.
+                  Reply STOP to opt out at any time.
+                </div>
+
+                {profileError && (
+                  <div style={{
+                    padding: '8px 12px', borderRadius: 9,
+                    background: 'var(--r-danger-bg)', border: '1px solid var(--r-danger-border)',
+                    fontSize: 12, color: 'var(--r-danger)',
+                  }}>
+                    {profileError}
+                  </div>
+                )}
+
+                {profileSaved && (
+                  <div style={{
+                    padding: '8px 12px', borderRadius: 9,
+                    background: 'rgba(90,158,98,0.10)', border: '1px solid rgba(90,158,98,0.28)',
+                    fontSize: 12, color: '#5a9e62',
+                  }}>
+                    Profile saved.
+                  </div>
+                )}
+
+                <ActionBtn
+                  tone="gold"
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving}
+                >
+                  {profileSaving ? 'Saving…' : 'Save Profile'}
+                </ActionBtn>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <FieldRow label="License" value="—" />
-                <FieldRow label="Region"  value="—" />
-              </div>
-              <ActionBtn disabled>Edit Profile</ActionBtn>
-            </div>
+            )}
           </SectionCard>
 
           {/* Data & Privacy */}

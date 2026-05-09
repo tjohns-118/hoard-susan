@@ -27,6 +27,8 @@ import { supabaseAdmin } from '@/lib/supabaseServer';
 import { sendAutomatedSms } from '@/lib/sms/automation';
 import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
 
+export const dynamic = 'force-dynamic';
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 function verifyCronSecret(req: NextRequest): boolean {
@@ -205,7 +207,8 @@ async function rulesBrokerSummary(brokerageId: string): Promise<string> {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
+// Vercel Cron sends GET. POST is kept for manual curl testing with CRON_SECRET.
+export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -323,5 +326,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   console.log(`[cron/daily-focus] done — sent=${stats.sent} skipped=${stats.skipped} errors=${stats.errors} date=${today}`);
-  return NextResponse.json({ ok: true, ...stats });
+  return NextResponse.json({ ok: true, sent: stats.sent, skipped: stats.skipped, failed: stats.errors });
 }
+
+export const POST = GET;

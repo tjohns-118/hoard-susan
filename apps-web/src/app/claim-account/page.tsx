@@ -54,6 +54,7 @@ export default function ClaimAccountPage() {
   const [email,   setEmail]   = useState('');
   const [pw,      setPw]      = useState('');
   const [confirm, setConfirm] = useState('');
+  const [phone,   setPhone]   = useState('');
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [claimed, setClaimed] = useState(false);
@@ -63,12 +64,17 @@ export default function ClaimAccountPage() {
     setError(null);
     if (pw !== confirm) { setError('Passwords do not match.'); return; }
     if (pw.length < 8)  { setError('Password must be at least 8 characters.'); return; }
+    if (!phone.trim())  { setError('Phone number is required.'); return; }
     setLoading(true);
     try {
       const res  = await fetch('/api/auth/claim-account', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email: email.trim().toLowerCase(), password: pw }),
+        body:    JSON.stringify({
+          email:    email.trim().toLowerCase(),
+          password: pw,
+          phone:    phone.trim(),
+        }),
       });
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Something went wrong. Please try again.'); return; }
@@ -203,6 +209,21 @@ export default function ClaimAccountPage() {
                 />
               </div>
 
+              <div>
+                <label style={labelStyle}>Mobile Phone <span style={{ color: 'var(--r-gold)', fontWeight: 700 }}>*</span></label>
+                <AuthInput
+                  type="tel"
+                  value={phone}
+                  onChange={setPhone}
+                  placeholder="(702) 355-7823"
+                  autoComplete="tel"
+                  disabled={loading}
+                />
+                <div style={{ marginTop: 5, fontSize: 10, color: 'var(--r-text-3)', lineHeight: 1.5 }}>
+                  Used for Hoard SMS reminders (events, pipeline, daily focus). US or international format accepted.
+                </div>
+              </div>
+
               {error && (
                 <div style={{
                   fontSize: 12, color: 'var(--r-danger)',
@@ -214,6 +235,18 @@ export default function ClaimAccountPage() {
                   {error}
                 </div>
               )}
+
+              {/* Consent */}
+              <div style={{
+                padding: '10px 12px', borderRadius: 9,
+                background: 'rgba(200,164,92,0.04)',
+                border: '1px solid rgba(200,164,92,0.12)',
+                fontSize: 10, color: 'var(--r-text-3)', lineHeight: 1.6,
+              }}>
+                By adding your phone number, you agree to receive operational Hoard text reminders related to
+                your account, tasks, calendar events, and pipeline activity. Msg/data rates may apply.
+                Reply STOP to opt out.
+              </div>
 
               <button
                 type="submit"

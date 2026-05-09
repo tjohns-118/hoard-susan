@@ -639,12 +639,13 @@ export default function ImportsPage() {
           <div
             style={{
               padding: '12px 16px', borderRadius: 10,
-              background: 'var(--r-success-bg)', border: '1px solid var(--r-success-border)',
-              fontSize: 13, color: 'var(--r-success)', fontWeight: 600,
+              background: result.inserted > 0 ? 'var(--r-success-bg)' : 'var(--r-warning-bg)',
+              border: `1px solid ${result.inserted > 0 ? 'var(--r-success-border)' : 'var(--r-warning-border)'}`,
+              fontSize: 13, color: result.inserted > 0 ? 'var(--r-success)' : 'var(--r-warning)', fontWeight: 600,
             }}
           >
             <div>
-              Import complete — {result.inserted} inserted · {result.skipped} skipped
+              {result.inserted > 0 ? 'Import complete' : 'Import finished — nothing inserted'} — {result.inserted} inserted · {result.skipped} skipped
               {result.aiNormalized && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.8 }}>· AI normalization applied</span>}
             </div>
             {(result.tasksCreated ?? 0) > 0 && (

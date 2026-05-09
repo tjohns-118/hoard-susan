@@ -102,10 +102,11 @@ export async function isContactOptedOut(contactId: string): Promise<boolean> {
 export async function isAgentOptedOut(appUserId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from('app_users')
-    .select('sms_opt_out')
+    .select('sms_opt_out, sms_reminders_enabled')
     .eq('id', appUserId)
     .maybeSingle();
-  return data?.sms_opt_out === true;
+  // Opted out via STOP reply OR explicitly disabled Hoard reminders in Settings
+  return data?.sms_opt_out === true || data?.sms_reminders_enabled === false;
 }
 
 // ── Deduplication ─────────────────────────────────────────────────────────────

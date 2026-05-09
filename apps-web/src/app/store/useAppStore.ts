@@ -26,6 +26,12 @@ type AppState = {
   memberId:       string | null;
   setMemberId:    (id: string | null) => void;
 
+  // ── Auth-derived SMS profile ──────────────────────────────────────────────────
+  userPhone:              string | null;   // null = loading OR missing
+  setUserPhone:           (phone: string | null) => void;
+  smsRemindersEnabled:    boolean;
+  setSmsRemindersEnabled: (v: boolean) => void;
+
   // ── Setters (called by hooks after Supabase fetch) ────────────────────────────
   setAgents:        (agents:        AgentRecord[])        => void;
   setContacts:      (contacts:      Contact[])            => void;
@@ -98,6 +104,11 @@ currentRole: null,
 setCurrentRole: (role) => set({ currentRole: role }),
 memberId: null,
 setMemberId: (id) => set({ memberId: id }),
+
+userPhone: null,
+setUserPhone: (phone) => set({ userPhone: phone }),
+smsRemindersEnabled: true,
+setSmsRemindersEnabled: (v) => set({ smsRemindersEnabled: v }),
 
 toggleTask: (taskId) =>
 set((state) => ({

@@ -12,8 +12,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseServer';
 
+// US-aware E.164 normalizer — handles 10-digit, 11-digit, and full international formats.
+function normalizePhoneInput(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
+  if (raw.trim().startsWith('+')) {
+    const e164 = `+${digits}`;
+    return /^\+[1-9]\d{6,14}$/.test(e164) ? e164 : null;
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; phone?: string };
   try {
     body = await req.json();
   } catch {
@@ -22,12 +34,23 @@ export async function POST(req: NextRequest) {
 
   const normalEmail = body.email?.trim().toLowerCase() ?? '';
   const password    = body.password ?? '';
+  const rawPhone    = body.phone?.trim() ?? '';
 
   if (!normalEmail || !password) {
     return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
   }
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+  }
+  if (!rawPhone) {
+    return NextResponse.json({ error: 'Phone number is required.' }, { status: 400 });
+  }
+  const normalizedPhone = normalizePhoneInput(rawPhone);
+  if (!normalizedPhone) {
+    return NextResponse.json(
+      { error: 'Invalid phone number. Enter a 10-digit US number or full international format.' },
+      { status: 400 },
+    );
   }
 
   // Verify email exists in app_users and has not yet been claimed.
@@ -75,10 +98,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not create account. Please try again.' }, { status: 500 });
   }
 
-  // Link the new Supabase Auth user ID into the app_users record.
+  // Link the new Supabase Auth user ID and save phone into the app_users record.
   const { error: linkErr } = await supabaseAdmin
     .from('app_users')
-    .update({ auth_user_id: authData.user.id })
+    .update({ auth_user_id: authData.user.id, phone: normalizedPhone })
     .eq('id', appUser.id);
 
   if (linkErr) {

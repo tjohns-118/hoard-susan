@@ -4,14 +4,24 @@ import { ReactNode, useEffect, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { AppTopbar } from './AppTopbar';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppStore } from '@/app/store/useAppStore';
 import { ComplianceGate } from '@/components/compliance/ComplianceGate';
+import { PhoneBanner } from '@/components/profile/PhoneBanner';
 
 type ComplianceState = 'checking' | 'required' | 'accepted';
 
 export function AppShell({ children }: { children: ReactNode }) {
   useAuth();
 
+  const currentRole    = useAppStore((s) => s.currentRole);
+  const userPhone      = useAppStore((s) => s.userPhone);
+  const setUserPhone   = useAppStore((s) => s.setUserPhone);
+
   const [compliance, setCompliance] = useState<ComplianceState>('checking');
+  // Phone banner: show when auth is loaded and phone is missing.
+  // useAuth sets userPhone from /api/auth/me; null after load means it's genuinely absent.
+  const [phoneBannerDone, setPhoneBannerDone] = useState(false);
+  const showPhoneBanner = currentRole !== null && !userPhone && !phoneBannerDone;
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +40,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       });
     return () => { cancelled = true; };
   }, []);
+
+  function handlePhoneAdded(phone: string) {
+    setUserPhone(phone);
+    setPhoneBannerDone(true);
+  }
 
   return (
     <div
@@ -50,6 +65,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <AppTopbar />
+
+          {/* Phone collection banner — shown until phone is added or dismissed */}
+          {showPhoneBanner && (
+            <PhoneBanner onPhoneAdded={handlePhoneAdded} />
+          )}
+
           <main
             className="r-page"
             style={{
