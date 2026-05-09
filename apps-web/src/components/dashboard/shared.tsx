@@ -41,13 +41,10 @@ export function Panel({
 }) {
   return (
     <div
-      className="r-card"
+      className="r-glass"
       style={{
         borderRadius: 18,
-        background: 'var(--r-grad-card)',
-        border: '1px solid var(--r-border)',
-        boxShadow: 'var(--r-shadow)',
-        padding: '18px 20px',
+        padding:      '18px 20px',
         ...style,
       }}
     >

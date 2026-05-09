@@ -926,3 +926,677 @@ button[data-loading="true"] {
 @media (max-width: 768px) {
   .r-mobile-fab { display: flex; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOARD COMMAND SYSTEM — Liquid Glass + Dark Intelligence
+   Batman × Apple × Cyberpunk — premium operational software visual layer.
+   All rules below layer on top of the base design system.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Command system variables ────────────────────────────────────────────── */
+:root {
+  /* Liquid glass surfaces */
+  --r-glass-bg:        rgba(10, 15, 28, 0.62);
+  --r-glass-bg-kpi:    rgba(8, 12, 24, 0.72);
+  --r-glass-border:    rgba(200, 164, 92, 0.18);
+  --r-glass-border-ai: rgba(200, 164, 92, 0.38);
+  --r-glass-blur:      22px;
+  --r-glass-shadow:
+    0 8px 40px rgba(0,0,0,0.72),
+    0 2px 10px rgba(0,0,0,0.48),
+    inset 0 1px 0 rgba(200,164,92,0.11),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
+  --r-glass-shadow-ai:
+    0 0 48px rgba(200,164,92,0.11),
+    0 8px 40px rgba(0,0,0,0.72),
+    inset 0 1px 0 rgba(200,164,92,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
+
+  /* Ambient background glows */
+  --r-glow-center:   radial-gradient(ellipse 60% 48% at 50% 40%, rgba(200,164,92,0.055) 0%, transparent 70%);
+  --r-glow-left:     radial-gradient(ellipse 36% 60% at 15% 50%, rgba(200,164,92,0.04) 0%, transparent 70%);
+  --r-glow-right:    radial-gradient(ellipse 28% 50% at 88% 30%, rgba(58,80,140,0.08) 0%, transparent 65%);
+}
+
+/* ── Command keyframes ────────────────────────────────────────────────────── */
+
+/* Light sweep — sweeps across a surface once on trigger */
+@keyframes r-light-sweep {
+  0%   { left: -120%; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { left: 220%; opacity: 0; }
+}
+
+/* Slow ambient drift — for background elements */
+@keyframes r-ambient-drift {
+  0%, 100% { transform: translateY(0) scaleX(1); opacity: 0.7; }
+  50%       { transform: translateY(-6px) scaleX(1.04); opacity: 1; }
+}
+
+/* Vertical signal fall — for streak particles */
+@keyframes r-signal-fall {
+  0%   { transform: translateY(-120px); opacity: 0; }
+  8%   { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateY(110vh); opacity: 0; }
+}
+
+/* Border glow pulse — for AI panel border */
+@keyframes r-border-glow {
+  0%, 100% { box-shadow: var(--r-glass-shadow-ai), 0 0 20px rgba(200,164,92,0.08); }
+  50%       { box-shadow: var(--r-glass-shadow-ai), 0 0 36px rgba(200,164,92,0.18), 0 0 12px rgba(200,164,92,0.10); }
+}
+
+/* AI signal dot breathe */
+@keyframes r-dot-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); box-shadow: 0 0 0 0 rgba(200,164,92,0.4); }
+  50%       { opacity: 1;    transform: scale(1.2); box-shadow: 0 0 0 5px rgba(200,164,92,0); }
+}
+
+/* Text cursor blink */
+@keyframes r-cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Scan line — subtle horizontal bar that sweeps once on page load */
+@keyframes r-scanline {
+  from { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 0.5; }
+  90%  { opacity: 0.5; }
+  to   { transform: translateY(110vh); opacity: 0; }
+}
+
+/* Subtle page depth shift on load */
+@keyframes r-depth-enter {
+  from { opacity: 0; transform: translateY(7px) scale(0.9975); filter: blur(1px); }
+  to   { opacity: 1; transform: translateY(0)  scale(1);      filter: blur(0px); }
+}
+
+/* KPI number count-in (visual only — actual number is already rendered) */
+@keyframes r-kpi-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Liquid Glass Card System ─────────────────────────────────────────────── */
+/*
+  .r-glass — primary liquid glass surface. Use on cards, panels, containers.
+  Combines translucent background with backdrop-filter blur, inner rim light,
+  and a hover light-sweep animation.
+*/
+.r-glass {
+  position: relative;
+  overflow: hidden;
+  background: var(--r-glass-bg);
+  backdrop-filter: blur(var(--r-glass-blur)) saturate(1.45);
+  -webkit-backdrop-filter: blur(var(--r-glass-blur)) saturate(1.45);
+  border: 1px solid var(--r-glass-border);
+  box-shadow: var(--r-glass-shadow);
+  border-radius: var(--r-radius-lg);
+  transition:
+    box-shadow    var(--r-dur-slow) var(--r-ease),
+    border-color  var(--r-dur-slow) var(--r-ease),
+    transform     var(--r-dur)      var(--r-ease);
+  will-change: transform;
+}
+/* Glass top rim — catches ambient light */
+.r-glass::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 5%; right: 5%;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255,255,255,0.055) 20%,
+    rgba(200,164,92,0.24)   45%,
+    rgba(226,196,124,0.36)  50%,
+    rgba(200,164,92,0.24)   55%,
+    rgba(255,255,255,0.055) 80%,
+    transparent);
+  pointer-events: none;
+  z-index: 3;
+}
+/* Light sweep — slides across on hover */
+.r-glass::after {
+  content: '';
+  position: absolute;
+  top: -60%; left: -120%;
+  width: 45%; height: 220%;
+  background: linear-gradient(
+    105deg,
+    transparent        0%,
+    rgba(255,255,255,0.012) 35%,
+    rgba(200,164,92,0.035)  50%,
+    rgba(255,255,255,0.012) 65%,
+    transparent        100%
+  );
+  transform: skewX(-18deg);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: none;
+}
+.r-glass:hover {
+  transform: translateY(-2px);
+  border-color: rgba(200,164,92,0.28);
+  box-shadow:
+    0 16px 52px rgba(0,0,0,0.78),
+    0 4px 14px rgba(0,0,0,0.50),
+    0 0 0 1px rgba(200,164,92,0.16),
+    0 0 36px rgba(200,164,92,0.10),
+    inset 0 1px 0 rgba(200,164,92,0.15),
+    inset 0 -1px 0 rgba(0,0,0,0.24);
+}
+.r-glass:hover::after {
+  animation: r-light-sweep 0.65s var(--r-ease) forwards;
+}
+
+/* ── KPI HUD glass card ───────────────────────────────────────────────────── */
+.r-glass-kpi {
+  position: relative;
+  overflow: hidden;
+  background: var(--r-glass-bg-kpi);
+  backdrop-filter: blur(20px) saturate(1.55);
+  -webkit-backdrop-filter: blur(20px) saturate(1.55);
+  border: 1px solid rgba(200,164,92,0.14);
+  box-shadow:
+    0 6px 32px rgba(0,0,0,0.68),
+    0 1px 6px rgba(0,0,0,0.42),
+    inset 0 1px 0 rgba(200,164,92,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.20);
+  border-radius: var(--r-radius-lg);
+  transition:
+    transform     var(--r-dur)      var(--r-ease),
+    box-shadow    var(--r-dur-slow) var(--r-ease),
+    border-color  var(--r-dur-slow) var(--r-ease);
+  will-change: transform;
+}
+.r-glass-kpi::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(200,164,92,0.20) 40%, rgba(226,196,124,0.32) 50%, rgba(200,164,92,0.20) 60%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+.r-glass-kpi::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(200,164,92,0.028) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+.r-glass-kpi:hover {
+  transform: translateY(-2px);
+  border-color: rgba(200,164,92,0.26);
+  box-shadow:
+    0 12px 44px rgba(0,0,0,0.74),
+    0 0 0 1px rgba(200,164,92,0.14),
+    0 0 28px rgba(200,164,92,0.09),
+    inset 0 1px 0 rgba(200,164,92,0.14);
+}
+/* Accent KPI (pipeline/highlighted) */
+.r-glass-kpi.r-kpi-accent {
+  border-color: rgba(200,164,92,0.28);
+  background: rgba(18,22,40,0.70);
+  box-shadow:
+    0 6px 32px rgba(0,0,0,0.68),
+    0 0 28px rgba(200,164,92,0.10),
+    inset 0 1px 0 rgba(200,164,92,0.16);
+}
+/* KPI value animation on mount */
+.r-glass-kpi .r-kpi-value {
+  animation: r-kpi-enter 0.4s var(--r-ease) both;
+}
+
+/* ── Intelligence (AI) Panel ──────────────────────────────────────────────── */
+/*
+  .r-intelligence-panel — AI-powered content areas.
+  Features animated border glow, gold signal dot, shimmer while loading.
+  Designed to feel like the system is speaking directly to the user.
+*/
+.r-intelligence-panel {
+  position: relative;
+  overflow: hidden;
+  background: rgba(8, 12, 26, 0.68);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid var(--r-glass-border-ai);
+  border-radius: var(--r-radius-lg);
+  animation: r-border-glow 3.5s ease-in-out infinite;
+  box-shadow: var(--r-glass-shadow-ai);
+}
+/* Gold top hairline — thicker and more visible than glass cards */
+.r-intelligence-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent  0%,
+    rgba(200,164,92,0.45)  20%,
+    rgba(226,196,124,0.80) 45%,
+    rgba(200,164,92,1.00)  50%,
+    rgba(226,196,124,0.80) 55%,
+    rgba(200,164,92,0.45)  80%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+}
+/* Warm ambient inner glow */
+.r-intelligence-panel::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 55%;
+  background: linear-gradient(180deg, rgba(200,164,92,0.045) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+/* Intelligence label + signal dot */
+.r-intel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--r-gold);
+  margin-bottom: 14px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(200,164,92,0.28);
+  background: rgba(200,164,92,0.08);
+  position: relative;
+  z-index: 1;
+}
+.r-intel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--r-gold-bright);
+  flex-shrink: 0;
+  animation: r-dot-breathe 2.4s ease-in-out infinite;
+}
+
+/* AI shimmer while thinking */
+.r-intel-thinking {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.r-intel-thinking::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(200,164,92,0.00) 0%,
+    rgba(200,164,92,0.07) 35%,
+    rgba(226,196,124,0.12) 50%,
+    rgba(200,164,92,0.07) 65%,
+    rgba(200,164,92,0.00) 100%
+  );
+  background-size: 250% 100%;
+  animation: r-shimmer 1.8s cubic-bezier(0.4,0,0.6,1) infinite;
+  border-radius: inherit;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Text reveal cursor */
+.r-text-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--r-gold);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  border-radius: 1px;
+  animation: r-cursor-blink 1s step-end infinite;
+}
+
+/* ── Command Surface ──────────────────────────────────────────────────────── */
+/*
+  .r-command-surface — darker, more opaque panel. Use for sidebars, toolbars,
+  high-density information surfaces. Less blur than glass, more solid.
+*/
+.r-command-surface {
+  position: relative;
+  background: rgba(6, 9, 18, 0.82);
+  border: 1px solid rgba(200,164,92,0.12);
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.65),
+    inset 0 1px 0 rgba(200,164,92,0.08);
+  border-radius: var(--r-radius-lg);
+  overflow: hidden;
+}
+
+/* ── Command Header ───────────────────────────────────────────────────────── */
+.r-command-header {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-radius-xl);
+  background: rgba(6, 9, 20, 0.72);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid rgba(200,164,92,0.14);
+  box-shadow:
+    0 8px 48px rgba(0,0,0,0.70),
+    inset 0 1px 0 rgba(200,164,92,0.10);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  animation: r-depth-enter 0.35s var(--r-ease) both;
+}
+/* Subtle amber radial glow behind header */
+.r-command-header::before {
+  content: '';
+  position: absolute;
+  top: -40%; left: -10%;
+  width: 50%; height: 200%;
+  background: radial-gradient(ellipse 55% 70% at center, rgba(200,164,92,0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Bottom edge line */
+.r-command-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200,164,92,0.18) 30%, rgba(200,164,92,0.28) 50%, rgba(200,164,92,0.18) 70%, transparent);
+  pointer-events: none;
+}
+.r-command-header > * { position: relative; z-index: 1; }
+
+/* Status indicator line */
+.r-status-line {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--r-text-3);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  flex-wrap: wrap;
+}
+.r-status-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--r-border-soft);
+  background: rgba(200,164,92,0.05);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--r-text-3);
+}
+.r-status-pip.online {
+  border-color: rgba(90,140,94,0.28);
+  background: rgba(90,140,94,0.08);
+  color: var(--r-success);
+}
+.r-status-pip.online::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--r-success);
+  box-shadow: 0 0 6px rgba(90,140,94,0.8);
+  animation: r-dot-breathe 2s ease-in-out infinite;
+}
+
+/* Attention badge — HUD style */
+.r-attention-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(200,130,60,0.30);
+  background: rgba(200,130,60,0.10);
+  backdrop-filter: blur(10px);
+  color: var(--r-warning);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  animation: r-kpi-enter 0.5s 0.2s var(--r-ease) both;
+}
+.r-attention-badge::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--r-warning);
+  box-shadow: 0 0 8px rgba(200,130,60,0.8);
+  animation: r-dot-breathe 1.6s ease-in-out infinite;
+}
+
+/* ── Signal Background ────────────────────────────────────────────────────── */
+/* Container for ambient falling signal streaks */
+.r-signal-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+  opacity: 0.9;
+}
+/* Subtle grid texture overlay */
+.r-signal-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(200,164,92,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200,164,92,0.015) 1px, transparent 1px);
+  background-size: 64px 64px;
+  pointer-events: none;
+}
+/* Ambient radial glows */
+.r-signal-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    var(--r-glow-center),
+    var(--r-glow-left),
+    var(--r-glow-right);
+  pointer-events: none;
+  animation: r-ambient-drift 9s ease-in-out infinite;
+}
+
+/* Signal streak particle */
+.r-streak {
+  position: absolute;
+  width: 1px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent 0%, var(--r-gold) 40%, rgba(226,196,124,0.9) 55%, var(--r-gold) 70%, transparent 100%);
+  animation: r-signal-fall var(--streak-dur, 7s) var(--streak-delay, 0s) ease-in infinite;
+  pointer-events: none;
+}
+
+/* ── Enhanced existing classes ────────────────────────────────────────────── */
+
+/* Override .r-card — make it glass-based */
+.r-card {
+  background: var(--r-glass-bg) !important;
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-color: var(--r-glass-border) !important;
+  box-shadow: var(--r-glass-shadow) !important;
+}
+.r-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(200,164,92,0.26) !important;
+  box-shadow:
+    0 16px 52px rgba(0,0,0,0.78),
+    0 4px 14px rgba(0,0,0,0.50),
+    0 0 0 1px rgba(200,164,92,0.16),
+    0 0 36px rgba(200,164,92,0.10),
+    inset 0 1px 0 rgba(200,164,92,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.22) !important;
+}
+
+/* Light sweep button */
+.r-btn-command {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid var(--r-glass-border);
+  background: rgba(14, 20, 38, 0.75);
+  backdrop-filter: blur(12px);
+  color: var(--r-text-2);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    transform    var(--r-dur) var(--r-ease),
+    border-color var(--r-dur) var(--r-ease),
+    box-shadow   var(--r-dur) var(--r-ease),
+    color        var(--r-dur) var(--r-ease);
+}
+.r-btn-command::after {
+  content: '';
+  position: absolute;
+  top: -60%; left: -80%;
+  width: 40%; height: 220%;
+  background: linear-gradient(105deg, transparent, rgba(200,164,92,0.06) 50%, transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.r-btn-command:hover {
+  transform: translateY(-1.5px);
+  border-color: rgba(200,164,92,0.30);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.40), 0 0 18px rgba(200,164,92,0.12);
+  color: var(--r-gold-bright);
+}
+.r-btn-command:hover::after { animation: r-light-sweep 0.55s var(--r-ease) forwards; }
+.r-btn-command:active       { transform: scale(0.97) translateY(0); transition-duration: 55ms; }
+
+/* Gold primary command button */
+.r-btn-command.r-btn-gold {
+  background: linear-gradient(135deg, rgba(200,164,92,0.22) 0%, rgba(160,110,50,0.15) 100%);
+  border-color: rgba(200,164,92,0.38);
+  color: var(--r-gold-bright);
+}
+.r-btn-command.r-btn-gold:hover {
+  background: linear-gradient(135deg, rgba(200,164,92,0.30) 0%, rgba(160,110,50,0.22) 100%);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.44), 0 0 24px rgba(200,164,92,0.22);
+}
+
+/* ── Table rows — controlled glow trace ──────────────────────────────────── */
+.r-tr-hover {
+  transition:
+    background var(--r-dur)      var(--r-ease),
+    box-shadow var(--r-dur-slow) var(--r-ease);
+  cursor: pointer;
+}
+.r-tr-hover:hover td {
+  background: rgba(200,164,92,0.035) !important;
+}
+.r-tr-hover:hover td:first-child {
+  border-left: 2px solid rgba(200,164,92,0.32);
+}
+
+/* ── Urgency rows ─────────────────────────────────────────────────────────── */
+/* Upgrade existing urgency rows to glass */
+.r-urgency-row {
+  background: rgba(200,164,92,0.035);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(200,164,92,0.12);
+  transition:
+    background    var(--r-dur) var(--r-ease),
+    border-color  var(--r-dur) var(--r-ease),
+    transform     var(--r-dur) var(--r-ease);
+}
+.r-urgency-row:hover {
+  background: rgba(200,164,92,0.06);
+  border-color: rgba(200,164,92,0.22);
+  transform: translateX(2px);
+}
+
+/* ── Page enter — more cinematic ─────────────────────────────────────────── */
+.r-page {
+  animation: r-depth-enter 0.30s var(--r-ease) both !important;
+}
+
+/* ── Sidebar — glass upgrade ──────────────────────────────────────────────── */
+aside {
+  background:
+    rgba(5, 8, 18, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.3) !important;
+  border-right: 1px solid rgba(200,164,92,0.10) !important;
+}
+
+/* ── Topbar — glass upgrade ───────────────────────────────────────────────── */
+header {
+  background: rgba(5, 8, 16, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.4) !important;
+  border-bottom: 1px solid rgba(200,164,92,0.09) !important;
+}
+
+/* ── prefers-reduced-motion ───────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .r-streak,
+  .r-signal-bg::after,
+  .r-intelligence-panel,
+  .r-intel-dot,
+  .r-dot-breathe,
+  .r-text-cursor,
+  .r-intel-thinking::after,
+  .r-route-progress-fill {
+    animation: none !important;
+    transition: none !important;
+  }
+  .r-glass::after,
+  .r-glass-kpi::after,
+  .r-btn-command::after { display: none; }
+  .r-page { animation: none !important; }
+  .r-command-header { animation: none !important; }
+  .r-kpi-value { animation: none !important; }
+}
+
+/* ── Mobile — reduce effects ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Reduce blur intensity on mobile for performance */
+  .r-glass {
+    backdrop-filter: blur(12px) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(1.2) !important;
+  }
+  .r-glass-kpi {
+    backdrop-filter: blur(10px) saturate(1.15) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(1.15) !important;
+  }
+  .r-intelligence-panel {
+    backdrop-filter: blur(14px) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(1.2) !important;
+    animation: none !important; /* stop border pulse on mobile */
+  }
+  /* Reduce signal streaks on mobile */
+  .r-streak { opacity: 0.6 !important; }
+  /* No light sweep on touch devices */
+  .r-glass:hover::after,
+  .r-btn-command::after { display: none !important; }
+  /* Simpler page enter */
+  .r-page { animation: r-fade-up 0.22s var(--r-ease) both !important; }
+}

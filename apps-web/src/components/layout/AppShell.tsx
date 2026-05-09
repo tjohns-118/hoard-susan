@@ -6,6 +6,7 @@ import { AppSidebar } from './AppSidebar';
 import { AppTopbar } from './AppTopbar';
 import { RouteProgress } from './RouteProgress';
 import { MobileNav } from './MobileNav';
+import { SignalBackground } from './SignalBackground';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppStore } from '@/app/store/useAppStore';
 import { ComplianceGate } from '@/components/compliance/ComplianceGate';
@@ -53,11 +54,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight:  '100vh',
         background: 'var(--r-grad-page)',
-        color: 'var(--r-text)',
+        color:      'var(--r-text)',
+        position:   'relative',
       }}
     >
+      {/* Ambient signal background — absolutely positioned, pointer-events none */}
+      <SignalBackground />
+
       {/* Route progress bar — always at viewport top */}
       <RouteProgress />
 

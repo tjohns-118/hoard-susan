@@ -8,19 +8,10 @@ interface StatCardProps {
 export function StatCard({ label, value, subtext, accent }: StatCardProps) {
   return (
     <div
-      className={`r-card r-stat-card${accent ? ' r-card-accent' : ''}`}
+      className={`r-glass-kpi r-stat-card${accent ? ' r-kpi-accent' : ''}`}
       style={{
-        padding: '18px 20px',
+        padding:      '18px 20px',
         borderRadius: 'var(--r-radius-lg)' as unknown as number,
-        background: accent
-          ? 'linear-gradient(155deg, #1f2840 0%, #192038 100%)'
-          : 'var(--r-grad-card)',
-        border: accent
-          ? '1px solid var(--r-border-strong)'
-          : '1px solid var(--r-border)',
-        boxShadow: accent
-          ? 'var(--r-shadow), var(--r-shadow-gold)'
-          : 'var(--r-shadow)',
       }}
     >
 
@@ -38,13 +29,14 @@ export function StatCard({ label, value, subtext, accent }: StatCardProps) {
       </div>
 
       <div
+        className="r-kpi-value"
         style={{
-          fontFamily: 'var(--r-font-serif)',
-          fontSize: 34,
-          fontWeight: 700,
+          fontFamily:    'var(--r-font-serif)',
+          fontSize:      34,
+          fontWeight:    700,
           letterSpacing: '-0.02em',
-          color: accent ? 'var(--r-gold-bright)' : 'var(--r-text)',
-          lineHeight: 1,
+          color:         accent ? 'var(--r-gold-bright)' : 'var(--r-text)',
+          lineHeight:    1,
         }}
       >
         {value}
