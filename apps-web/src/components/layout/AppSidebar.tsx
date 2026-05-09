@@ -86,7 +86,12 @@ function writeCollapsed(set: Set<string>): void {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  mobileOpen?:    boolean;
+  onMobileClose?: () => void;
+}
+
+export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProps) {
   const pathname    = usePathname();
   const router      = useRouter();
   useAgents();
@@ -160,49 +165,74 @@ export function AppSidebar() {
 
   return (
     <aside
+      className={`r-sidebar-aside${mobileOpen ? ' r-sidebar-open' : ''}`}
       style={{
-        borderRight: '1px solid var(--r-border-soft)',
-        padding: '22px 12px 24px',
-        position: 'sticky',
-        top: 0,
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflowY: 'auto',
-        overflowX: 'hidden',
+        borderRight:     '1px solid var(--r-border-soft)',
+        padding:         '22px 12px 24px',
+        position:        'sticky',
+        top:             0,
+        height:          '100vh',
+        display:         'flex',
+        flexDirection:   'column',
+        overflowY:       'auto',
+        overflowX:       'hidden',
       }}
     >
       {/* ── Wordmark ── */}
-      <div style={{ paddingLeft: 8, marginBottom: 26, flexShrink: 0 }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
+      <div style={{ paddingLeft: 8, marginBottom: 26, flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <Link href="/" style={{ textDecoration: 'none' }}>
+            <div
+              style={{
+                fontFamily: 'var(--r-font-serif)',
+                fontSize: 30,
+                fontWeight: 700,
+                letterSpacing: '-0.01em',
+                lineHeight: 1,
+                background: 'var(--r-grad-gold)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                marginBottom: 5,
+              }}
+            >
+              Hoard
+            </div>
+          </Link>
           <div
             style={{
-              fontFamily: 'var(--r-font-serif)',
-              fontSize: 30,
+              fontSize: 9,
               fontWeight: 700,
-              letterSpacing: '-0.01em',
-              lineHeight: 1,
-              background: 'var(--r-grad-gold)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              marginBottom: 5,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--r-text-3)',
             }}
           >
-            Hoard
+            Brokerage CRM
           </div>
-        </Link>
-        <div
+        </div>
+        {/* Mobile close button — hidden on desktop */}
+        <button
+          onClick={onMobileClose}
+          className="r-topbar-hamburger"
+          aria-label="Close menu"
           style={{
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--r-text-3)',
+            display:        'none',
+            alignItems:     'center',
+            justifyContent: 'center',
+            width:          32,
+            height:         32,
+            borderRadius:   8,
+            border:         '1px solid var(--r-border)',
+            background:     'rgba(200,164,92,0.06)',
+            cursor:         'pointer',
+            color:          'var(--r-text-3)',
+            fontSize:       16,
+            flexShrink:     0,
           }}
         >
-          Brokerage CRM
-        </div>
+          ✕
+        </button>
       </div>
 
       {/* ── Navigation ── */}

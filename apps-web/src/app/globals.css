@@ -663,3 +663,266 @@ aside { position: relative; }
   0%, 100% { opacity: 0.55; }
   50%       { opacity: 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PREMIUM UI — AI, Skeletons, Route Progress, Mobile
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shimmer keyframe (shared by AI + skeleton) ───────────────────────────── */
+@keyframes r-shimmer {
+  from { background-position: -250% center; }
+  to   { background-position:  250% center; }
+}
+
+/* ── AI Intelligence Panel ───────────────────────────────────────────────── */
+/*
+  .r-ai-panel wraps any AI-generated content section.
+  Adds a gold signal border, ambient glow, and a top-edge highlight.
+  Combine with .r-ai-thinking while the AI is generating.
+*/
+.r-ai-panel {
+  position: relative;
+  border: 1px solid rgba(200,164,92,0.30) !important;
+  background: linear-gradient(155deg, rgba(200,164,92,0.044) 0%, rgba(200,164,92,0.012) 100%),
+              var(--r-grad-card) !important;
+  box-shadow:
+    0 0 40px rgba(200,164,92,0.07),
+    0 6px 28px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(200,164,92,0.16) !important;
+}
+/* Gold hairline across the panel top */
+.r-ai-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200,164,92,0.58) 28%, rgba(226,196,124,0.82) 50%, rgba(200,164,92,0.58) 72%, transparent);
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 999px;
+}
+/* Subtle inner warm glow at top — always visible on AI panels */
+.r-ai-panel::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 60px;
+  background: linear-gradient(180deg, rgba(200,164,92,0.04) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+/* AI thinking state — animated shimmer while loading */
+.r-ai-thinking {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(200,164,92,0.00) 0%,
+      rgba(200,164,92,0.065) 38%,
+      rgba(226,196,124,0.11) 50%,
+      rgba(200,164,92,0.065) 62%,
+      rgba(200,164,92,0.00) 100%
+    );
+  background-size: 250% 100%;
+  animation: r-shimmer 1.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: inherit;
+}
+
+/* ── Skeleton loaders ─────────────────────────────────────────────────────── */
+.r-skeleton {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0.030) 0%,
+      rgba(200,164,92,0.075) 38%,
+      rgba(226,196,124,0.105) 50%,
+      rgba(200,164,92,0.075) 62%,
+      rgba(255,255,255,0.030) 100%
+    );
+  background-size: 250% 100%;
+  animation: r-shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+  color: transparent !important;
+  pointer-events: none;
+  user-select: none;
+}
+.r-skeleton-text  { height: 14px; border-radius: 4px; }
+.r-skeleton-title { height: 22px; border-radius: 5px; }
+.r-skeleton-block { height: 48px; border-radius: 9px; }
+
+/* ── Route progress bar ───────────────────────────────────────────────────── */
+.r-route-progress {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  z-index: 9999;
+  pointer-events: none;
+}
+.r-route-progress-fill {
+  height: 100%;
+  background: var(--r-grad-gold);
+  box-shadow: 0 0 10px rgba(200,164,92,0.75), 0 0 4px rgba(226,196,124,0.55);
+  transition: width 240ms var(--r-ease), opacity 200ms ease;
+  border-radius: 0 999px 999px 0;
+  will-change: width;
+}
+
+/* ── Button saving / loading state ───────────────────────────────────────── */
+button[data-saving="true"],
+button[data-loading="true"] {
+  opacity: 0.60;
+  cursor: wait !important;
+  pointer-events: none;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* ── Card hover — enhanced gold depth ────────────────────────────────────── */
+.r-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 44px rgba(0,0,0,0.68),
+    0 3px 12px rgba(0,0,0,0.38),
+    0 0 0 1px rgba(200,164,92,0.18),
+    0 0 32px rgba(200,164,92,0.09),
+    0 1px 0 rgba(200,164,92,0.08) inset !important;
+}
+
+/* ── Table row hover ──────────────────────────────────────────────────────── */
+.r-tr-hover {
+  transition: background var(--r-dur) var(--r-ease);
+  cursor: pointer;
+}
+.r-tr-hover:hover td { background: rgba(200,164,92,0.04); }
+.r-tr-hover:hover td:first-child { border-left: 2px solid rgba(200,164,92,0.28); }
+
+/* ── Mobile shell breakpoints ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Collapse grid to single column — sidebar removed from flow */
+  .r-shell-grid { grid-template-columns: 1fr !important; }
+  /* Sidebar slides in as fixed overlay */
+  .r-sidebar-aside {
+    position: fixed !important;
+    top: 0; left: 0;
+    height: 100% !important;
+    width: 268px !important;
+    z-index: 210;
+    transform: translateX(-268px);
+    transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 8px 0 40px rgba(0,0,0,0.65), 2px 0 0 rgba(200,164,92,0.10);
+    overscroll-behavior: contain;
+  }
+  .r-sidebar-aside.r-sidebar-open { transform: translateX(0); }
+  /* Show hamburger */
+  .r-topbar-hamburger { display: flex !important; }
+  /* Main padding-bottom for bottom nav */
+  .r-main-content { padding-bottom: 84px !important; }
+  /* Hide topbar sub-title on very small screens */
+  .r-topbar-sub { display: none !important; }
+  /* Main padding reduction */
+  .r-main-content { padding-left: 18px !important; padding-right: 18px !important; }
+}
+@media (min-width: 769px) {
+  .r-topbar-hamburger { display: none !important; }
+  .r-mobile-bottom-nav { display: none !important; }
+  .r-mobile-fab { display: none !important; }
+  .r-sidebar-aside { transform: none !important; transition: none !important; }
+}
+
+/* ── Mobile sidebar overlay backdrop ─────────────────────────────────────── */
+.r-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.68);
+  z-index: 209;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: r-fade-up 160ms var(--r-ease) both;
+}
+
+/* ── Mobile bottom navigation ─────────────────────────────────────────────── */
+.r-mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: linear-gradient(180deg, rgba(7,9,15,0.95) 0%, rgba(6,8,16,0.99) 100%);
+  border-top: 1px solid var(--r-border-soft);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  z-index: 100;
+  align-items: stretch;
+  justify-content: space-around;
+  padding: 0;
+}
+@media (max-width: 768px) {
+  .r-mobile-bottom-nav { display: flex; }
+}
+.r-mob-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--r-text-3);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: color 140ms ease, background 140ms ease;
+  border-top: 2px solid transparent;
+  position: relative;
+}
+.r-mob-tab.active {
+  color: var(--r-gold-bright);
+  border-top-color: var(--r-gold);
+  background: rgba(200,164,92,0.05);
+}
+.r-mob-tab:not(.active):hover { color: var(--r-text-2); }
+.r-mob-tab-icon { font-size: 18px; line-height: 1; }
+
+/* ── Mobile floating action button ───────────────────────────────────────── */
+.r-mobile-fab {
+  display: none;
+  position: fixed;
+  bottom: 76px;
+  right: 18px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--r-grad-gold);
+  border: none;
+  cursor: pointer;
+  z-index: 150;
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.45),
+    0 0 22px rgba(200,164,92,0.32),
+    0 1px 0 rgba(255,255,255,0.14) inset;
+  font-size: 22px;
+  color: #07090f;
+  font-weight: 900;
+  align-items: center;
+  justify-content: center;
+  transition: transform 180ms var(--r-ease), box-shadow 180ms var(--r-ease);
+}
+.r-mobile-fab:hover {
+  transform: translateY(-2px) scale(1.06);
+  box-shadow:
+    0 8px 28px rgba(0,0,0,0.50),
+    0 0 30px rgba(200,164,92,0.42),
+    0 1px 0 rgba(255,255,255,0.16) inset;
+}
+.r-mobile-fab:active {
+  transform: scale(0.93);
+  transition-duration: 55ms;
+}
+@media (max-width: 768px) {
+  .r-mobile-fab { display: flex; }
+}

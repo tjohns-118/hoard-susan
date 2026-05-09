@@ -6,11 +6,15 @@
  */
 
 import { NextResponse } from 'next/server';
+import { getSessionUser } from '@/lib/getSessionUser';
 import { getMembership } from '@/lib/getMembership';
 import { detectCredentialMode } from '@/lib/sms/provider';
 
 export async function GET() {
-  const membership = await getMembership();
+  const sessionUser = await getSessionUser();
+  if (!sessionUser)
+    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+  const membership = await getMembership(sessionUser.id, sessionUser.email);
   if (!membership)
     return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   if (membership.role !== 'broker' && membership.role !== 'admin')
