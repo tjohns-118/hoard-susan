@@ -22,6 +22,11 @@
  *
  * Security: requires Authorization: Bearer {CRON_SECRET} header.
  *
+ * Scheduling: Vercel Hobby does not support cron jobs. To run on a schedule,
+ *   use Vercel Pro (add crons to vercel.json) or an external scheduler
+ *   (GitHub Actions, Render cron, uptime service, etc.) that calls this
+ *   endpoint with the Authorization header every 30 minutes.
+ *
  * Feature flags:
  *   ENABLE_CALENDAR_SMS_REMINDERS      — master switch (default false)
  *   ENABLE_CLIENT_EVENT_SMS_REMINDERS  — client reminders (default false)

@@ -19,6 +19,12 @@
  * Message length: trimmed to 320 chars.
  *
  * Security: requires Authorization: Bearer {CRON_SECRET} header.
+ *
+ * Scheduling: Vercel Hobby does not support cron jobs. To run on a schedule,
+ *   use Vercel Pro (add crons to vercel.json) or an external scheduler
+ *   (GitHub Actions, Render cron, uptime service, etc.) that calls this
+ *   endpoint with the Authorization header weekdays at 14:00 UTC.
+ *
  * Feature flag: ENABLE_DAILY_AI_SMS=true
  */
 
