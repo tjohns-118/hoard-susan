@@ -23,6 +23,8 @@ import type { BrokerSummary } from '@/app/api/ai/broker-summary/route';
 import { CommandHeader } from '@/components/ui/CommandHeader';
 import { IntelligencePanel } from '@/components/ui/IntelligencePanel';
 import { AnimatedTextReveal } from '@/components/ui/AnimatedTextReveal';
+import { MobileCollapse } from '@/components/ui/MobileCollapse';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -266,7 +268,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       />
 
       {/* ── A. KPI Strip ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div className="mob-col-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
         <StatCard label="Active Leads"    value={activeLeads.length}    subtext={`${hotLeads.length} hot`} />
         <StatCard label="Hot Leads"       value={hotLeads.length}       subtext="Need immediate action" accent={hotLeads.length > 0} />
         <StatCard label="Open Deals"      value={openOpps.length}       subtext={`${negotiationDeals.length} in negotiation`} />
@@ -291,7 +293,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       />
 
       {/* ── D. Action Center + Risk Panel ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
         {/* Action Center */}
         <Panel>
           <SectionHeader title="Action Center" count={actionCount} countTone="warning" />
@@ -415,7 +417,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       {agentWorkload.length > 0 && (
         <Panel style={{ marginBottom: 24 }}>
           <SectionHeader title="Agent Activity" />
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(agentWorkload.length, 4)}, 1fr)`, gap: 12 }}>
+          <div className="mob-col-2" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(agentWorkload.length, 4)}, 1fr)`, gap: 12 }}>
             {agentWorkload.map(({ agent, opps, leads: agLeads, value, overdue }) => (
               <div key={agent.id} style={{ padding: '12px 14px', borderRadius: 12, border: overdue > 0 ? '1px solid rgba(239,68,68,0.2)' : '1px solid var(--r-border)', background: overdue > 0 ? 'rgba(239,68,68,0.03)' : 'rgba(200,164,92,0.03)' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--r-font-serif)', color: 'var(--r-text)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -451,6 +453,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
       )}
 
       {/* ── E. Pipeline Snapshot ── */}
+      <MobileCollapse title="Pipeline Snapshot">
       <Panel style={{ marginBottom: 24 }}>
         <SectionHeader title="Pipeline Snapshot" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -494,9 +497,11 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
           })}
         </div>
       </Panel>
+      </MobileCollapse>
 
       {/* ── F. Lead Funnel + Task Queue ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
+      <MobileCollapse title="Lead Funnel & Tasks">
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
         {/* Lead Conversion Funnel */}
         <Panel>
           <SectionHeader title="Lead Conversion Funnel" />
@@ -549,9 +554,11 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
           </div>
         </Panel>
       </div>
+      </MobileCollapse>
 
       {/* ── G. Upcoming Events + Recent Activity ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 0 }}>
+      <MobileCollapse title="Events & Activity">
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 0 }}>
         {/* Upcoming Events */}
         <Panel>
           <SectionHeader title="Upcoming Events" count={upcomingEvents.length} />
@@ -579,6 +586,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
           </div>
         </Panel>
       </div>
+      </MobileCollapse>
     </AppShell>
   );
 }
@@ -586,6 +594,7 @@ function BrokerDashboard({ events }: { events: ReturnType<typeof useEvents>['eve
 // ── Broker AI Panel ───────────────────────────────────────────────────────────
 
 function BrokerAiPanel({ summary, loading }: { summary: BrokerSummary | null; loading: boolean }) {
+  const isMobile = useIsMobile();
   return (
     <IntelligencePanel
       loading={loading}
@@ -597,7 +606,7 @@ function BrokerAiPanel({ summary, loading }: { summary: BrokerSummary | null; lo
           No intelligence available yet — continue building your pipeline.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 20, alignItems: 'start', position: 'relative', zIndex: 1 }}>
+        <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 20, alignItems: 'start', position: 'relative', zIndex: 1 }}>
 
           {/* Briefing + Actions */}
           <div>
@@ -605,7 +614,7 @@ function BrokerAiPanel({ summary, loading }: { summary: BrokerSummary | null; lo
               Brokerage Briefing
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 }}>
-              {summary.broker_briefing.map((line, i) => (
+              {(isMobile ? summary.broker_briefing.slice(0, 3) : summary.broker_briefing).map((line, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <span style={{ color: 'var(--r-gold)', fontSize: 11, lineHeight: 1.6, flexShrink: 0 }}>·</span>
                   <AnimatedTextReveal

@@ -14,6 +14,7 @@ import { useAgents } from '@/hooks/useAgents';
 import { useTasks } from '@/hooks/useTasks';
 import { getStageDefinition } from '@/features/pipeline/definitions';
 import { useBrokerGuard } from '@/hooks/useBrokerGuard';
+import { MobileCollapse } from '@/components/ui/MobileCollapse';
 
 function fmtValue(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -158,7 +159,7 @@ export default function OversightPage() {
       </div>
 
       {/* ── KPI strip ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div className="mob-col-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
         <StatCard label="Pipeline Value"  value={fmtRange(pipelineMin, pipelineMax)} subtext={`${openOpps.length} open deals`} accent />
         <StatCard label="Closed"          value={fmtRange(closedMin, closedMax)}     subtext={`${closedOpps.length} closed`} />
         <StatCard label="Conversion"      value={`${conversionRate}%`}    subtext="closed / total" />
@@ -168,7 +169,8 @@ export default function OversightPage() {
       </div>
 
       {/* ── Two-column: Pipeline stages + Alert board ─────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <MobileCollapse title="Pipeline Breakdown">
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
 
         {/* Pipeline by stage */}
         <div className="r-card" style={{ padding: '20px 24px', borderRadius: 16, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', boxShadow: 'var(--r-shadow)' }}>
@@ -263,9 +265,11 @@ export default function OversightPage() {
           </div>
         </div>
       </div>
+      </MobileCollapse>
 
       {/* ── Agent workload + Overdue tasks ──────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <MobileCollapse title="Agent Workload & Tasks">
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
 
         {/* Agent workload */}
         <div className="r-card" style={{ padding: '20px 24px', borderRadius: 16, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', boxShadow: 'var(--r-shadow)' }}>
@@ -377,6 +381,7 @@ export default function OversightPage() {
           </div>
         </div>
       </div>
+      </MobileCollapse>
 
       {/* ── Property inventory summary ───────────────────────────────────────── */}
       <div className="r-card" style={{ padding: '20px 24px', borderRadius: 16, border: '1px solid var(--r-border)', background: 'var(--r-grad-card)', boxShadow: 'var(--r-shadow)' }}>

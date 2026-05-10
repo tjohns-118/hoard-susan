@@ -19,6 +19,7 @@ import {
 } from '@/components/dashboard/shared';
 import { useAgentSummary } from '@/hooks/useAgentSummary';
 import type { AgentSummary } from '@/app/api/ai/agent-summary/route';
+import { MobileCollapse } from '@/components/ui/MobileCollapse';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ export default function AgentDashboardPage() {
       </div>
 
       {/* ── KPI Strip ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div className="mob-col-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
         <StatCard label="My Leads"    value={myLeads.length}      subtext={`${myHotLeads.length} hot`} accent={myHotLeads.length > 0} />
         <StatCard label="My Contacts" value={myContacts.length}   subtext="assigned clients" />
         <StatCard label="My Deals"    value={myOpps.length}       subtext={`${myNegotiationDeals.length} in negotiation`} />
@@ -243,7 +244,7 @@ export default function AgentDashboardPage() {
       />
 
       {/* ── Action Center + Alerts ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '5fr 3fr', gap: 18, marginBottom: 24, alignItems: 'start' }}>
         {/* Action Center */}
         <Panel>
           <SectionHeader title="My Action Items" count={actionCount} countTone={actionCount > 0 ? 'warning' : 'default'} />
@@ -382,7 +383,8 @@ export default function AgentDashboardPage() {
       )}
 
       {/* ── My Task Queue + My Leads ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
+      <MobileCollapse title="My Tasks & Leads">
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
         {/* Task Queue */}
         <Panel>
           <SectionHeader title="My Task Queue" count={myTasks.length} />
@@ -421,12 +423,14 @@ export default function AgentDashboardPage() {
           </div>
         </Panel>
       </div>
+      </MobileCollapse>
 
       {/* ── My Recent Activity ── */}
       {myRecentActivity.length > 0 && (
+        <MobileCollapse title="My Recent Activity">
         <Panel>
           <SectionHeader title="My Recent Activity" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div className="mob-col-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {myRecentActivity.map((item, i) => (
               <div key={i} style={{ padding: '10px 12px', borderRadius: 11, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)', borderLeft: `3px solid ${item.tone === 'success' ? 'rgba(90,140,94,0.7)' : item.tone === 'warning' ? 'rgba(200,130,60,0.7)' : 'rgba(200,164,92,0.6)'}` }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--r-text)', marginBottom: 3, lineHeight: 1.35 }}>{item.label}</div>
@@ -435,6 +439,7 @@ export default function AgentDashboardPage() {
             ))}
           </div>
         </Panel>
+        </MobileCollapse>
       )}
     </AppShell>
   );
@@ -487,7 +492,7 @@ function AgentAiPanel({ summary, loading }: { summary: AgentSummary | null; load
   return (
     <div style={panelStyle}>
       {headerRow}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18, alignItems: 'start' }}>
+      <div className="mob-col-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18, alignItems: 'start' }}>
 
         {/* Focus list */}
         <div>
