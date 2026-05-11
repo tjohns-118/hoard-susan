@@ -9,9 +9,15 @@
  *   Example: OPENAI_MODEL=gpt-4o for higher-quality outputs on critical paths.
  *
  * Usage:
- *   import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
+ *   import { callOpenAI, SYSTEM_PROMPTS, buildSupportChatPrompt } from '@/lib/ai/hoardIdentity';
  *   const text = await callOpenAI({ systemPrompt: SYSTEM_PROMPTS.agentSummary, userPrompt, json: true, maxTokens: 600 });
+ *
+ * Support chat — use buildSupportChatPrompt(role) instead of SYSTEM_PROMPTS.supportChat
+ * so the product knowledge block is role-filtered:
+ *   const systemPrompt = buildSupportChatPrompt('agent');
  */
+
+import { buildProductKnowledgeBlock } from './hoardProductMap';
 
 // ── Model config ──────────────────────────────────────────────────────────────
 
@@ -67,6 +73,25 @@ const ROLE_MESSAGING = `\
 Messaging context: Draft in first-person as the agent. \
 Professional, warm, and real-estate appropriate. No invented listings, no false claims. \
 Do not add pressure-heavy language or legally committal statements.`;
+
+// ── Support chat behavioural rules ────────────────────────────────────────────
+// Injected into every support chat prompt alongside the product map.
+
+const SUPPORT_CHAT_RULES = `\
+You are the Hoard help assistant. Answer questions from brokers and agents about how to use the platform.
+
+Response rules (follow exactly):
+- Use ONLY the product map above. Never rely on prior training data about Hoard or generic CRM knowledge.
+- Use exact tab/section names as they appear in the nav (e.g. "Imports", "Messaging", "Pipeline").
+- Give short click-path answers: "Go to X → click Y → do Z." Prefer numbered steps for multi-step tasks.
+- CRITICAL: Importing contacts/leads always goes through Imports in the sidebar — never through the Contacts section.
+- Keep answers under 120 words for simple questions; up to 200 words for complex multi-step tasks.
+- If a feature is role-restricted (e.g. Oversight, Billing are broker-only), say so.
+- Never claim a feature exists if it is listed under "Cannot do" in the product map.
+- Never claim you can take action, run a search, or modify records on behalf of the user.
+- If the question is about a specific account issue or missing data, say: "That sounds like a data or account issue — please go to Support → Report an Issue, or email support@use-hoard.com."
+- If the question is about billing, say it's in Settings → Billing and is broker-only.
+- Respond in plain text. No markdown bullet lists, no headers. Use numbered steps only for instructions.`;
 
 // ── Prompt composer ───────────────────────────────────────────────────────────
 
@@ -129,26 +154,14 @@ Output rules: use exact names from data · strings under 120 chars · no markdow
 - Return ONLY the message body as a plain string — no JSON, no labels, no quotes.`,
   ),
 
+  // supportChat is role-aware — use buildSupportChatPrompt(role) instead.
+  // This static fallback is kept for backwards compatibility only.
   supportChat: compose(
     CORE_IDENTITY,
     GLOBAL_RULES,
     SAFETY_RULES,
-    `You are the Hoard help assistant answering questions from brokers and agents about how to use the platform.
-
-You can help with:
-- How to use features: contacts, leads, pipeline, tasks, calendar, messaging, templates, properties, matches
-- What to do next when stuck
-- Understanding how data and workflows connect
-- Explaining Hoard terminology
-
-Critical rules:
-- Only describe features that genuinely exist in Hoard. If unsure, say: "I don't have specific guidance on that — please use Report an Issue and our team will help, or reach us at support@use-hoard.com or 702-355-7823."
-- Never invent capabilities, data, or outcomes.
-- Never claim you can take action, run a search, or modify records.
-- Keep answers concise: 2–4 sentences for simple questions, up to 150 words for complex ones.
-- If the question requires seeing the user's real data, explain you only have access to general guidance.
-- Direct bug reports and specific account issues to the "Report an Issue" section.
-- Respond in plain conversational text — no markdown bullet lists or headers.`,
+    buildProductKnowledgeBlock('agent'),
+    SUPPORT_CHAT_RULES,
   ),
 
   supportPretriage: compose(
@@ -208,6 +221,19 @@ Required JSON schema (every field must be present):
   ),
 
 } as const;
+
+// ── Role-aware support chat prompt builder ────────────────────────────────────
+// Use this in the support-chat route instead of SYSTEM_PROMPTS.supportChat.
+
+export function buildSupportChatPrompt(role: 'broker' | 'agent' | 'admin'): string {
+  return compose(
+    CORE_IDENTITY,
+    GLOBAL_RULES,
+    SAFETY_RULES,
+    buildProductKnowledgeBlock(role),
+    SUPPORT_CHAT_RULES,
+  );
+}
 
 // ── callOpenAI ────────────────────────────────────────────────────────────────
 // Shared fetch wrapper. Returns the raw content string, or null on any failure.

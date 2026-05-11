@@ -10,7 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/getSessionUser';
-import { callOpenAI, SYSTEM_PROMPTS } from '@/lib/ai/hoardIdentity';
+import { getMembership } from '@/lib/getMembership';
+import { callOpenAI, buildSupportChatPrompt } from '@/lib/ai/hoardIdentity';
 
 const MAX_MESSAGES = 20; // cap context window
 
@@ -31,6 +32,14 @@ export async function POST(req: NextRequest) {
   if (!lastUserMsg)
     return NextResponse.json({ error: 'Empty message' }, { status: 400 });
 
+  // Resolve role for product-map filtering (agent sees fewer sections than broker).
+  // Falls back to 'agent' if membership lookup fails — never exposes broker-only info to unknown roles.
+  const membership = await getMembership(sessionUser.id, sessionUser.email).catch(() => null);
+  const role: 'broker' | 'agent' | 'admin' =
+    membership?.role === 'broker' ? 'broker'
+    : membership?.role === 'admin' ? 'admin'
+    : 'agent';
+
   // Build a single userPrompt from the full conversation so callOpenAI can handle it.
   // Format: "User: ...\nAssistant: ...\nUser: ..."
   const userPrompt = messages
@@ -38,11 +47,11 @@ export async function POST(req: NextRequest) {
     .join('\n');
 
   const reply = await callOpenAI({
-    systemPrompt: SYSTEM_PROMPTS.supportChat,
+    systemPrompt: buildSupportChatPrompt(role),
     userPrompt,
     json:         false,
-    maxTokens:    300,
-    temperature:  0.4,
+    maxTokens:    350,
+    temperature:  0.3,
     timeoutMs:    12_000,
   });
 

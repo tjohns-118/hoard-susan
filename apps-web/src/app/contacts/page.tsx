@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
@@ -286,6 +286,254 @@ function ContactRow({
         </ActionBtn>
       </div>
     </div>
+  );
+}
+
+// ── Document history ──────────────────────────────────────────────────────────
+
+const DOC_TYPES = [
+  'Buyer Agreement',
+  'Seller Agreement',
+  'Disclosure',
+  'Showing Form',
+  'Insurance/Referral',
+  'Contract',
+  'Other',
+] as const;
+
+type ContactDocument = {
+  id: string;
+  brokerage_id: string;
+  contact_id: string;
+  uploaded_by_member_id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  file_size: number | null;
+  document_type: string | null;
+  notes: string | null;
+  signed_at: string | null;
+  uploaded_at: string;
+  created_at: string;
+  signedUrl: string | null;
+};
+
+function fmtBytes(bytes: number | null) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsSection({ contactId }: { contactId: string }) {
+  const currentRole = useAppStore((s) => s.currentRole);
+  const memberId    = useAppStore((s) => s.memberId);
+  const agents      = useAppStore((s) => s.agents);
+
+  const [docs,       setDocs]       = useState<ContactDocument[]>([]);
+  const [loading,    setLoading]    = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading,  setUploading]  = useState(false);
+
+  const [file,       setFile]       = useState<File | null>(null);
+  const [docType,    setDocType]    = useState('');
+  const [signedAt,   setSignedAt]   = useState('');
+  const [docNotes,   setDocNotes]   = useState('');
+  const [uploadError, setUploadError] = useState('');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchDocs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/documents`);
+      if (!res.ok) return;
+      setDocs(await res.json());
+    } catch {
+      // silent — no documents is a valid state
+    } finally {
+      setLoading(false);
+    }
+  }, [contactId]);
+
+  useEffect(() => { void fetchDocs(); }, [fetchDocs]);
+
+  function resetUpload() {
+    setFile(null);
+    setDocType('');
+    setSignedAt('');
+    setDocNotes('');
+    setUploadError('');
+    setShowUpload(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleUpload() {
+    if (!file) { setUploadError('Please select a file.'); return; }
+    setUploading(true);
+    setUploadError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (docType)  fd.append('documentType', docType);
+      if (docNotes) fd.append('notes', docNotes);
+      if (signedAt) fd.append('signedAt', signedAt);
+
+      const res = await fetch(`/api/contacts/${contactId}/documents`, { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error((err as { error?: string }).error ?? 'Upload failed');
+      }
+      resetUpload();
+      await fetchDocs();
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDelete(docId: string) {
+    if (!window.confirm('Remove this document from the audit trail? This cannot be undone.')) return;
+    try {
+      await fetch(`/api/contacts/${contactId}/documents/${docId}`, { method: 'DELETE' });
+      await fetchDocs();
+    } catch {
+      // ignore — list will re-sync on next load
+    }
+  }
+
+  function uploaderLabel(doc: ContactDocument) {
+    if (doc.uploaded_by_member_id === memberId) return 'You';
+    const agent = agents.find((a) => a.id === doc.uploaded_by_member_id);
+    return agent?.name ?? 'Team member';
+  }
+
+  function fmtDocDate(iso: string) {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  const canDeleteDoc = (doc: ContactDocument) =>
+    currentRole === 'broker' ||
+    doc.uploaded_by_member_id === memberId;
+
+  return (
+    <Panel>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showUpload || docs.length > 0 ? 12 : 0 }}>
+        <SubHeader>Document History ({docs.length})</SubHeader>
+        <ActionBtn tone="primary" onClick={() => setShowUpload((v) => !v)}>
+          {showUpload ? 'Cancel' : '+ Attach Document'}
+        </ActionBtn>
+      </div>
+
+      {showUpload && (
+        <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(200,164,92,0.04)', border: '1px solid var(--r-border)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>File *</div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
+                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setUploadError(''); }}
+                style={{ width: '100%', fontSize: 12, color: 'var(--r-text-2)', padding: '5px 8px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'var(--r-bg)', boxSizing: 'border-box', cursor: 'pointer' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Document Type</div>
+              <select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ ...selectStyle, fontSize: 12 }}>
+                <option value="">— Select type —</option>
+                {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Signed Date (optional)</div>
+              <input type="date" value={signedAt} onChange={(e) => setSignedAt(e.target.value)} style={{ ...inputStyle, fontSize: 12 }} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Notes (optional)</div>
+              <textarea
+                value={docNotes}
+                onChange={(e) => setDocNotes(e.target.value)}
+                rows={2}
+                placeholder="Any context about this document…"
+                style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.04)', color: 'var(--r-text)', fontSize: 12, lineHeight: 1.5, boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          {uploadError && (
+            <div style={{ fontSize: 12, color: 'var(--r-danger)', marginBottom: 8 }}>{uploadError}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn tone="primary" onClick={handleUpload} disabled={uploading || !file}>
+              {uploading ? 'Uploading…' : 'Upload Document'}
+            </ActionBtn>
+            <ActionBtn onClick={resetUpload}>Cancel</ActionBtn>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>Loading document history…</div>
+      )}
+
+      {!loading && docs.length === 0 && !showUpload && (
+        <div style={{ fontSize: 12, color: 'var(--r-text-3)', fontStyle: 'italic' }}>No documents on file for this contact.</div>
+      )}
+
+      {docs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {docs.map((doc) => (
+            <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'rgba(200,164,92,0.03)', border: '1px solid var(--r-border)' }}>
+              <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--r-text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {doc.file_name}
+                </div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 4, alignItems: 'center' }}>
+                  {doc.document_type && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--r-gold)', background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)', borderRadius: 5, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {doc.document_type}
+                    </span>
+                  )}
+                  {doc.file_size != null && (
+                    <span style={{ fontSize: 10, color: 'var(--r-text-3)', fontWeight: 600 }}>{fmtBytes(doc.file_size)}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--r-text-3)', lineHeight: 1.6 }}>
+                  <span>Uploaded {fmtDocDate(doc.uploaded_at)} by {uploaderLabel(doc)}</span>
+                  {doc.signed_at && (
+                    <span> · Signed {fmtDocDate(doc.signed_at)}</span>
+                  )}
+                </div>
+                {doc.notes && (
+                  <div style={{ fontSize: 11, color: 'var(--r-text-2)', marginTop: 3, fontStyle: 'italic' }}>{doc.notes}</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+                {doc.signedUrl && (
+                  <a
+                    href={doc.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'block', padding: '4px 10px', borderRadius: 7, border: '1px solid var(--r-border)', background: 'rgba(200,164,92,0.06)', color: 'var(--r-gold)', fontSize: 11, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}
+                  >
+                    Open
+                  </a>
+                )}
+                {canDeleteDoc(doc) && (
+                  <button
+                    onClick={() => handleDelete(doc.id)}
+                    style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid var(--r-danger-border)', background: 'var(--r-danger-bg)', color: 'var(--r-danger)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -684,6 +932,9 @@ function DetailPanel({
           </ActionBtn>
         </div>
       </Panel>
+
+      {/* Document history / audit trail */}
+      <DocumentsSection contactId={contact.id} />
 
       {/* Recommended next action */}
       <Panel style={{ background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)' }}>
