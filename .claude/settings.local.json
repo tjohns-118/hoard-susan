@@ -54,7 +54,8 @@
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(Sort-Object)",
       "Bash(Get-Item \"C:\\\\Users\\\\trist\\\\Documents\\\\hoard\\\\supabase\\\\migrations\\\\20260526_demo_tenant.sql\")",
-      "Bash(Select-Object FullName, Length, LastWriteTime)"
+      "Bash(Select-Object FullName, Length, LastWriteTime)",
+      "PowerShell(New-Item *)"
     ]
   }
 }

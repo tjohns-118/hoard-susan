@@ -1,11 +1,16 @@
-import { enterDemo } from './actions';
-
 export const metadata = {
   title: 'Live Demo — Hoard',
   description: 'Explore the Hoard brokerage command center with real demo data.',
 };
 
-export default function DemoPlaygroundPage() {
+export default async function DemoPlaygroundPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+  const loginFailed = error === 'demo_login_failed';
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -40,6 +45,24 @@ export default function DemoPlaygroundPage() {
           tasks, and AI briefings — all pre-loaded and ready to explore.
         </p>
 
+        {/* Error banner — shown when the demo login route bounces back with ?error= */}
+        {loginFailed && (
+          <div style={{
+            marginBottom: '1.5rem',
+            padding: '0.75rem 1rem',
+            background: 'rgba(220, 38, 38, 0.12)',
+            border: '1px solid rgba(220, 38, 38, 0.4)',
+            borderRadius: 6,
+            color: '#f87171',
+            fontSize: '0.9rem',
+          }}>
+            Demo login is temporarily unavailable. Please try again or{' '}
+            <a href="mailto:hello@use-hoard.com" style={{ color: '#f87171', textDecoration: 'underline' }}>
+              contact support
+            </a>.
+          </div>
+        )}
+
         {/* Feature list */}
         <div style={{
           display: 'grid',
@@ -63,8 +86,8 @@ export default function DemoPlaygroundPage() {
           ))}
         </div>
 
-        {/* CTA */}
-        <form action={enterDemo}>
+        {/* CTA — plain HTML form POST to Route Handler (no server action) */}
+        <form action="/api/demo/login" method="POST">
           <button
             type="submit"
             style={{
