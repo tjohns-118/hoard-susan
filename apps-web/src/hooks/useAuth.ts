@@ -10,6 +10,7 @@ export function useAuth() {
   const setMemberId            = useAppStore((s) => s.setMemberId);
   const setUserPhone           = useAppStore((s) => s.setUserPhone);
   const setSmsRemindersEnabled = useAppStore((s) => s.setSmsRemindersEnabled);
+  const setIsDemoMode          = useAppStore((s) => s.setIsDemoMode);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,9 +25,10 @@ export function useAuth() {
           setMemberId(data.memberId ?? null);
           setUserPhone(data.phone ?? null);
           setSmsRemindersEnabled(data.smsRemindersEnabled ?? true);
+          setIsDemoMode(data.isDemoMode === true);
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [router, setCurrentRole, setMemberId, setUserPhone, setSmsRemindersEnabled]);
+  }, [router, setCurrentRole, setMemberId, setUserPhone, setSmsRemindersEnabled, setIsDemoMode]);
 }

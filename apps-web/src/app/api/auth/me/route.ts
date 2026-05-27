@@ -11,12 +11,19 @@ export async function GET() {
   const membership = await getMembership(user.id, user.email);
   if (!membership) return NextResponse.json({ error: 'No brokerage membership found' }, { status: 403 });
 
-  // Fetch phone + SMS prefs — fail open so a missing column never breaks auth.
-  const { data: appUser } = await supabaseAdmin
-    .from('app_users')
-    .select('phone, sms_reminders_enabled')
-    .eq('auth_user_id', user.id)
-    .maybeSingle();
+  // Fetch phone + SMS prefs + demo flag in parallel.
+  const [appUserResult, brokerageResult] = await Promise.all([
+    supabaseAdmin
+      .from('app_users')
+      .select('phone, sms_reminders_enabled')
+      .eq('auth_user_id', user.id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('brokerages')
+      .select('is_demo')
+      .eq('id', membership.brokerageId)
+      .maybeSingle(),
+  ]);
 
   return NextResponse.json({
     userId:              user.id,
@@ -24,7 +31,8 @@ export async function GET() {
     brokerageId:         membership.brokerageId,
     role:                membership.role,
     memberId:            membership.memberId,
-    phone:               (appUser?.phone as string | null)              ?? null,
-    smsRemindersEnabled: (appUser?.sms_reminders_enabled as boolean | null) ?? true,
+    phone:               (appUserResult.data?.phone as string | null)              ?? null,
+    smsRemindersEnabled: (appUserResult.data?.sms_reminders_enabled as boolean | null) ?? true,
+    isDemoMode:          (brokerageResult.data?.is_demo as boolean | null)         ?? false,
   });
 }

@@ -11,6 +11,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAppStore } from '@/app/store/useAppStore';
 import { ComplianceGate } from '@/components/compliance/ComplianceGate';
 import { PhoneBanner } from '@/components/profile/PhoneBanner';
+import { DemoBanner } from '@/components/demo/DemoBanner';
+import { DemoLeadCapture } from '@/components/demo/DemoLeadCapture';
 
 type ComplianceState = 'checking' | 'required' | 'accepted';
 
@@ -22,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentRole    = useAppStore((s) => s.currentRole);
   const userPhone      = useAppStore((s) => s.userPhone);
   const setUserPhone   = useAppStore((s) => s.setUserPhone);
+  const isDemoMode     = useAppStore((s) => s.isDemoMode);
 
   const [compliance, setCompliance]           = useState<ComplianceState>('checking');
   const [phoneBannerDone, setPhoneBannerDone] = useState(false);
@@ -60,6 +63,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         position:   'relative',
       }}
     >
+      {isDemoMode && <DemoBanner />}
+
       {/* Ambient signal background — absolutely positioned, pointer-events none */}
       <SignalBackground />
 
@@ -123,6 +128,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       {compliance === 'required' && (
         <ComplianceGate onAccepted={() => setCompliance('accepted')} />
       )}
+
+      {isDemoMode && <DemoLeadCapture />}
     </div>
   );
 }

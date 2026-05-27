@@ -46,6 +46,16 @@ export async function POST(req: NextRequest) {
   if (!brokerageId)
     return NextResponse.json({ error: 'Brokerage not configured' }, { status: 503 });
 
+  // Demo mode — billing is disabled.
+  const { data: demoCheck } = await supabaseAdmin
+    .from('brokerages')
+    .select('is_demo')
+    .eq('id', brokerageId)
+    .maybeSingle();
+  if (demoCheck?.is_demo) {
+    return NextResponse.json({ error: 'Billing is disabled in demo mode.' }, { status: 403 });
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (!appUrl)
     return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL is not configured' }, { status: 503 });

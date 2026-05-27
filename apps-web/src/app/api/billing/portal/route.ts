@@ -32,12 +32,15 @@ export async function POST() {
 
   const { data: brokerage, error: dbErr } = await supabaseAdmin
     .from('brokerages')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, is_demo')
     .eq('id', brokerageId)
     .maybeSingle();
 
   if (dbErr || !brokerage)
     return NextResponse.json({ error: 'Failed to load brokerage' }, { status: 500 });
+
+  if (brokerage.is_demo)
+    return NextResponse.json({ error: 'Billing is disabled in demo mode.' }, { status: 403 });
 
   const customerId = brokerage.stripe_customer_id as string | null;
   if (!customerId)

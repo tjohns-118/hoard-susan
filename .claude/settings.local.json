@@ -42,7 +42,19 @@
       "Bash(sed -n '409,470p' C:/Users/trist/Documents/hoard/apps-web/src/app/api/leads/route.ts)",
       "Bash(python3 -c ' *)",
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\trist\\\\Documents\\\\hoard\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Users\\\\trist\\\\Documents\\\\hoard\\\\supabase\" -Filter \"*.sql\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Format-List)",
+      "Bash(Select-Object -Property Name, PSIsContainer)",
+      "Bash(xargs -I {} git show {}:supabase/migrations/)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\trist\\\\Documents\\\\hoard\\\\apps-web\\\\src\\\\app\\\\api\" -Recurse -Filter \"route.ts\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(Get-Item \"C:\\\\Users\\\\trist\\\\Documents\\\\hoard\\\\supabase\\\\migrations\\\\20260526_demo_tenant.sql\")",
+      "Bash(Select-Object FullName, Length, LastWriteTime)"
     ]
   }
 }

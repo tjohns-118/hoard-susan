@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 // Routes that never require authentication — checked before any Supabase call.
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/login', '/claim-account'];
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/login', '/claim-account', '/demo-playground'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));

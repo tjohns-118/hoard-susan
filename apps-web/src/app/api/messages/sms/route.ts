@@ -47,6 +47,16 @@ export async function POST(req: NextRequest) {
   if (!membership)
     return NextResponse.json({ error: 'No brokerage membership found' }, { status: 403 });
 
+  // Demo mode — never send real SMS.
+  const { data: brokerage } = await supabaseAdmin
+    .from('brokerages')
+    .select('is_demo')
+    .eq('id', BROKERAGE_ID)
+    .maybeSingle();
+  if (brokerage?.is_demo) {
+    return NextResponse.json({ error: 'SMS sends are disabled in demo mode.' }, { status: 403 });
+  }
+
   if (detectSmsProvider() === 'none')
     return NextResponse.json({ error: 'SMS provider not configured (set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN)' }, { status: 503 });
 

@@ -33,6 +33,16 @@ export async function POST(req: NextRequest) {
   if (!membership)
     return NextResponse.json({ error: 'No brokerage membership found' }, { status: 403 });
 
+  // Demo mode — never send real email.
+  const { data: brokerageCheck } = await supabaseAdmin
+    .from('brokerages')
+    .select('is_demo')
+    .eq('id', BROKERAGE_ID)
+    .maybeSingle();
+  if (brokerageCheck?.is_demo) {
+    return NextResponse.json({ error: 'Email sends are disabled in demo mode.' }, { status: 403 });
+  }
+
   const cfgErr = getConfigError();
   if (cfgErr) {
     logProviderDiagnostics();

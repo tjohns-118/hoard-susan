@@ -26,6 +26,10 @@ type AppState = {
   memberId:       string | null;
   setMemberId:    (id: string | null) => void;
 
+  // ── Demo mode ─────────────────────────────────────────────────────────────────
+  isDemoMode:    boolean;
+  setIsDemoMode: (v: boolean) => void;
+
   // ── Auth-derived SMS profile ──────────────────────────────────────────────────
   userPhone:              string | null;   // null = loading OR missing
   setUserPhone:           (phone: string | null) => void;
@@ -104,6 +108,9 @@ currentRole: null,
 setCurrentRole: (role) => set({ currentRole: role }),
 memberId: null,
 setMemberId: (id) => set({ memberId: id }),
+
+isDemoMode: false,
+setIsDemoMode: (v) => set({ isDemoMode: v }),
 
 userPhone: null,
 setUserPhone: (phone) => set({ userPhone: phone }),
