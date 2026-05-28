@@ -313,3 +313,24 @@ INSERT INTO tasks (id, brokerage_id, title, completed, priority, due_at, contact
 
 -- Message templates intentionally skipped in V1 demo seed due to schema-specific column differences.
 -- (live templates/message_templates table uses text[] for tags, not jsonb)
+
+-- ── Post-insert: sync value_min with value ────────────────────────────────────
+-- The value_min column was added via an un-tracked migration (not tracked here).
+-- The INSERT above only sets `value`; `value_min` lands at its column DEFAULT (0).
+-- This block syncs them so pipeline cards and dashboard totals show the correct price.
+-- Wrapped in DO $$ so it silently no-ops if value_min column doesn't exist yet.
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE  table_name = 'opportunities' AND column_name = 'value_min'
+  ) THEN
+    UPDATE opportunities
+    SET    value_min = value
+    WHERE  brokerage_id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
+      AND  (value_min IS NULL OR value_min = 0)
+      AND  value > 0;
+  END IF;
+END;
+$$;

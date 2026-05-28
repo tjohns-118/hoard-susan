@@ -617,6 +617,22 @@ function mapOpportunity(row: any): Opportunity {
   const documents: PipelineDocument[] = Array.isArray(row.documents) ? row.documents : [];
   const stageHistory: StageHistoryEntry[] = Array.isArray(row.stage_history) ? row.stage_history : [];
 
+  // ── Value resolution ──────────────────────────────────────────────────────────
+  // value_min column was added via an un-tracked migration and has DEFAULT 0.
+  // Rows seeded (or created) before that migration existed will have value_min = 0
+  // even when `value` holds the real price.
+  //
+  // Treat value_min as meaningful only when it is explicitly a positive number.
+  // When value_min is 0 or null/undefined, fall back to `value` — the original
+  // authoritative column that is always seeded correctly.
+  //
+  // ?? would silently pass through 0 (not nullish), which is why all demo
+  // opportunities previously displayed $0 despite correct `value` seeds.
+  const rawMin = row.value_min;
+  const effectiveMin = (rawMin != null && Number(rawMin) > 0)
+    ? Number(rawMin)
+    : Number(row.value ?? 0);
+
   return {
     id:                String(row.id ?? ''),
     contactName:       String(row.title ?? row.contact_name ?? '').trim() || 'Unnamed',
@@ -629,8 +645,8 @@ function mapOpportunity(row: any): Opportunity {
     stageOwner,
     documents,
     stageHistory,
-    value:             Number(row.value_min ?? row.value ?? 0),
-    valueMin:          Number(row.value_min ?? row.value ?? 0),
+    value:             effectiveMin,
+    valueMin:          effectiveMin,
     valueMax:          row.value_max != null ? Number(row.value_max) : undefined,
     probability:       Number(row.probability  ?? 15),
     expectedCloseDate: row.expected_close_date
