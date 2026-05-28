@@ -13,6 +13,7 @@ import { ComplianceGate } from '@/components/compliance/ComplianceGate';
 import { PhoneBanner } from '@/components/profile/PhoneBanner';
 import { DemoBanner } from '@/components/demo/DemoBanner';
 import { DemoLeadCapture } from '@/components/demo/DemoLeadCapture';
+import { DemoWelcomeModal } from '@/components/demo/DemoWelcomeModal';
 
 type ComplianceState = 'checking' | 'required' | 'accepted';
 
@@ -30,12 +31,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [phoneBannerDone, setPhoneBannerDone] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
 
-  const showPhoneBanner = currentRole !== null && !userPhone && !phoneBannerDone;
+  const showPhoneBanner = currentRole !== null && !userPhone && !phoneBannerDone && !isDemoMode;
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
 
+  // Compliance check — skipped entirely for demo accounts.
+  // isDemoMode is async (set after useAuth resolves), so we guard both the
+  // fetch and the render.  If isDemoMode arrives true after the fetch already
+  // ran, the second effect immediately marks compliance as accepted so the gate
+  // never appears.
   useEffect(() => {
+    if (isDemoMode) {
+      setCompliance('accepted');
+      return;
+    }
+
     let cancelled = false;
     fetch('/api/compliance/status')
       .then(async (res) => {
@@ -47,7 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       })
       .catch(() => { if (!cancelled) setCompliance('accepted'); });
     return () => { cancelled = true; };
-  }, []);
+  }, [isDemoMode]);
 
   function handlePhoneAdded(phone: string) {
     setUserPhone(phone);
@@ -125,10 +136,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         +
       </button>
 
-      {compliance === 'required' && (
+      {/* Production compliance gate — never shown in demo mode */}
+      {compliance === 'required' && !isDemoMode && (
         <ComplianceGate onAccepted={() => setCompliance('accepted')} />
       )}
 
+      {/* Demo-only overlays */}
+      {isDemoMode && <DemoWelcomeModal />}
       {isDemoMode && <DemoLeadCapture />}
     </div>
   );

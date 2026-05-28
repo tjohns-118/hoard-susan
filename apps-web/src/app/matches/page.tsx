@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAppStore } from '@/app/store/useAppStore';
+import { DemoMatchFallback } from '@/components/demo/DemoMatchFallback';
 import { useLeads } from '@/hooks/useLeads';
 import { useContacts } from '@/hooks/useContacts';
 import { useOpportunities } from '@/hooks/useOpportunities';
@@ -630,6 +631,7 @@ export default function MatchesPage() {
   const opportunities = useAppStore((s) => s.opportunities);
   const currentRole   = useAppStore((s) => s.currentRole);
   const memberId      = useAppStore((s) => s.memberId);
+  const isDemoMode    = useAppStore((s) => s.isDemoMode);
 
   const [filter, setFilter]     = useState<FilterKey>('all');
   const [search, setSearch]     = useState('');
@@ -968,9 +970,13 @@ export default function MatchesPage() {
         />
       </div>
 
-      {/* Buyer groups */}
+      {/* Buyer groups — demo fallback when isDemoMode + no active inventory */}
+      {isDemoMode && properties.filter((p) => p.status !== 'sold').length === 0 && (
+        <DemoMatchFallback />
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {groups.length === 0 ? (
+        {(!isDemoMode || properties.filter((p) => p.status !== 'sold').length > 0) && groups.length === 0 ? (
           <div style={{
             padding: '60px 24px', textAlign: 'center',
             borderRadius: 18, border: '1px solid var(--r-border)',
