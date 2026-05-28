@@ -14,6 +14,7 @@ import { PhoneBanner } from '@/components/profile/PhoneBanner';
 import { DemoBanner } from '@/components/demo/DemoBanner';
 import { DemoLeadCapture } from '@/components/demo/DemoLeadCapture';
 import { DemoWelcomeModal } from '@/components/demo/DemoWelcomeModal';
+import { DemoExplorationPanel } from '@/components/demo/DemoExplorationPanel';
 
 type ComplianceState = 'checking' | 'required' | 'accepted';
 
@@ -144,6 +145,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Demo-only overlays */}
       {isDemoMode && <DemoWelcomeModal />}
       {isDemoMode && <DemoLeadCapture />}
+      {isDemoMode && <DemoExplorationPanel />}
     </div>
   );
 }

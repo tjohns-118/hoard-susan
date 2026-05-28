@@ -1725,3 +1725,177 @@ header {
     padding: 0; /* children provide their own padding */
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOARD MOTION SYSTEM — Phase II
+   AI Materialization · Edge Illumination · Signal Paths · Stagger
+   Applied judiciously — cinematic simplicity, not visual noise.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── AI text materialization ─────────────────────────────────────────────── */
+/*
+  Wrap AI-generated paragraphs in .r-materialize-block so each section
+  resolves from slightly blurred and dim to full clarity, staggered.
+  Works best inside .r-intelligence-panel.
+*/
+@keyframes r-text-materialize {
+  from { opacity: 0; filter: blur(4px); transform: translateY(4px); }
+  to   { opacity: 1; filter: blur(0);   transform: translateY(0);   }
+}
+
+.r-materialize-block {
+  animation: r-text-materialize 0.46s var(--r-ease) both;
+}
+.r-materialize-block:nth-child(1) { animation-delay:   0ms; }
+.r-materialize-block:nth-child(2) { animation-delay:  55ms; }
+.r-materialize-block:nth-child(3) { animation-delay: 110ms; }
+.r-materialize-block:nth-child(4) { animation-delay: 165ms; }
+.r-materialize-block:nth-child(5) { animation-delay: 220ms; }
+.r-materialize-block:nth-child(6) { animation-delay: 275ms; }
+
+/* Key phrase highlight — brighten specific terms inside AI briefings */
+.r-ai-phrase {
+  color: var(--r-gold-bright);
+  font-weight: 600;
+  position: relative;
+}
+/* Faint underline reveals on hover */
+.r-ai-phrase::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200,164,92,0.52), transparent);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.r-ai-phrase:hover::after { opacity: 1; }
+
+/* ── Edge illumination ────────────────────────────────────────────────────── */
+/*
+  Add .r-illuminate to a panel to show a gold edge treatment.
+  Designed to show contextual relationships between sections.
+*/
+.r-illuminate {
+  box-shadow:
+    0 0 0 1px rgba(200,164,92,0.34),
+    0 0 28px rgba(200,164,92,0.12),
+    0 8px 40px rgba(0,0,0,0.72),
+    inset 0 1px 0 rgba(200,164,92,0.18) !important;
+  border-color: rgba(200,164,92,0.30) !important;
+}
+
+/* Brief gold flash — fades naturally, used for navigation arrival */
+@keyframes r-illuminate-flash {
+  0%   {
+    box-shadow:
+      0 0 0 1px rgba(200,164,92,0.52),
+      0 0 52px rgba(200,164,92,0.22),
+      0 8px 40px rgba(0,0,0,0.72),
+      inset 0 1px 0 rgba(200,164,92,0.26);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(200,164,92,0.10),
+      0 0 12px rgba(200,164,92,0.05),
+      0 8px 40px rgba(0,0,0,0.72),
+      inset 0 1px 0 rgba(200,164,92,0.08);
+  }
+}
+.r-illuminate-flash {
+  animation: r-illuminate-flash 2.0s var(--r-ease) forwards;
+}
+
+/* ── Horizontal signal path ───────────────────────────────────────────────── */
+/*
+  A 1px separator line with a slow gold sweep — suggests live data routing
+  between panels. Place between major sections with <div className="r-signal-bar"/>.
+*/
+@keyframes r-signal-sweep {
+  0%   { left: -32%; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { left: 132%; opacity: 0; }
+}
+
+.r-signal-bar {
+  position: relative;
+  height: 1px;
+  background: rgba(200,164,92,0.055);
+  overflow: hidden;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.r-signal-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 1px;
+  width: 26%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(200,164,92,0.48),
+    rgba(226,196,124,0.70) 50%,
+    rgba(200,164,92,0.48),
+    transparent
+  );
+  animation: r-signal-sweep 6.0s 0.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ── Entry stagger — list rows, cards appearing on mount ─────────────────── */
+/*
+  Wrap a list with .r-stagger and each direct child gets a staggered fade-up.
+  Up to 8 items staggered; extras appear at the 8th delay.
+*/
+.r-stagger > * {
+  animation: r-fade-up 0.30s var(--r-ease) both;
+}
+.r-stagger > *:nth-child(1) { animation-delay:   0ms; }
+.r-stagger > *:nth-child(2) { animation-delay:  35ms; }
+.r-stagger > *:nth-child(3) { animation-delay:  70ms; }
+.r-stagger > *:nth-child(4) { animation-delay: 105ms; }
+.r-stagger > *:nth-child(5) { animation-delay: 140ms; }
+.r-stagger > *:nth-child(6) { animation-delay: 175ms; }
+.r-stagger > *:nth-child(7) { animation-delay: 210ms; }
+.r-stagger > *:nth-child(8) { animation-delay: 245ms; }
+
+/* ── Panel reveal — subtle depth-enter for individual sections ────────────── */
+@keyframes r-panel-reveal {
+  from { opacity: 0; transform: translateY(10px) scale(0.997); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);     }
+}
+.r-panel-reveal {
+  animation: r-panel-reveal 0.34s var(--r-ease) both;
+}
+
+/* ── Depth layer utility ──────────────────────────────────────────────────── */
+/* Add to elements that should feel "closer" to the viewer */
+.r-elevated {
+  position: relative;
+  z-index: 2;
+}
+.r-recessed {
+  position: relative;
+  z-index: 0;
+}
+
+/* ── Reduced-motion guard for all Phase II additions ─────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .r-materialize-block,
+  .r-illuminate-flash,
+  .r-signal-bar::after,
+  .r-stagger > *,
+  .r-panel-reveal { animation: none !important; }
+  .r-ai-phrase::after { transition: none !important; }
+}
+
+/* ── Mobile: strip expensive animation from Phase II ─────────────────────── */
+@media (max-width: 768px) {
+  /* Signal sweep is decorative — off on mobile for battery */
+  .r-signal-bar::after { animation: none !important; }
+  /* Stagger disabled on mobile — instant render feels snappier on touch */
+  .r-stagger > * { animation: none !important; }
+  /* Materialize still runs on mobile — it's fast and impactful for AI text */
+}
