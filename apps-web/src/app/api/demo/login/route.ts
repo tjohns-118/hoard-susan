@@ -20,10 +20,16 @@ export async function POST(req: NextRequest) {
   const errorUrl   = new URL('/demo-playground?error=demo_login_failed', req.url);
   const successUrl = new URL('/', req.url);
 
+  // ── Env-var diagnostics (never log password) ────────────────────────────────
+  console.log('[POST /api/demo/login] hasDemoEmail:', Boolean(email));
+  console.log('[POST /api/demo/login] hasDemoPassword:', Boolean(password));
+
   if (!email || !password) {
-    console.error('[POST /api/demo/login] DEMO_USER_EMAIL or DEMO_USER_PASSWORD not set');
+    console.error('[POST /api/demo/login] Missing env vars — DEMO_USER_EMAIL or DEMO_USER_PASSWORD not set');
     return NextResponse.redirect(errorUrl, { status: 303 });
   }
+
+  console.log('[POST /api/demo/login] Attempting sign-in for:', email);
 
   // Build the success redirect first so we can write auth cookies onto it.
   const response = NextResponse.redirect(successUrl, { status: 303 });
@@ -37,9 +43,8 @@ export async function POST(req: NextRequest) {
         getAll() {
           return req.cookies.getAll();
         },
-        // Write auth cookies onto the response — this is what was broken
-        // when a Server Action tried to call cookieStore.set() outside of
-        // the allowed RSC/Server Action context in production.
+        // Write auth cookies onto the response — NOT onto cookieStore, which
+        // only works inside Server Actions (and causes digest 2066090693 in prod).
         setAll(toSet) {
           toSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
@@ -52,9 +57,20 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    console.error('[POST /api/demo/login] signInWithPassword error:', error.message);
+    // Log code + message but never the password.
+    console.error(
+      '[POST /api/demo/login] signInWithPassword failed —',
+      'code:', error.code ?? 'none',
+      '| status:', error.status ?? 'none',
+      '| message:', error.message,
+    );
+    console.error(
+      '[POST /api/demo/login] Hint: run POST /api/demo/setup to ensure the',
+      'Supabase Auth user exists and its password matches DEMO_USER_PASSWORD.',
+    );
     return NextResponse.redirect(errorUrl, { status: 303 });
   }
 
+  console.log('[POST /api/demo/login] Sign-in successful for:', email);
   return response;
 }
