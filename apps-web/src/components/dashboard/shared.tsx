@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge';
 // ── Value formatter ────────────────────────────────────────────────────────────
 
 export function fmtValue(v: number) {
+  if (!v || v <= 0)   return '—';
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
   if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}k`;
   return `$${v}`;

@@ -15,16 +15,10 @@ export default async function DemoPlaygroundPage({
     <>
       {/* ── Keyframe definitions ─────────────────────────────────────────── */}
       <style>{`
-        @keyframes hoard-streak-h {
-          0%   { transform: translateX(-100%); opacity: 0; }
-          10%  { opacity: 1; }
-          90%  { opacity: 1; }
-          100% { transform: translateX(200%); opacity: 0; }
-        }
         @keyframes hoard-streak-v {
           0%   { transform: translateY(-100%); opacity: 0; }
           10%  { opacity: 1; }
-          90%  { opacity: 1; }
+          88%  { opacity: 1; }
           100% { transform: translateY(200%); opacity: 0; }
         }
         @keyframes hoard-pulse-dot {
@@ -63,9 +57,9 @@ export default async function DemoPlaygroundPage({
         }
 
         @media (max-width: 600px) {
-          .demo-feature-grid  { grid-template-columns: 1fr !important; }
-          .demo-hero-h1       { font-size: clamp(2rem, 8vw, 3rem) !important; }
-          .demo-streak-slow   { display: none !important; }
+          .demo-feature-grid { grid-template-columns: 1fr !important; }
+          .demo-hero-h1      { font-size: clamp(2rem, 8vw, 3rem) !important; }
+          .demo-signal-v     { display: none !important; }
         }
       `}</style>
 
@@ -103,33 +97,15 @@ export default async function DemoPlaygroundPage({
           pointerEvents: 'none', zIndex: 0,
         }} />
 
-        {/* ── Animated gold streaks ────────────────────────────────────── */}
-        {/* Horizontal streaks */}
+        {/* ── Vertical signal paths ────────────────────────────────────── */}
         {[
-          { top: '18%', delay: '0s',    dur: '4.2s', w: 220, opacity: 0.55 },
-          { top: '42%', delay: '1.8s',  dur: '5.6s', w: 140, opacity: 0.35 },
-          { top: '71%', delay: '0.9s',  dur: '6.1s', w: 180, opacity: 0.45 },
-        ].map(({ top, delay, dur, w, opacity }, i) => (
-          <div key={`hs-${i}`} style={{
-            position: 'absolute', top, left: 0, right: 0, overflow: 'hidden',
-            height: 1, pointerEvents: 'none', zIndex: 0,
-          }} className="demo-streak-slow">
-            <div style={{
-              position: 'absolute', height: 1, width: w,
-              background: `linear-gradient(90deg, transparent, rgba(200,164,92,${opacity}), transparent)`,
-              animation: `hoard-streak-h ${dur} ${delay} infinite linear`,
-            }} />
-          </div>
-        ))}
-        {/* Vertical streaks */}
-        {[
-          { left: '15%', delay: '0.4s', dur: '5.0s', h: 160, opacity: 0.30 },
-          { left: '78%', delay: '2.2s', dur: '4.5s', h: 120, opacity: 0.25 },
+          { left: '14%', delay: '0.6s', dur: '7.2s', h: 110, opacity: 0.22 },
+          { left: '80%', delay: '3.1s', dur: '9.0s', h: 80,  opacity: 0.17 },
         ].map(({ left, delay, dur, h, opacity }, i) => (
           <div key={`vs-${i}`} style={{
             position: 'absolute', left, top: 0, bottom: 0, overflow: 'hidden',
             width: 1, pointerEvents: 'none', zIndex: 0,
-          }} className="demo-streak-slow">
+          }} className="demo-signal-v">
             <div style={{
               position: 'absolute', width: 1, height: h,
               background: `linear-gradient(180deg, transparent, rgba(200,164,92,${opacity}), transparent)`,

@@ -47,11 +47,13 @@ const PRIORITY_TONE = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtValue(v: number) {
+  if (!v || v <= 0)    return '—';
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
   return `$${(v / 1_000).toFixed(0)}k`;
 }
 
 function fmtRange(min: number, max?: number): string {
+  if (!min || min <= 0) return '—';
   if (!max || max <= min) return fmtValue(min);
   return `${fmtValue(min)}–${fmtValue(max)}`;
 }
