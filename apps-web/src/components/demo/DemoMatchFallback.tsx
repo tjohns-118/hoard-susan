@@ -129,8 +129,17 @@ function DemoGroupCard({ group }: { group: DemoMatchGroup }) {
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
-              {group.kind === 'lead' ? 'Lead' : 'Contact'} · sample data
+              {group.kind === 'lead' ? 'Lead' : 'Contact'}
             </span>
+            {group.agentName && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: 'var(--r-gold)',
+                background: 'var(--r-gold-faint)', border: '1px solid var(--r-border)',
+                borderRadius: 5, padding: '2px 7px',
+              }}>
+                {group.agentName.split(' ')[0]}
+              </span>
+            )}
             <span style={{ fontSize: 11, color: 'var(--r-text-3)' }}>
               {group.matches.length} match{group.matches.length !== 1 ? 'es' : ''}
             </span>
@@ -193,8 +202,8 @@ export function DemoMatchFallback() {
           flexShrink: 0,
         }} />
         <span style={{ fontSize: 12, color: 'rgba(200,164,92,0.85)', lineHeight: 1.5 }}>
-          <strong>Sample Match Intelligence</strong> — curated demo dataset.
-          In your live workspace, matches are computed from real contacts, leads, and inventory.
+          <strong>Demo Match Intelligence</strong> — curated from seeded demo buyers and inventory.
+          In your live workspace, matches are computed in real time from your contacts, leads, and properties.
         </span>
       </div>
 

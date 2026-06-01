@@ -970,13 +970,11 @@ export default function MatchesPage() {
         />
       </div>
 
-      {/* Buyer groups — demo fallback when isDemoMode + no active inventory */}
-      {isDemoMode && properties.filter((p) => p.status !== 'sold').length === 0 && (
-        <DemoMatchFallback />
-      )}
+      {/* Demo match intelligence — always shown in demo mode regardless of inventory count */}
+      {isDemoMode && <DemoMatchFallback />}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {(!isDemoMode || properties.filter((p) => p.status !== 'sold').length > 0) && groups.length === 0 ? (
+        {!isDemoMode && (groups.length === 0 ? (
           <div style={{
             padding: '60px 24px', textAlign: 'center',
             borderRadius: 18, border: '1px solid var(--r-border)',
@@ -1004,7 +1002,7 @@ export default function MatchesPage() {
               onViewProperty={(propertyId) => router.push('/properties')}
             />
           ))
-        )}
+        ))}
       </div>
 
       {/* Score legend */}
